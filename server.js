@@ -17,11 +17,17 @@ import passport from 'passport';
 import session from "express-session";
 import authRoutes from "./routes/auth.js";
 import "./config/passport.js";
+import logger from './logger.js';
 
 dotenv.config();
 // https://desktop-4ntjhpk.tail18c2a1.ts.net/auth/google
 process.on("uncaughtException", (err) => {
-    logger.error(`Uncaught Exception: ${err.stack}`);
+   logger.error({
+    api: "unhandledRejection",
+    message: reason.message,
+    stack: reason.stack
+  });
+
 });
 
 process.on("unhandledRejection", (reason) => {

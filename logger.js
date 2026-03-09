@@ -13,7 +13,7 @@ if (!fs.existsSync(errorLogFilePath)) {
   fs.writeFileSync(errorLogFilePath, "", { flag: "a+" });
 }
 
-const logger = winston.createLogger({
+const oldlogger = winston.createLogger({
     format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.printf(({ timestamp, level, message }) => {
@@ -32,6 +32,33 @@ const logger = winston.createLogger({
             maxFiles: 5,
         })
     ],
+});
+
+const logger = winston.createLogger({
+  format: winston.format.combine(
+    winston.format.errors({ stack: true }),
+    winston.format.timestamp(),
+    winston.format.printf(({ level, message, stack, api }) => {
+
+      let currentTime = moment()
+        .tz("Asia/Dubai")
+        .format("YYYY-MM-DD HH:mm:ss");
+
+      return `${currentTime} [${level.toUpperCase()}] [API:${api || "GLOBAL"}] 
+Message: ${message}
+Stack: ${stack || ""}
+--------------------------------------------------`;
+    })
+  ),
+  transports: [
+    new winston.transports.File({
+      filename: errorLogFilePath,
+      level: "error",
+      handleExceptions: true,
+      maxsize: 5242880,
+      maxFiles: 5
+    })
+  ]
 });
 
 export default logger;

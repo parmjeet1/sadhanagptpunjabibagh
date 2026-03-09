@@ -1,4 +1,4 @@
-import { getPaginatedData, insertRecord } from "../../utils/dbUtils.js";
+import { getPaginatedData, insertRecord, queryDB } from "../../utils/dbUtils.js";
 import { asyncHandler, mergeParam } from "../../utils/utils.js";
 import validateFields from "../../utils/validation.js";
 
@@ -187,31 +187,32 @@ export const editCenter = asyncHandler(async (req, resp) => {
     }
 
 });
+
+
+
 export const studentlist = asyncHandler(async (req, resp) => {
     try {
-        /*
-        ifnull((select base_price from cycle_pricing cp where cp.station_id=cycle_list.station_id  and cp.type_of_cycle=cycle_list.cycle_type
-             and cp.type_of_cycle=cycle_list.cycle_type ),0)as base_price
-        */
-        const { page_no=1,counsller_id,  search_text='',rowSelected} = mergeParam(req);
+        const { page_no=1,user_id,  search_text='',rowSelected} = mergeParam(req);
        
        
         const { isValid, errors } = validateFields(mergeParam(req), { page_no: ["required"] });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
      const params = {
-            tableName: 'users ',
-           columns: `user_id, name`,
+            tableName: 'users us',
+           columns: `us.user_id, us.name,us.user_type, us.email, us.mobile, us.fcm_token, us.created_at`,
+           joinCondition :'us.user_id = uc.user_id',
+        joinTable :'user_counsellors uc',
         
-        sortColumn:'created_at',
+        sortColumn:'us.created_at',
         sortOrder: 'DESC',
         page_no,
         limit: rowSelected || 10,
         liveSearchFields: ['name', ],
         liveSearchTexts: [search_text],
-        whereField: ['status','mentor_id'],
-        whereValue: [1,counsller_id],
-        whereOperator: ['=','=']
+        whereField: ['uc.counsller_id'],
+        whereValue: [user_id],
+        whereOperator: ['=']
         };
        
         const result = await getPaginatedData(params);
@@ -234,6 +235,56 @@ export const studentlist = asyncHandler(async (req, resp) => {
             status: 0,
             code: 500,
             message: 'Error fetching cycle List'
+        });
+    }
+});
+
+export const sadhanReportlist = asyncHandler(async (req, resp) => {
+    try {
+        const { page_no=1,user_id,student_id,  search_text='',rowSelected} = mergeParam(req);
+       
+       
+        const { isValid, errors } = validateFields(mergeParam(req), { page_no: ["required"] });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+     const params = {
+        tableName: 'daily_report dr',
+        columns: `fa.activity_id, fa.name, fa.description,  dr.activity_date, dr.count, dr.unit`,
+        joinTable :'fix_activities fa',
+        joinCondition :'fa.activity_id = dr.activity_id',
+        sortColumn:'dr.created_at',
+        sortOrder: 'DESC',
+        page_no,
+        limit: rowSelected || 10,
+        liveSearchFields: ['fa.name', ],
+        liveSearchTexts: [search_text],
+        whereField: ['dr.user_id'],
+        whereValue: [student_id],
+        whereOperator: ['=']
+        };
+       
+        const result = await getPaginatedData(params);
+        
+          const student= await queryDB(`SELECT user_id,name FROM users WHERE user_id = ?`,
+             [student_id]); 
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["users list fetched successfully!"],
+           student,
+            data    :   result.data,
+            total_page: result.totalPage,
+            total: result.total,
+           
+        });//
+
+    } catch (error) {
+        console.error('Error fetching student report List:', error);
+        return resp.status(500).json({
+            status: 0,
+            code: 500,
+            message: 'Error fetching student report List'
         });
     }
 });

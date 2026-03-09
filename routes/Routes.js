@@ -5,6 +5,7 @@ import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
 import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, registerStudentEmailOnly, onBoarding} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication } from "../middleware/apiAuthenticationMiddleware.js";
+import { sadhanReportlist, studentlist } from "../SadhanaGPT/Mentors/CounslerController.js";
 
 const router = Router();
 
@@ -34,12 +35,12 @@ const authzAndAuthRoutes = [
 
     const LoggedinRoute = [
         
-        
-
-        
+        //studnet apis
         {method: 'post',        path: '/add-temple',                handler: addTemple},
         {method: 'get',         path: '/counsellor-list',           handler: listCounsellor},
         {method: 'post',        path: '/update-student-profile',    handler: updateStudentDetails},
+        //counsellor apis
+
 
         
 
@@ -58,7 +59,10 @@ const authzAndAuthRoutes = [
         
 
         // // counsler routes
-        // {method: 'get', path: '/student-list', handler: studentList},
+        {method: 'get', path: '/student-list', handler: studentlist},
+        {method: 'get', path: '/student-sadhana-report', handler: sadhanReportlist},
+
+        
         // {method: 'get', path: '/chart-details', handler: chartdetail},
         // {method: 'get', path: '/user-activity-details', handler: activitydetail},
 
