@@ -1,6 +1,6 @@
 import logger from "../logger.js";
 
-export const errorHandler = (err, req, res, next) => {
+export const olderrorHandler = (err, req, res, next) => {
 
     let arrE = err.stack.split(",")
     if (Array.isArray(arrE) && arrE.length ) { 
@@ -23,6 +23,23 @@ export const errorHandler = (err, req, res, next) => {
     });
 };
 
+export const errorHandler = (err, req, res, next) => {
+
+  logger.error(`
+ERROR: ${err.message}
+URL: ${req.originalUrl}
+METHOD: ${req.method}
+STACK:
+${err.stack}
+`);
+    const message = "Oops! There is something went wrong! Please Try Again."  ;
+
+    return res.json({
+        status  : 0,
+        code    : err.statusCode || 500,
+        message : [message]
+    });
+};
 export const tryCatchErrorHandler = (action, err, res, msg='' ) => {
     
     let arrE = err.stack.split(",")

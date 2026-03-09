@@ -3,22 +3,25 @@ import { Router } from "express";
 
 import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, registerStudentEmailOnly} from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, registerStudentEmailOnly, onBoarding} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication } from "../middleware/apiAuthenticationMiddleware.js";
 
 const router = Router();
 
 
 const authzAndAuthRoutes = [
- {method: 'post', path: '/student-register', handler: registerStudentEmailOnly},
+ {method: 'post', path: '/register', handler: registerStudentEmailOnly},
+ {method: 'post', path: '/on-boarding', handler: onBoarding},
+
  //
- {method: 'post', path: '/register-test', handler: Registertest},
+//  {method: 'post', path: '/register', handler: Registertest},
 
     
     // {method: 'get', path: '/google-call-back', handler: googleLogin},
     
- {method: 'post', path: '/login', handler: login},
-    {method: 'post', path: '/logout', handler: logout},  
+        {method: 'post',    path: '/login',         handler: login},
+        {method: 'get',     path: '/temple-list',   handler: templeList},
+        {method: 'post',    path: '/logout',        handler: logout},  
             
 ];
     authzAndAuthRoutes.forEach(({ method, path, handler }) => {
@@ -33,10 +36,10 @@ const authzAndAuthRoutes = [
         
         
 
-        {method: 'get', path: '/temple-list', handler: templeList},
-        {method: 'post', path: '/add-temple', handler: addTemple},
-        {method: 'get', path: '/counsellor-list', handler: listCounsellor},
-        {method: 'post', path: '/update-student-profile', handler: updateStudentDetails},
+        
+        {method: 'post',        path: '/add-temple',                handler: addTemple},
+        {method: 'get',         path: '/counsellor-list',           handler: listCounsellor},
+        {method: 'post',        path: '/update-student-profile',    handler: updateStudentDetails},
 
         
 

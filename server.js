@@ -1,7 +1,7 @@
-
+import express from 'express';
 import cron from 'node-cron';
 import axios from 'axios';
-import express from 'express';
+
 import bodyParser from 'body-parser';
 import Routes from './routes/Routes.js';
 // import StudentRoutes from './SadhanaGPT/Student/Routes/StudentRoutes.js'
@@ -20,7 +20,17 @@ import "./config/passport.js";
 
 dotenv.config();
 // https://desktop-4ntjhpk.tail18c2a1.ts.net/auth/google
+process.on("uncaughtException", (err) => {
+    logger.error(`Uncaught Exception: ${err.stack}`);
+});
 
+process.on("unhandledRejection", (reason) => {
+    logger.error(`Unhandled Rejection: ${reason}`);
+});
+
+process.on("warning", (warning) => {
+    logger.warn(`Warning: ${warning.message}`);
+});
 const app  = express();
 app.set('trust proxy', true);
 const PORT = process.env.PORT || 3333;
@@ -74,10 +84,10 @@ app.get('/google-call-back', (req, res) => {
 
 });
 
-app.use(errorHandler);
+
 // app.use('/api',StudentRoutes );
 app.use('/api',Routes );
-
+app.use(errorHandler);
 
 
 // app.use('/api',commonRoutes );

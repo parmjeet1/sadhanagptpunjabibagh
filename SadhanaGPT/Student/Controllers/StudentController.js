@@ -339,9 +339,9 @@ export const listActivities = asyncHandler(async (req, resp) => {
          FROM fix_activities`);
 
 
-    if (activities && activities.length=== 0) {
-    return resp.json({ status: 0, code: 404, message: ['No activities found for this user'] });
-    }
+    // if (activities && activities.length=== 0) {
+    // return resp.json({ status: 0, code: 404, message: ['No activities found for this user'] });
+    // }
     const all_activities = [
   ...activities.map(a => ({ ...a, type: 'user_activity' })),
   ...fix_activities.map(fa => ({ ...fa, type: 'fix_activity' }))
@@ -481,20 +481,23 @@ export const detailReport = asyncHandler(async (req, resp) => {
 
 export const addSadhna= asyncHandler(async(req,resp)=>{
 
-    const {activity_id,count,note,time,user_id}=req.body;
-//    const today_time = moment().format("YYYY-MM-DD HH:mm:ss");
-const today_date = moment().format("YYYY-MM-DD");
+    const {activity_id,count,activity_date,note,user_id}=req.body;
+    
 
-    console.log("time now",today_date)
-    const check_today_sadhana=await queryDB(`SELECT id  from daily_report where
-         activity_id=? and DATE(created_at)=? `,[activity_id,today_date]);
+     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+//    const today_time = moment().format("YYYY-MM-DD HH:mm:ss");
+    const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
+   
+    const check_today_sadhana=await queryDB(`SELECT id,unit  from daily_report where
+         activity_id=? and DATE(activity_date)=? `,[activity_id,final_activity_date]);
     
     if(check_today_sadhana){ 
-         console.log("created_at",check_today_sadhana.created_at)
+
   updateRecord('daily_report',{count,note},['id'],[check_today_sadhana.id]);
         return resp.json({status:0,code:200,message:['updated activity!']}) }
-     const insert_data=await insertRecord('daily_report',['user_id','activity_id','note','count'],
-        [user_id,activity_id,note,count]);
+     const insert_data=await insertRecord('daily_report',['user_id','activity_id','note','count','unit',
+     'activity_date'],
+        [user_id,activity_id,note,count,check_today_sadhana.unit,final_activity_date]);
      if(insert_data){
         return resp.json({status:1,code:200,message:['today report added successfully!']})
      }
@@ -771,7 +774,7 @@ export const registerStudentEmailOnly = asyncHandler(async (req, resp) => {
     }
 
 
-    // ✅ Check email already exists
+    //  Check email already exists
     const [[isExist]] = await db.execute(`
         SELECT user_id, email FROM users WHERE email = ?
     `, [email]);
@@ -792,7 +795,7 @@ export const registerStudentEmailOnly = asyncHandler(async (req, resp) => {
     }
 
 
-    // ✅ Insert new user (trigger will create user_id)
+    // Insert new user (trigger will create user_id)
     await db.execute(`
         INSERT INTO users
         (
@@ -806,7 +809,7 @@ export const registerStudentEmailOnly = asyncHandler(async (req, resp) => {
     ]);
 
 
-    // ✅ Fetch again to get trigger generated user_id
+    //  Fetch again to get trigger generated user_id
     const [[newUser]] = await db.execute(`
         SELECT user_id, email FROM users WHERE email = ?
     `, [email]);
@@ -826,3 +829,96 @@ export const registerStudentEmailOnly = asyncHandler(async (req, resp) => {
     });
 
 });
+
+
+export const onBoarding = asyncHandler(async (req, resp) => {
+
+    const { name,email,mobile,temple_id,user_type,counsellor_id,added_from='',device_name='' } = req.body;
+   
+
+
+    const { isValid, errors } = validateFields(req.body, {
+        email: ["required"],
+        name: ["required"],
+        mobile: ["required"],
+        temple_id: user_type === 'counsellor' ? ["required"] : [],
+        user_type: ["required"],
+        
+    });
+    let final_temple_id,finally_counsller_id;
+     
+
+    if (!isValid) {
+
+        return resp.json({
+            status: 0,
+            code: 422,
+            message: errors
+        });
+
+    }
+    const isExist = await queryDB(` SELECT  id FROM users WHERE email = ?`, [email]);
+
+
+    if (isExist) {
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["User already exists"],
+
+        });
+    }
+     switch(user_type){
+        case 'student':
+            if (!counsellor_id) {
+                return resp.json({
+                    status: 0,
+                    code: 422,
+                    message: ["Counsellor ID required for student"]
+                });
+            }
+          const counsellor= await queryDB(`SELECT 
+        temple_id FROM users WHERE user_id = ?  limit 1`, [counsellor_id]);
+           final_temple_id = counsellor.temple_id; 
+           finally_counsller_id = counsellor_id;
+
+            break;
+        case 'counsellor':
+            finally_counsller_id = null;
+            final_temple_id = temple_id;
+            break;
+        default:
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: ["Invalid user type"]
+            });
+    }
+    const access_token = crypto.randomBytes(12).toString('hex');
+
+const result= await registerUser(email, name, mobile, final_temple_id, user_type,finally_counsller_id,added_from,device_name,access_token);
+return resp.json(result);
+
+});
+
+const registerUser=async(email, name, mobile, temple_id, user_type,counsller_id,added_from,device_name,access_token)=>{
+ console.log("params",email, name, mobile, temple_id, user_type, 1)
+    const registration=await insertRecord('users', 
+        ['email', 'name', 'mobile', 'temple_id', 'user_type', 'status','added_from','device_name','access_token'],
+         [email, name, mobile, temple_id, user_type, 1,added_from,device_name,access_token]);
+         
+         if(registration.insertId>0){
+            const user_id='U' + String(registration.insertId).padStart(9, '0');
+           console.log("user_id",user_id,'counsller_id',counsller_id)
+            if(user_type === 'student'){
+
+              await insertRecord('user_counsellors', 
+                ['user_id','counsller_id'], [user_id, counsller_id]);
+            }
+
+            return {message:["successfully registered"],code:200,status:1,data:{user_id,email,name,mobile,temple_id,user_type,counsller_id}}
+         }
+
+
+};
