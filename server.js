@@ -12,6 +12,7 @@ import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'url';
 import { errorHandler } from './middleware/errorHandler.js';
 import dotenv from 'dotenv';
+dotenv.config();
 import http from 'http';
 import passport from 'passport';
 import session from "express-session";
@@ -19,7 +20,6 @@ import authRoutes from "./routes/auth.js";
 import "./config/passport.js";
 import logger from './logger.js';
 
-dotenv.config();
 // https://desktop-4ntjhpk.tail18c2a1.ts.net/auth/google
 process.on("uncaughtException", (err) => {
    logger.error({

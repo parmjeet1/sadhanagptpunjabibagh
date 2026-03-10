@@ -709,30 +709,33 @@ export const addSadhna = asyncHandler(async (req, resp) => {
   });
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-     const today = moment().format("YYYY-MM-DD");
+  const today = moment().format("YYYY-MM-DD");
   const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
   const check_today_sadhana = await queryDB(
     `SELECT activity_id,unit ,note,activity_date,count from daily_report where
          activity_id=? and DATE(activity_date)=? `,
     [activity_id, final_activity_date],
   );
-  
-
 
   if (check_today_sadhana) {
-        const [[report]]= await db.execute(
-    `SELECT activity_id,unit ,note, activity_date,count from daily_report where
+    const [[report]] = await db.execute(
+      `SELECT activity_id,unit ,note, activity_date,count from daily_report where
           DATE(activity_date)=? and user_id=? and activity_id=?`,
-    [today, user_id, activity_id]);
-    
-    
-     updateRecord(
+      [today, user_id, activity_id],
+    );
+
+    updateRecord(
       "daily_report",
       { count, note, unit },
       ["id"],
       [check_today_sadhana.id],
     );
-    return resp.json({ status: 0, code: 200, message: ["updated activity!"], data: { today_report: report } });
+    return resp.json({
+      status: 0,
+      code: 200,
+      message: ["updated activity!"],
+      data: { today_report: report },
+    });
   }
 
   const insert_data = await insertRecord(
@@ -740,14 +743,13 @@ export const addSadhna = asyncHandler(async (req, resp) => {
     ["user_id", "activity_id", "note", "count", "unit", "activity_date"],
     [user_id, activity_id, note, count, unit, final_activity_date],
   );
-   
 
   if (insert_data) {
-    const [[report]]= await db.execute(
-    `SELECT activity_id,unit ,note, activity_date,count from daily_report where
+    const [[report]] = await db.execute(
+      `SELECT activity_id,unit ,note, activity_date,count from daily_report where
           DATE(activity_date)=? and user_id=? and activity_id=?`,
-    [today, user_id, activity_id]
-  );
+      [today, user_id, activity_id],
+    );
     return resp.json({
       status: 1,
       code: 200,
@@ -1051,6 +1053,8 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     counsellor_id,
     added_from = "",
     device_name = "",
+    google_id,
+    profile,
   } = req.body;
 
   const { isValid, errors } = validateFields(req.body, {
@@ -1059,6 +1063,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     mobile: ["required"],
     temple_id: user_type === "counsellor" ? ["required"] : [],
     user_type: ["required"],
+    google_id: ["required"],
   });
   let final_temple_id, finally_counsller_id;
 
@@ -1069,15 +1074,36 @@ export const onBoarding = asyncHandler(async (req, resp) => {
       message: errors,
     });
   }
-  const isExist = await queryDB(` SELECT  id FROM users WHERE email = ?`, [
-    email,
-  ]);
+
+  const isExist = await queryDB(
+    `SELECT profile, user_id,email,mobile,temple_id,user_type, (SELECT counsller_id FROM user_counsellors WHERE user_id = users.user_id) AS counsller_id FROM users WHERE google_id = ?`,
+    [google_id],
+  );
+  const access_token = crypto.randomBytes(12).toString("hex");
 
   if (isExist) {
+    await updateRecord(
+      "users",
+      { access_token, profile },
+      ["google_id"],
+      [google_id],
+    );
+
     return resp.json({
       status: 1,
       code: 200,
-      message: ["User already exists"],
+      data: {
+        user_id:isExist.user_id,
+        email: isExist.email,
+        name: isExist.name,
+        mobile: isExist.mobile,
+        temple_id: isExist.temple_id,
+        user_type: isExist.user_type,
+        counsller_id: isExist.counsller_id,
+        profile:isExist.profile ? isExist.profile : process.env.IMAGE_UPLOAD_PATH + "default_profile.png",
+      
+      },
+      message: ["User registred successfully"],
     });
   }
   switch (user_type) {
@@ -1109,7 +1135,6 @@ export const onBoarding = asyncHandler(async (req, resp) => {
         message: ["Invalid user type"],
       });
   }
-  const access_token = crypto.randomBytes(12).toString("hex");
 
   const result = await registerUser(
     email,
@@ -1121,6 +1146,8 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     added_from,
     device_name,
     access_token,
+    google_id,
+    profile,
   );
   return resp.json(result);
 });
@@ -1135,8 +1162,9 @@ const registerUser = async (
   added_from,
   device_name,
   access_token,
+  google_id,
+  profile,
 ) => {
-  console.log("params", email, name, mobile, temple_id, user_type, 1);
   const registration = await insertRecord(
     "users",
     [
@@ -1149,6 +1177,8 @@ const registerUser = async (
       "added_from",
       "device_name",
       "access_token",
+      "google_id",
+      "profile"
     ],
     [
       email,
@@ -1160,6 +1190,8 @@ const registerUser = async (
       added_from,
       device_name,
       access_token,
+      google_id,
+      profile,
     ],
   );
 

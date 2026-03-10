@@ -14,19 +14,17 @@ passport.use(
     async (accessToken, refreshToken, profile, done) => {
       try {
 
-         const googleId = profile.id;
-        const name = profile.displayName;
-        const email = profile.emails[0].value;
-        const profile =""; //profile.photos[0].value;
-        // const resp = await googleLogin({
-        //   googleId,
-        //   name,
-        //   email,
-        //   profile,
-        // });
+       const user = {
+          google_id: profile.id,
+          name: profile.displayName,
+          email: profile.emails?.[0]?.value,
+          picture: profile.photos?.[0]?.value,
+        };
 
-console.log("working testing")
-        return done(null, { googleId, name, email, profile });
+        console.log("Google profile:", profile);
+
+
+       return done(null, user);
       } catch (err) {
         return done(err, null);
       }
@@ -34,10 +32,10 @@ console.log("working testing")
   )
 );
 
-passport.serializeUser((user, done) => {
-  done(null, user);
-});
+// passport.serializeUser((user, done) => {
+//   done(null, user);
+// });
 
-passport.deserializeUser((user, done) => {
-  done(null, user);
-});
+// passport.deserializeUser((user, done) => {
+//   done(null, user);
+// });

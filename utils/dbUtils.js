@@ -116,6 +116,9 @@ export const getPaginatedData = async ({
   columns = '*',
   joinTable = '',
   joinCondition = '',
+  typeOfJoin= 'JOIN',
+  joins = [],
+  join_reference='',
   liveSearchFields = [],
   liveSearchTexts = [],
   searchFields = [],
@@ -169,8 +172,25 @@ export const getPaginatedData = async ({
 
   // Apply JOIN clause if necessary
   // join state st on  msl.state_id = st.state_id
-   const joinClause = joinTable && joinCondition ? ` JOIN ${joinTable} ON ${joinCondition}` : '';
+  //  const joinClause = joinTable && joinCondition ? ` JOIN ${joinTable} ON ${joinCondition}` : '';
+    let joinClause = '';
+    console.log("Join Reference:", join_reference);
+    if(join_reference=='for_stuent_list'){
+       if (joinTable && joinCondition) {
+    joinClause += ` ${typeOfJoin} ${joinTable} ON ${joinCondition}`;
+  }
 
+  // add extra joins
+  if (joins && joins.length > 0) {
+    joinClause += joins
+      .map(j => ` ${j.type} ${j.table} ON ${j.condition}`)
+      .join(' ');
+  }
+
+  
+    }else{ 
+      joinClause = joinTable && joinCondition ? ` ${typeOfJoin} ${joinTable} ON ${joinCondition}` : '';
+      }
 //paramjeet  const joinClause = joinTable && !joinCondition.includes('=') 
 //   ? joinTable // Assume it's a full JOIN block
 //   : (joinTable && joinCondition ? ` JOIN ${joinTable} ON ${joinCondition}` : '');

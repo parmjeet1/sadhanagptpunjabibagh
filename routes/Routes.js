@@ -5,7 +5,7 @@ import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
 import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, registerStudentEmailOnly, onBoarding} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication } from "../middleware/apiAuthenticationMiddleware.js";
-import { sadhanReportlist, studentlist } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, aiReport, assignStudentToCenter, bulkAssignStudents, centerlist, deleteCenter, editCenter, sadhanReportlist, studentlist, studentsadhnaDetails } from "../SadhanaGPT/Mentors/CounslerController.js";
 
 const router = Router();
 
@@ -59,8 +59,17 @@ const authzAndAuthRoutes = [
         
 
         // // counsler routes
-        {method: 'get', path: '/student-list', handler: studentlist},
-        {method: 'get', path: '/student-sadhana-report', handler: sadhanReportlist},
+    {method: 'get',     path: '/student-list',                  handler: studentlist},
+    {method: 'get',     path: '/student-sadhana-details',       handler: studentsadhnaDetails},// not completed
+    {method: 'post',     path: '/ai-report',       handler: aiReport},// not completed
+    
+    {method: 'get',     path: '/center-list',                   handler: centerlist},
+    {method: 'post',    path: '/add-new-center',                handler: addCenter},
+    {method: 'post',    path: '/edit-center',                   handler: editCenter},
+    {method: 'delete',  path: '/delete-center',                 handler: deleteCenter},
+    {method: 'delete',  path: '/assign-student-to-center',      handler: assignStudentToCenter},
+    {method: 'post',     path: '/bulk-assign-student-to-center',handler: bulkAssignStudents},
+    {method: 'get', path: '/student-sadhana-report',            handler: sadhanReportlist},// 
 
         
         // {method: 'get', path: '/chart-details', handler: chartdetail},
