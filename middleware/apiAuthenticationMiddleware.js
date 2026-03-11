@@ -29,3 +29,40 @@ export const apiAuthentication = async (req, resp, next) => {
     return resp.status(500).json({message: 'Internal Server Error',code: 500,data: {},status: 0,});
   }
 };
+export const checkCounsellor = async (req, res, next) => {
+  try {
+
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        status: 0,
+        message: ["user_id is required"]
+      });
+    }
+
+    const [user] = await db.execute(`select user_id from users where
+       user_id = ? and user_type = 'counsellor'`,
+      [user_id]
+    );
+
+    if (!user.length===0) {
+      return res.status(404).json({
+        status: 0,
+        message: ["user not found or not a counsellor"]
+      });
+    }
+
+    next();
+
+  } catch (error) {
+
+    console.log("checkCounsellor middleware error", error);
+
+    return res.status(500).json({
+      status: 0,
+      message: ["Server error"]
+    });
+
+  }
+};

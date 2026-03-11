@@ -124,6 +124,11 @@ export const studentRegister = asyncHandler(async (req, resp) => {
     data: { user: result },
   });
 });
+export const addCounsller= asyncHandler(async (req, resp) => {
+// type mentor email id, and then find 
+const {studnet_id,counsler_email} = req.body;
+})
+
 export const Registertest = asyncHandler(async (req, resp) => {
   const { name, email, profile, added_from, fcm_token, device_name } = req.body;
   console.log(

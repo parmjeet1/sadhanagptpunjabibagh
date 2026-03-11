@@ -6,10 +6,287 @@ import {
   getPaginatedData,
   insertRecord,
   queryDB,
+  updateRecord,
 } from "../../utils/dbUtils.js";
 import { asyncHandler, mergeParam } from "../../utils/utils.js";
 import validateFields from "../../utils/validation.js";
+import axios from "axios";
 
+export const addLable = asyncHandler(async (req, resp) => {
+
+  const request = req.body;
+  const { user_id, lable_name, center_ids = [] } = request;
+
+  const { isValid, errors } = validateFields(request, {
+    user_id: ["required"],
+    lable_name: ["required"],
+    center_ids: ["required"]
+  });
+
+  if (!isValid) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: errors
+    });
+  }
+
+  try {
+
+    // 1️⃣ Insert Label
+    const labelInsert = await insertRecord(
+      "labels_list",
+      ["counsellor_id", "name"],
+      [user_id, lable_name]
+    );
+
+    const label_id = labelInsert.insertId;
+
+    // 2️⃣ Prepare center mappings
+    const values = center_ids.map(center_id => [label_id, center_id]);
+
+    // 3️⃣ Insert center mappings
+    for (const center of values) {
+      await insertRecord(
+        "label_centers",
+        ["label_id", "center_id"],
+        center
+      );
+    }
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Label added successfully!"],
+      data: {
+        label_id: label_id
+      }
+    });
+
+  } catch (err) {
+
+    console.log("addLable error:", err);
+
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
+    });
+  }
+
+});
+
+export const editLable = asyncHandler(async (req, resp) => {
+
+  const request = req.body;
+  const { user_id,label_id, lable_name } = request;
+
+  const { isValid, errors } = validateFields(request, {
+    label_id: ["required"],
+    lable_name: ["required"],
+    user_id:["required"]
+  });
+
+  if (!isValid) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: errors
+    });
+  }
+
+  try {
+
+    const updateData = await updateRecord(
+      "labels_list",
+      {
+        name: lable_name
+
+      }
+      ,["id","counsellor_id"],
+
+      [label_id,user_id]
+    );
+
+    if (!updateData) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["Label not found"]
+      });
+    }
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      lable_name,
+      message: ["Label updated successfully"]
+    });
+
+  } catch (err) {
+
+    console.log("editLable error:", err);
+
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
+    });
+  }
+
+});
+
+export const deleteLable = asyncHandler(async (req, res) => {
+
+  const { label_id } = req.body;
+
+  const { isValid, errors } = validateFields(req.body, {
+    label_id: ["required"]
+  });
+
+  if (!isValid) {
+    return res.json({
+      status: 0,
+      code: 422,
+      message: errors
+    });
+  }
+
+  try {
+
+    // Check label exists
+    const [[label]] = await db.execute(
+      `SELECT id FROM labels_list WHERE id = ?`,
+      [label_id]
+    );
+
+    if (!label) {
+      return res.json({
+        status: 0,
+        code: 404,
+        message: ["Label not found"]
+      });
+    }
+
+    // Delete label (label_centers rows auto delete via CASCADE)
+    await db.execute(
+      `DELETE FROM labels_list WHERE id = ?`,
+      [label_id]
+    );
+
+    return res.json({
+      status: 1,
+      code: 200,
+      message: ["Label deleted successfully"]
+    });
+
+  } catch (err) {
+
+    console.log("delete label error", err);
+
+    return res.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
+    });
+
+  }
+
+});
+export const bulkAssignLabel = asyncHandler(async (req, res) => {
+
+  const {user_id,center_id,label_id, student_ids } = req.body;
+
+  const { isValid, errors } = validateFields(req.body, {
+    label_id: ["required"],
+    student_ids: ["required"],
+      user_id:["required"],
+    center_id:["required"],
+  });
+
+  if (!isValid) {
+    return res.json({
+      status: 0,
+      code: 422,
+      message: errors
+    });
+  }
+
+  try {
+
+    if (!Array.isArray(student_ids) || student_ids.length === 0) {
+      return res.json({
+        status: 0,
+        code: 422,
+        message: ["student_ids must be a non-empty array"]
+      });
+    }
+
+    // Check label exists
+    const [[label]] = await db.execute(
+      `SELECT center_id FROM label_centers WHERE label_id = ? and  center_id=?`,
+      [label_id,center_id]
+    );
+   
+
+    if (!label) {
+      return res.json({
+        status: 0,
+        code: 404,
+        message: ["Label not found"]
+      });
+    }
+    
+
+    // Prepare placeholders (?, ?, ?)
+
+    const placeholders = student_ids.map(() => '?').join(',');
+     const [students] = await db.execute(
+      `SELECT user_id 
+       FROM users 
+       WHERE user_id IN (${placeholders})
+       AND center_id = ?`,
+      [...student_ids, label.center_id]
+    );
+
+    if (students.length !== student_ids.length) {
+      return res.json({
+        status: 0,
+        code: 403,
+        message: ["Some students do not belong to this center"]
+      });
+    }
+
+    // Bulk update users
+    const [result] = await db.execute(
+      `UPDATE users 
+       SET label_id = ?
+       WHERE user_id IN (${placeholders})`,
+      [label_id, ...student_ids]
+    );
+
+    return res.json({
+      status: 1,
+      code: 200,
+      message: ["Label assigned successfully"],
+      data: {
+        affected_users: result.affectedRows
+      }
+    });
+
+  } catch (err) {
+
+    console.log("bulk assign label error", err);
+
+    return res.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
+    });
+
+  }
+
+});
 
 export const addCenter = asyncHandler(async (req, resp) => {
   try {
@@ -63,6 +340,7 @@ export const addCenter = asyncHandler(async (req, resp) => {
     });
   }
 });
+
 
 export const editCenter = asyncHandler(async (req, resp) => {
 
@@ -256,6 +534,7 @@ export const studentlist = asyncHandler(async (req, resp) => {
       page_no = 1,
       user_id,
       center_id,
+       label_id,
       search_text = "",
       rowSelected,
     } = mergeParam(req);
@@ -299,10 +578,16 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
       whereOperator: ["="],
     };
     if (center_id) {
-      console.log("center id", center_id);
-      params.whereField.push("us.center_id","uc.counsller_id");
-      params.whereValue.push(center_id,user_id);
+      
+      params.whereField.push("us.center_id");
+      params.whereValue.push(center_id);
       params.whereOperator.push("=");
+    }
+    if(label_id){
+      params.whereField.push("us.label_id");
+      params.whereValue.push(label_id);
+      params.whereOperator.push("=");
+
     }
 
     const result = await getPaginatedData(params);
@@ -324,7 +609,7 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
     });
   }
 });
-export const studentsadhnaDetails = asyncHandler(async (req, resp) => {
+export const studentsadhnalist = asyncHandler(async (req, resp) => {
   try {
 
     const { student_id,user_id } = mergeParam(req);
@@ -380,16 +665,31 @@ export const studentsadhnaDetails = asyncHandler(async (req, resp) => {
     /* ---------------------------
        3️⃣ Activity summary
     ----------------------------*/
-    const activitySummary = await queryDB(
+    const [activitySummary] = await db.execute(
       `
       SELECT 
-        activity_id,
-        COUNT(*) AS activity_count
-      FROM daily_report
-      WHERE user_id = ?
-      GROUP BY activity_id
+    fa.activity_id,
+    fa.name AS activity_name,
+
+    COUNT(dr.id) AS attendance_count,
+    
+    DATE_FORMAT(MAX(u.created_at), '%Y-%m-%d') AS joined_date,
+    DATE_FORMAT(MAX(dr.activity_date), '%Y-%m-%d') AS last_attended_date,
+    
+    DATEDIFF(MAX(dr.activity_date), MAX(u.created_at)) AS total_days,
+    ROUND((COUNT(dr.id) / DATEDIFF(MAX(dr.activity_date), u.created_at)) * 100, 2) 
+AS performance_percentage
+    
+
+FROM fix_activities fa
+
+  LEFT JOIN daily_report dr 
+    ON dr.activity_id = fa.activity_id  AND dr.user_id = ?
+  JOIN users u ON u.user_id = ?
+    WHERE
+         fa.own_by = 1  OR fa.user_id = ? GROUP BY fa.activity_id
       `,
-      [student_id]
+      [student_id,student_id,student_id]
     );
 
     /* ---------------------------
@@ -422,139 +722,25 @@ export const studentsadhnaDetails = asyncHandler(async (req, resp) => {
   }
 });
 
-export const aiReport = asyncHandler(async (req, resp) => {
-  try {
+export const studentActivityDetail = asyncHandler(async (req,res)=>{
 
-    const { student_id, date_from, date_to } = mergeParam(req);
+ const {student_id, activity_id} = req.params;
 
-    /* --------------------------
-       1️⃣ Student Info
-    ---------------------------*/
-    const student = await queryDB(
-      `SELECT user_id,name,DATE_FORMAT(created_at, '%Y-%m-%d') AS created_at
-       FROM users
-       WHERE user_id = ?`,
-      [student_id]
-    );
+ const [activity] = await db.execute(query,[student_id,student_id,activity_id]);
 
-    if (!student) {
-      return resp.json({ status: 0, message: "Student not found" });
-    }
+ const [history] = await db.execute(historyQuery,[student_id,activity_id]);
 
-    /* --------------------------
-       2️⃣ Activity Records
-    ---------------------------*/
-    const [rows] = await db.execute(
-      `SELECT 
-        dr.activity_date,
-        dr.activity_id,
-        fa.name as activity_name,
-        dr.count,
-        dr.unit
-      FROM daily_report dr
-      LEFT JOIN fix_activities fa 
-      ON fa.activity_id = dr.activity_id
-      WHERE dr.user_id = ?
-      AND dr.activity_date BETWEEN ? AND ?
-      ORDER BY dr.activity_date`,
-      [student_id, date_from, date_to]
-    );
-console.log("rows", rows);
-    /* --------------------------
-       3️⃣ Convert to JSON format
-    ---------------------------*/
+ return res.json({
+   status:1,
+   data:{
+     ...activity[0],
+     history
+   }
+ });
 
-    const dailyMap = {};
-
-    rows.forEach(r => {
-
-      const date = r.activity_date.toISOString().split("T")[0];
-
-      if (!dailyMap[date]) {
-        dailyMap[date] = {
-          date: date,
-          activities: []
-        };
-      }
-
-      dailyMap[date].activities.push({
-        activity_id: r.activity_id,
-        activity_name: r.activity_name,
-        count: r.count,
-        unit: r.unit
-      });
-
-    });
-
-    const daily_report = Object.values(dailyMap);
-
-    /* --------------------------
-       4️⃣ Final JSON for AI
-    ---------------------------*/
-
-    const report = {
-      student: {
-        user_id: student.user_id,
-        name: student.name,
-        joined_on: student.created_at
-      },
-      report_period: {
-        from_date: date_from,
-        to_date: date_to
-      },
-      daily_report
-    };
-
-    return resp.json({
-      status: 1,
-      data: report
-    });
-
-  } catch (error) {
-    console.error(error);
-    resp.json({ status: 0, message: "Server error" });
-  }
 });
-export const getSadhanaAIAnalysis = async (report) => {
-  try {
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `
-You are a sādhana analytics assistant.
-Analyze student sādhana logs and return a MARKDOWN TABLE.
 
-Columns:
-Date | Wake-up | Chanting Rounds | Reading (min) | Hearing (min) | Remarks
-`
-          },
-          {
-            role: "user",
-            content: JSON.stringify(report)
-          }
-        ],
-        max_tokens: 500
-      })
-    });
-
-    const data = await response.json();
-
-    return data?.choices?.[0]?.message?.content || "AI analysis unavailable";
-
-  } catch (error) {
-    console.error("AI Error:", error);
-    return "AI analysis failed";
-  }
-};
 
 export const centerlist = asyncHandler(async (req, resp) => {
   try {
@@ -914,3 +1100,142 @@ export const bulkAssignStudents = asyncHandler(async (req, resp) => {
 
 });
 
+export const aiReport = asyncHandler(async (req, resp) => {
+  try {
+
+    const { student_id, date_from, date_to } = mergeParam(req);
+
+    /* --------------------------
+       1️⃣ Student Info
+    ---------------------------*/
+    const student = await queryDB(
+      `SELECT user_id,name,DATE_FORMAT(created_at, '%Y-%m-%d') AS created_at
+       FROM users
+       WHERE user_id = ?`,
+      [student_id]
+    );
+
+    if (!student) {
+      return resp.json({ status: 0, message: "Student not found" });
+    }
+
+    /* --------------------------
+       2️⃣ Activity Records
+    ---------------------------*/
+    const [rows] = await db.execute(
+      `SELECT 
+        dr.activity_date,
+        dr.activity_id,
+        fa.name as activity_name,
+        dr.count,
+        dr.unit
+      FROM daily_report dr
+      LEFT JOIN fix_activities fa 
+      ON fa.activity_id = dr.activity_id
+      WHERE dr.user_id = ?
+      AND dr.activity_date BETWEEN ? AND ?
+      ORDER BY dr.activity_date`,
+      [student_id, date_from, date_to]
+    );
+
+    /* --------------------------
+       3️⃣ Convert to JSON format
+    ---------------------------*/
+
+    const dailyMap = {};
+
+    rows.forEach(r => {
+
+      const date = r.activity_date.toISOString().split("T")[0];
+
+      if (!dailyMap[date]) {
+        dailyMap[date] = {
+          date: date,
+          activities: []
+        };
+      }
+
+      dailyMap[date].activities.push({
+        activity_id: r.activity_id,
+        activity_name: r.activity_name,
+        count: r.count,
+        unit: r.unit
+      });
+
+    });
+
+    const daily_report = Object.values(dailyMap);
+
+    /* --------------------------
+       4️⃣ Final JSON for AI
+    ---------------------------*/
+
+    const report = {
+      student: {
+        user_id: student.user_id,
+        name: student.name,
+        joined_on: student.created_at
+      },
+      report_period: {
+        from_date: date_from,
+        to_date: date_to
+      },
+      daily_report
+    };
+  //  const aiReport= await getSadhanaAIAnalysis(report)
+// console.log("aiReport", aiReport);
+    return resp.json({
+      status: 1,
+      data: report
+    });
+
+  } catch (error) {
+    console.error(error);
+    resp.json({ status: 0, message: "Server error" });
+  }
+});
+export const getSadhanaAIAnalysis = async (report) => {
+  try {
+   const url="https://api.openai.com/v1/chat/completions";
+   console.log("process.env.OPENAI_API_KEY", process.env.OPENAI_API_KEY);
+    const response = await axios.post(
+      url,
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `
+  You are a sādhana analytics assistant.
+    Analyze student sādhana logs and return a MARKDOWN TABLE.
+
+  Columns:
+    Date | Wake-up | Chanting Rounds | Reading (min) | Hearing (min) | Remarks
+`
+          },
+          {
+            role: "user",
+            content: JSON.stringify(report)
+          }
+        ],
+        max_tokens: 500
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    
+
+    const data = await response.json();
+
+    return data?.choices?.[0]?.message?.content || "AI analysis unavailable";
+
+  } catch (error) {
+    // console.error("AI Error:", error);
+    return "AI analysis failed";
+  }
+};
