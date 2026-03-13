@@ -5,24 +5,19 @@ import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
 import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, registerStudentEmailOnly, onBoarding, userData, UsernotificationList} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addLable, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, downloadUserReport, editCenter, editLable, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
 
 const router = Router();
 
 
 const authzAndAuthRoutes = [
- {method: 'post', path: '/register', handler: registerStudentEmailOnly},
- {method: 'post', path: '/on-boarding', handler: onBoarding},
-
- //
-//  {method: 'post', path: '/register', handler: Registertest},
-
-    
-    // {method: 'get', path: '/google-call-back', handler: googleLogin},
-    
-        {method: 'post',    path: '/login',         handler: login},
-        {method: 'get',     path: '/temple-list',   handler: templeList},
-        {method: 'post',    path: '/logout',        handler: logout},  
+             {method: 'post', path: '/register',    handler: registerStudentEmailOnly},
+             {method: 'post', path: '/on-boarding', handler: onBoarding},
+        //  {method: 'post', path: '/register',     handler: Registertest},
+        // {method: 'get', path: '/google-call-back', handler: googleLogin},
+            {method: 'post',    path: '/login',         handler: login},
+            {method: 'get',     path: '/temple-list',   handler: templeList},
+            {method: 'post',    path: '/logout',        handler: logout},  
             
 ];
     authzAndAuthRoutes.forEach(({ method, path, handler }) => {
@@ -43,25 +38,26 @@ const authzAndAuthRoutes = [
        {method: 'post',        path: '/student-notification-list',    handler: UsernotificationList ,role: "student"},
         //counsellor apis
 
-
-        
-
-        
-        {method: 'get', path: '/user-data', handler: userData ,role: "student"},
-        {method: 'post', path: '/add-acitivity', handler: addactivity ,role: "student"},
-        {method: 'post', path: '/edit-acitivity', handler: editActivity ,role: "student"},
-        {method: 'post', path: '/delete-acitivity', handler: deleteActivity ,role: "student"},
-        {method: 'get', path: '/acitivity-list', handler: listActivities ,role: "student"},
+        {method: 'get', path: '/user-data',                     handler: userData ,role: "student"},
+        {method: 'post', path: '/add-acitivity',                handler: addactivity ,role: "student"},
+        {method: 'post', path: '/edit-acitivity',               handler: editActivity ,role: "student"},
+        {method: 'post', path: '/delete-acitivity',             handler: deleteActivity ,role: "student"},
+        {method: 'get', path: '/acitivity-list',                handler: listActivities ,role: "student"},
     
-        {method: 'post', path: '/add-daily-report', handler: addSadhna ,role: "student"},
+        {method: 'post', path: '/add-daily-report',             handler: addSadhna ,role: "student"},
     
-        {method: 'get', path: '/today-report', handler: todayReportlist ,role: "student"},
-        {method: 'get', path: '/detail-report', handler: detailReport ,role: "student"},
-        {method: 'post', path: '/forget-password', handler: forgetPassword ,role: "student"}, 
-        {method: 'post', path: '/verify-otp', handler: verifyOTP ,role: "student"},
+        {method: 'get', path: '/today-report',                  handler: todayReportlist ,role: "student"},
+        {method: 'get', path: '/detail-report',                 handler: detailReport ,role: "student"},
+        {method: 'post', path: '/forget-password',              handler: forgetPassword ,role: "student"}, 
+        {method: 'post', path: '/verify-otp',                   handler: verifyOTP ,role: "student"},
         
 
         // // counsler routes
+        {method: 'post', path: '/add-note', handler: addNote, role: "counsellor"},
+
+        {method: 'put', path: '/edit-note', handler: editNote, role: "counsellor"},     
+
+        {method: 'delete', path: '/delete-note', handler: deleteNote, role: "counsellor"},
         // notification
        {method: 'post',        path: '/counsellor-notification-list',    handler: UsernotificationList ,role: "student"},
 

@@ -1662,3 +1662,142 @@ export const consllorNotificationList = asyncHandler(async (req, resp) => {
         totalRows  : totalRows.total
     });
 });
+
+
+export const addNote = asyncHandler(async (req, res) => {
+
+try {
+  const { user_id, student_id, note_text,meeting_date } = req.body;
+
+  
+
+  const [result] = await db.execute(
+    `INSERT INTO notes (counsellor_id, student_id, note_text,meeting_date)
+     VALUES (?, ?, ?,?)`,
+    [user_id, student_id, note_text,meeting_date]
+  );
+
+  res.status(201).json({
+    success: true,
+    message: "Note added successfully",
+    note_id: result.insertId
+  });
+} catch (error) {
+  console.error("Error adding note:", error);
+  res.status(500).json({
+    success: false,
+    message: "Server error while adding note"
+  });
+    }
+});
+
+
+export const editNote = asyncHandler(async (req, res) => {
+
+  try {
+
+    const { note_id, user_id, note_text, meeting_date } = req.body;
+
+    if (!note_id) {
+      return res.status(400).json({
+        success: false,
+        message: "note_id is required"
+      });
+    }
+  let fields = [];
+    let values = [];
+
+    if (note_text !== undefined) {
+      fields.push("note_text = ?");
+      values.push(note_text);
+    }
+
+    if (meeting_date !== undefined) {
+      fields.push("meeting_date = ?");
+      values.push(meeting_date);
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No fields to update"
+      });
+    }
+
+    values.push(note_id);
+    values.push(user_id);
+
+    const query = `
+      UPDATE notes
+      SET ${fields.join(", ")}
+      WHERE id = ? and counsellor_id = ?
+    `;
+
+    const [result] = await db.execute(query, values);
+
+    if (result.affectedRows === 0) {
+  return res.status(403).json({
+    success: false,
+    message: "Note not found or you are not allowed to edit it"
+  });
+}
+    res.json({
+      success: true,
+      message: "Note updated successfully"
+    });
+
+  } catch (error) {
+    console.error("Error updating note:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating note"
+    });
+  }
+
+});
+
+
+export const deleteNote = asyncHandler(async (req, res) => {
+
+  try {
+
+    const { note_id, user_id } = req.body;   // user_id = logged in counsellor
+
+    if (!note_id) {
+      return res.status(400).json({
+        success: false,
+        message: "note_id is required"
+      });
+    }
+
+    const [result] = await db.execute(
+      `DELETE FROM notes 
+       WHERE id = ? AND counsellor_id = ?`,
+      [note_id, user_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to delete this note"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Note deleted successfully"
+    });
+
+  } catch (error) {
+
+    console.error("Error deleting note:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting note"
+    });
+
+  }
+
+});
