@@ -3,9 +3,9 @@ import { Router } from "express";
 
 import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, registerStudentEmailOnly, onBoarding} from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, registerStudentEmailOnly, onBoarding, userData, UsernotificationList} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addLable, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, deleteCenter, deleteLable, editCenter, editLable, sadhanReportlist, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addLable, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, downloadUserReport, editCenter, editLable, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
 
 const router = Router();
 
@@ -40,13 +40,14 @@ const authzAndAuthRoutes = [
         {method: 'get',         path: '/counsellor-list',           handler: listCounsellor ,role: "student"},
         {method: 'post',        path: '/update-student-profile',    handler: updateStudentDetails ,role: "student"},
         {method: 'post',        path: '/add-counsller',    handler: updateStudentDetails ,role: "student"},
-    
+       {method: 'post',        path: '/student-notification-list',    handler: UsernotificationList ,role: "student"},
         //counsellor apis
 
 
         
 
         
+        {method: 'get', path: '/user-data', handler: userData ,role: "student"},
         {method: 'post', path: '/add-acitivity', handler: addactivity ,role: "student"},
         {method: 'post', path: '/edit-acitivity', handler: editActivity ,role: "student"},
         {method: 'post', path: '/delete-acitivity', handler: deleteActivity ,role: "student"},
@@ -61,17 +62,25 @@ const authzAndAuthRoutes = [
         
 
         // // counsler routes
+        // notification
+       {method: 'post',        path: '/counsellor-notification-list',    handler: UsernotificationList ,role: "student"},
+
+    {method: 'post', path: '/cusotm-notification', handler: CustomNotification ,role: "student"},
 
     {method: 'post',     path: '/add-lable',                  handler: addLable, role: "counsellor"},
     
     {method: 'put',     path: '/edit-lable',                  handler: editLable, role: "counsellor"},
-    {method: 'delete',  path: '/delete-lable',                handler: deleteLable, role: "counsellor"},
-    {method: 'post',    path: '/bulk-assign-label',           handler: bulkAssignLabel, role: "counsellor"},
+    {method: 'delete',  path: '/delete-lable',                handler: deleteLable,             role: "counsellor"},
+    {method: 'post',    path: '/bulk-assign-label',           handler: bulkAssignLabel,         role: "counsellor"},
 
-    {method: 'get',     path: '/student-list',                  handler: studentlist, role: "counsellor"},
+    {method: 'get',     path: '/student-list',                  handler: studentlist,           role: "counsellor"},
 
-    {method: 'get',     path: '/student-sadhana-list',       handler: studentsadhnalist,role: "counsellor"},// not completed
-        {method: 'get',     path: '/student-sadhana-list',       handler: studentsadhnalist,role: "counsellor"},// not completed
+    {method: 'get',     path: '/student-sadhana-list',       handler: studentsadhnalist,        role:"counsellor"},// not completed
+    {method: 'get',     path: '/student-sadhana-details',       handler: studentActivityDetail, role: "counsellor"},// not completed
+    {method: 'get',     path: '/download-user-report',       handler: downloadUserReport, role: "counsellor"},// not completed
+    //rewards apis
+    {method: 'post',     path: '/add-rewards-rules',       handler: addRewardRules, role: "counsellor"},// not completed
+// avtivtry-list is pending for select box
 
     
     {method: 'post',     path: '/ai-report',       handler: aiReport,       role: "counsellor"},// not completed

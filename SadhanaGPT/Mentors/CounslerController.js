@@ -11,6 +11,10 @@ import {
 import { asyncHandler, mergeParam } from "../../utils/utils.js";
 import validateFields from "../../utils/validation.js";
 import axios from "axios";
+import moment from "moment";
+import ExcelJS from "exceljs";
+import { Parser } from "json2csv";
+
 
 export const addLable = asyncHandler(async (req, resp) => {
 
@@ -695,25 +699,13 @@ FROM fix_activities fa
     /* ---------------------------
        4️⃣ Daily chart data
     ----------------------------*/
-    const dailyActivity = await queryDB(
-      `
-      SELECT 
-        DATE(activity_date) as date,
-        COUNT(*) as total_activities
-      FROM daily_report
-      WHERE user_id = ?
-      GROUP BY DATE(activity_date)
-      ORDER BY date
-      `,
-      [student_id]
-    );
+    
 
     return resp.json({
       status: 1,
       student: student[0],
       attendance: attendance[0],
-      activity_summary: activitySummary,
-      daily_activity_chart: dailyActivity
+      activity_summary: activitySummary
     });
 
   } catch (error) {
@@ -723,19 +715,158 @@ FROM fix_activities fa
 });
 
 export const studentActivityDetail = asyncHandler(async (req,res)=>{
+ const { student_id, activity_id, user_id,start_date,end_date,filter='7days'    } = mergeParam(req);
+     const { isValid, errors } = validateFields(mergeParam(req), {
+      student_id: ["required"],
+      activity_id: ["required"],
+    });
 
- const {student_id, activity_id} = req.params;
+    if (!isValid)      return res.json({ status: 0, code:422, message: errors });
+    let start_formatted_date;
+    let end_formatted_date;
 
- const [activity] = await db.execute(query,[student_id,student_id,activity_id]);
+const today_moment = moment();
+    switch (filter) {
 
- const [history] = await db.execute(historyQuery,[student_id,activity_id]);
+      case "30days":
+        end_formatted_date = today_moment.format("YYYY-MM-DD");
+        start_formatted_date = today_moment.clone().subtract(29, "days").format("YYYY-MM-DD");
+        break;
 
+      case "custom":
+        start_formatted_date = moment(start_date).format("YYYY-MM-DD");
+        end_formatted_date = moment(end_date).format("YYYY-MM-DD");
+        break;
+
+      case "7days":
+      default:
+        end_formatted_date = today_moment.format("YYYY-MM-DD");
+        start_formatted_date = today_moment.clone().subtract(6, "days").format("YYYY-MM-DD");
+    }
+
+
+console.log("filter",filter,start_formatted_date,end_formatted_date)
+  
+const today = moment().format("YYYY-MM-DD");
+
+ if (moment(end_formatted_date).isAfter(today)) {
+  end_formatted_date = today;
+}
+let dates = [];
+
+let current = moment(start_formatted_date);
+
+while (current.isSameOrBefore(end_formatted_date)) {
+  dates.push(current.format("YYYY-MM-DD"));
+  current.add(1, "days");
+}
+
+// console.log(dates);
+
+      const [chartData] = await db.execute(
+      `
+      SELECT 
+       DATE_FORMAT(dr.activity_date,'%Y-%m-%d') as date
+       , 1 as count
+from daily_report dr where 
+      dr.user_id = ?
+      AND dr.activity_id = ?
+      and DATE(dr.activity_date) BETWEEN ? AND ?
+      order by dr.id ASC
+
+      `,
+      [student_id,activity_id,start_date,end_date]
+      );
+   const dataMap = {};
+chartData.forEach(item => {
+  dataMap[item.date] = item.count;
+});
+  let currentStreak = 0;
+  let bestStreak = 0;
+
+const mergedData = dates.map(date => {
+
+  const count = dataMap[date] || 0;
+
+  if (count === 1) {
+    currentStreak++;
+    bestStreak = Math.max(bestStreak, currentStreak);
+  } else {
+    currentStreak = 0;
+  }
+
+  return {
+    date,
+    count
+  };
+});
+
+
+// merge with full date list
+// const mergedData = dates.map(date => ({
+//   date,
+//   count: dataMap[date] || 0
+// }));      
+
+    /* ---------------------------
+        Activity summary
+    ----------------------------*/
+    const [student_data] = await db.execute(
+      `
+      SELECT
+      
+CASE 
+    WHEN fa.activity_type IN ('numb','min')
+        THEN ROUND(AVG(CAST(dr.count AS DECIMAL(10,2))),2)
+
+    WHEN fa.activity_type = 'time'
+        THEN SEC_TO_TIME(AVG(TIME_TO_SEC(dr.count)))
+
+    ELSE NULL
+END AS average_value,
+      u.name AS student_name,
+      u.email,
+      u.mobile,
+      u.user_type, 
+    fa.activity_id,
+    fa.name AS activity_name,
+     fa.description,fa.unit,fa.activity_type,
+
+    COUNT(dr.id) AS attendance_count,
+    
+    DATE_FORMAT(MAX(u.created_at), '%Y-%m-%d') AS joined_date,
+    DATE_FORMAT(MAX(dr.activity_date), '%Y-%m-%d') AS last_attended_date,
+    
+    DATEDIFF(MAX(dr.activity_date), MAX(u.created_at)) AS total_days,
+    ROUND((COUNT(dr.id) / DATEDIFF(MAX(dr.activity_date), u.created_at)) * 100, 2) 
+AS user_performance_percentage
+FROM fix_activities fa
+
+  LEFT JOIN daily_report dr 
+    ON dr.activity_id = fa.activity_id  AND dr.user_id = ?
+  JOIN users u ON u.user_id = ?
+    WHERE
+         fa.activity_id = ?  OR fa.user_id = ? GROUP BY fa.activity_id
+      `,
+      [student_id,student_id,activity_id,user_id]
+    );
+
+    const attendance_days=student_data[0].attendance_count 
+   const total_days = moment(end_formatted_date).diff(moment(start_formatted_date), "days") + 1;
+   const performance_filter = ((attendance_days / total_days) * 100).toFixed(2);
+student_data[0].performance_filter = performance_filter;
+//
+student_data[0].bestStreak = bestStreak;
+
+
+// console.log(attendance_days,end_formatted_date,start_formatted_date,"student data",performance);
  return res.json({
    status:1,
-   data:{
-     ...activity[0],
-     history
-   }
+ data:{student_data,chart_data:mergedData}
+   //  data:{
+  //    ...activity[0],
+  //    history
+  //  }
  });
 
 });
@@ -815,7 +946,7 @@ export const sadhanReportlist = asyncHandler(async (req, resp) => {
 
     const params = {
       tableName: "daily_report dr",
-      columns: `fa.activity_id, fa.name, fa.description,  dr.activity_date, dr.count, dr.unit`,
+      columns: `fa.activity_id, fa.name, fa.description, DATE_FORMAT(dr.activity_date, '%Y-%m-%d')as activity_date , fa.unit`,
       joinTable: "fix_activities fa",
       joinCondition: "fa.activity_id = dr.activity_id",
       sortColumn: "dr.created_at",
@@ -1239,3 +1370,295 @@ export const getSadhanaAIAnalysis = async (report) => {
     return "AI analysis failed";
   }
 };
+
+export const downloadUserReport = asyncHandler(async (req, res) => {
+  const { user_id, format } = req.query;
+
+  if (!user_id) {
+    return res.json({
+      status: 0,
+      message: ["user_id is required"],
+    });
+  }
+
+  const [rows] = await db.execute(
+    `SELECT 
+        fa.name AS activity_name,
+        dr.value,
+        fa.unit,
+        DATE(dr.activity_date) AS activity_date
+     FROM daily_report dr
+     JOIN fix_activities fa 
+        ON fa.activity_id = dr.activity_id
+     WHERE dr.user_id = ?
+     ORDER BY dr.activity_date DESC`,
+    [user_id]
+  );
+
+  if (!rows.length) {
+    return res.json({
+      status: 0,
+      message: ["No report found"],
+    });
+  }
+
+  /* ---------------- CSV ---------------- */
+
+  if (format === "csv") {
+    const fields = ["activity_name", "value", "unit", "activity_date"];
+    const parser = new Parser({ fields });
+
+    const csv = parser.parse(rows);
+
+    res.header("Content-Type", "text/csv");
+    res.attachment(`activity_report_${user_id}.csv`);
+
+    return res.send(csv);
+  }
+
+  /* ---------------- XLSX ---------------- */
+
+  if (format === "xlsx") {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Activity Report");
+
+    worksheet.columns = [
+      { header: "Activity", key: "activity_name", width: 25 },
+      { header: "Value", key: "value", width: 10 },
+      { header: "Unit", key: "unit", width: 10 },
+      { header: "Date", key: "activity_date", width: 15 },
+    ];
+
+    rows.forEach((row) => worksheet.addRow(row));
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=activity_report_${user_id}.xlsx`
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+});
+
+export const addRewardRules = asyncHandler(async (req, resp) => {
+  const {
+    user_id,
+    reward_name,
+    activity_id,
+    target_value,
+    target_time,
+    required_days
+  } = req.body;
+
+  const { isValid, errors } = validateFields(mergeParam(req), {
+    
+    user_id: ["required"],
+    reward_name: ["required"],
+    activity_id: ["required"],
+    required_days: ["required"]
+  });
+
+  if (!isValid) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: errors
+    });
+  }
+   const [existingRule] = await db.execute(
+    `SELECT reward_id 
+     FROM reward_rules 
+     WHERE counsller_id = ? AND activity_id = ?`,
+    [user_id, activity_id]
+  );
+
+  if (existingRule.length > 0) {
+    return resp.json({
+      status: 0,
+      code: 409,
+      message: ["Rule already exists for this activity"]
+    });
+  }
+
+  const insert_data = await insertRecord(
+    "reward_rules",
+    [
+      
+      "counsller_id",
+      "reward_name",
+      "activity_id",
+      "target_value",
+      // "target_time",
+      "required_days"
+    ],
+    [
+      
+      user_id,
+      reward_name,
+      activity_id,
+      target_value || null,
+      // target_time || null,
+      required_days
+    ]
+  );
+
+  if (insert_data) {
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Reward rule added successfully!"]
+    });
+  }
+});
+
+export const editRewardRules = asyncHandler(async (req, resp) => {
+  const {
+    rule_id,
+    reward_name,
+    target_value,
+    required_days
+  } = req.body;
+
+  const { isValid, errors } = validateFields(mergeParam(req), {
+    rule_id: ["required"],
+    reward_name: ["required"],
+    required_days: ["required"]
+  });
+
+  if (!isValid) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: errors
+    });
+  }
+
+  const update_data = await updateRecord(
+    "reward_rules",
+    [
+      "reward_name",
+      "target_value",
+      "required_days"
+    ],
+    [
+      reward_name,
+      target_value || null,
+      required_days
+    ],
+    "id",
+    rule_id
+  );
+
+  if (update_data) {
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Reward rule updated successfully!"]
+    });
+  }
+});
+
+
+export const CustomNotification = asyncHandler(async (req, res) => {
+
+  const { student_id, heading, description,user_id  } = req.body;
+  // const created_by = req.user?.user_id 
+
+  const { isValid, errors } = validateFields(mergeParam(req), {
+    student_id: ["required"],
+    heading: ["required"],
+    description: ["required"],
+    user_id: ["required"]
+  });
+
+  if (!isValid) {
+    return res.status(400).json({
+      success: false,
+      errors
+    });
+  }
+  const href="cusotm_notification"
+console.log(heading,
+      description,
+      "custom_notification",
+      "student",
+      "admin",
+      user_id,
+      student_id,
+      href || null);
+  const result = await insertRecord(
+    "notifications",
+    [
+      "heading",
+      "description",
+      "module_name",
+      "panel_to",
+      "panel_from",
+      "created_by",
+      "receive_id",
+      "href"
+    ],
+    [
+      heading,
+      description,
+      "custom_notification",
+      "student",
+      "admin",
+      user_id,
+      student_id,
+      href || null
+    ]
+  );
+
+  return res.json({
+    success: true,
+    message: "Notification sent successfully",
+    data: result
+  });
+
+});
+
+export const consllorNotificationList = asyncHandler(async (req, resp) => {
+    const { page_no, getCount } = mergeParam(req);
+    const { isValid, errors }   = validateFields(mergeParam(req), { page_no: ["required"],});
+
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const limit = 10;
+    const start = parseInt((page_no * limit) - limit, 10);
+
+    const totalRows  = await queryDB(`SELECT COUNT(*) AS total FROM notifications WHERE panel_to = ? and status = '0' `, ['counsellor']);
+    if(getCount){
+     
+        return resp.json({ 
+            status : 1, 
+            code       : 200, 
+            message    : ["Notification Count Only"], 
+            data       : [], 
+            total_page : 0, 
+            totalRows  : totalRows.total
+        });
+    }
+    const total_page = Math.ceil(totalRows.total / limit) || 1; 
+    const [rows] = await db.execute(`SELECT id, heading, description, module_name, panel_to, panel_from, receive_id, status, ${formatDateTimeInQuery(['created_at'])}, href
+        FROM notifications WHERE  and panel_to = 'counsellor' ORDER BY id DESC LIMIT ${start}, ${parseInt(limit)} 
+    `, []);
+    
+    const notifications = rows;  // and status = 0 
+    await db.execute(`UPDATE notifications SET status=? WHERE status=? AND panel_to=?`, ['1', '0', 'counsellor']);
+    
+    return resp.json({ 
+        status     : 1, 
+        code       : 200, 
+        message    : ["Notification list fetch successfully"], 
+        data       : notifications, 
+        total_page : total_page, 
+        totalRows  : totalRows.total
+    });
+});

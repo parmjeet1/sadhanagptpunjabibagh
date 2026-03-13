@@ -4,13 +4,14 @@ import path from 'path';
 // import puppeteer from 'puppeteer';
 import ejs from 'ejs';
 import { insertRecord, queryDB } from "./dbUtils.js";
-// import { GoogleAuth } from "google-auth-library";
+import { GoogleAuth } from "google-auth-library";
 import { fileURLToPath } from 'url';
 // import fs from 'fs';
 import dotenv from 'dotenv';
 import db from "../config/database.js";
 dotenv.config();
 import moment from "moment-timezone";
+import { NOTIFICATION_CONTENT } from "../SadhanaGPT/Controllers/notificationContent.js";
 // import { deleteImageFromS3 } from "./fileUpload.js";
 // import QRCode  from 'qrcode';
 const __filename = fileURLToPath(import.meta.url);
@@ -191,6 +192,50 @@ export function formatNumber(value) {
   }).format(value);
 };
 
+export const sendNotification = async (
+  type,
+  payload = {},
+  created_by ,
+  receive_id
+  
+) => {
+  try {
+    const template = NOTIFICATION_CONTENT[type];
+    if (!template) {
+      throw new Error(`Notification type "${type}" not found`);
+    }
+
+    const heading = typeof template.heading === "function"
+        ? template.heading(payload)
+        : template.heading;
+
+    const desc =
+      typeof template.desc === "function"
+        ? template.desc(payload)
+        : template.desc;
+
+    const href =
+      typeof template.href === "function"
+        ? template.href(payload)
+        : template.href;
+
+        console.log(heading, desc,  template.module_name, template.panel_to, template.panel_from, user_id, href)
+
+         const result = await insertRecord('notifications', [
+    'heading', 'description', 'module_name', 'panel_to', 'panel_from', 'created_at',receive_id, 'href'
+  ],[
+    heading, desc,  template.module_name, template.panel_to, template.panel_from, created_by,receive_id, href
+  ]);
+
+console.log("notification sent")
+
+    return result.affectedRows > 0 ?true:false;
+  } catch (err) {
+    console.error("sendNotification error:", err.message);
+    return false;
+  }
+};
+
 /* Create Notification */
 export const createNotification = async (heading, desc, module_name, panel_to, panel_from, created_by, receive_id, href_url='') => {
   const result = await insertRecord('notifications', [
@@ -224,11 +269,30 @@ export const createNotification = async (heading, desc, module_name, panel_to, p
 //     throw error;
 // }
 // };
+const getAccessToken = async () => {
+  try {
+    const fileName = 'sadhanagptfirebase.json';
+    const serviceAccountPath = path.join(__dirname, 'config/firebase-files/', fileName);
 
-export const pushNotification = async ( deviceToken, title, body, fcmType, clickAction ) => {
+    const auth = new GoogleAuth({
+        keyFilename: serviceAccountPath,
+        scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
+    });
+    const client = await auth.getClient();
+    const accessTokenResponse = await client.getAccessToken();
+    const accessToken = accessTokenResponse.token;
+
+    return accessToken;
+} catch (error) {
+    console.error('Error fetching access token:', error.message);
+    throw error;
+}
+};
+
+export const pushNotification = async ( deviceToken, title, body, clickAction ) => {
     try {
-        const accessToken      = await getAccessToken(fcmType);
-        const clickActionParts = clickAction.split("/");
+        const accessToken      = await getAccessToken();
+        const clickActionParts = clickAction ? clickAction.split("/") : [];
         
         const notification = {
           title: title,
@@ -262,7 +326,7 @@ export const pushNotification = async ( deviceToken, title, body, fcmType, click
           },
         };        
 
-        const projectId = (fcmType === 'RSAFCM') ? 'plusx-support' : 'plusx-electric-27f64';
+        const projectId = 'sadhanagpt-53e37';
         const url       = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
         const response  = await axios.post(url, message, {
           headers: {

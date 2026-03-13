@@ -453,21 +453,21 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
 });
 
 export const addactivity = asyncHandler(async (req, resp) => {
-  const { user_id, name, description, count_type, activity_type } = req.body;
+  const { user_id, name, description, unit, activity_type } = req.body;
   const { isValid, errors } = validateFields(mergeParam(req), {
     user_id: ["required"],
     name: ["required"],
     // description: ["required"],
-    count_type: ["required"],
+    unit: ["required"],
     activity_type: ["required"],
   });
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
   const insert_data = await insertRecord(
-    "activities",
-    ["user_id", "name", "description", "count_type", "activity_type"],
-    [user_id, name, description, count_type, activity_type],
+    "fix_activities",
+    ["user_id", "name", "description", "unit", "activity_type"],
+    [user_id, name, description, unit, activity_type],
   );
   if (insert_data) {
     return resp.json({
@@ -478,24 +478,25 @@ export const addactivity = asyncHandler(async (req, resp) => {
   }
 });
 export const editActivity = asyncHandler(async (req, resp) => {
-  const { user_id, activtiy_id, name, description, count_type, activity_type } =
-    req.body;
+  const { activity_id, user_id, name, description, unit, activity_type } = req.body;
 
   const { isValid, errors } = validateFields(mergeParam(req), {
-    activtiy_id: ["required"],
+    activity_id: ["required"],
+    user_id: ["required"],
     name: ["required"],
-    description: ["required"],
-    count_type: ["required"],
+    // description: ["required"],
+    unit: ["required"],
     activity_type: ["required"],
   });
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
   const update_data = await updateRecord(
-    "activities",
-    { name, description, count_type, activity_type }, // updates object
-    ["id", "user_id"], // whereColumns
-    [activtiy_id, user_id], // whereValues
+    "fix_activities",
+    ["name", "description", "unit", "activity_type"],
+    [name, description, unit, activity_type],
+    "activity_id",
+    activity_id
   );
 
   if (update_data) {
@@ -505,12 +506,6 @@ export const editActivity = asyncHandler(async (req, resp) => {
       message: ["Activity updated successfully!"],
     });
   }
-
-  return resp.json({
-    status: 0,
-    code: 500,
-    message: ["Failed to update activity"],
-  });
 });
 export const deleteActivity = asyncHandler(async (req, resp) => {
   const { activity_id, user_id } = req.body;
@@ -521,7 +516,8 @@ export const deleteActivity = asyncHandler(async (req, resp) => {
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-  const delete_data = await deleteRecord("activities", "id", activity_id);
+  const delete_data = await db.excute(`DELETE FROM fix_activities
+     where  own_by=0 andactivity_id=? and user_id=? `,[activity_id,user_id]) //("fix_activities", "id", activity_id);
 
   if (delete_data) {
     return resp.json({
@@ -547,25 +543,15 @@ export const listActivities = asyncHandler(async (req, resp) => {
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-  const [activities] = await db.execute(
-    `SELECT name,description,count_type,count_type
+  
+  const [all_activities] =
+    await db.execute(`SELECT activity_id, name,description,unit,activity_type
         
-         FROM activities WHERE user_id=?`,
-    [user_id],
-  );
-
-  const [fix_activities] =
-    await db.execute(`SELECT name,description,count_type,count_type,activity_type
-        
-         FROM fix_activities`);
+         FROM fix_activities where own_by=1 OR user_id=?`,[user_id]);
 
   // if (activities && activities.length=== 0) {
   // return resp.json({ status: 0, code: 404, message: ['No activities found for this user'] });
   // }
-  const all_activities = [
-    ...activities.map((a) => ({ ...a, type: "user_activity" })),
-    ...fix_activities.map((fa) => ({ ...fa, type: "fix_activity" })),
-  ];
 
   const data = {
     all_activities,
@@ -1227,3 +1213,81 @@ const registerUser = async (
     };
   }
 };
+export const userData = asyncHandler(async (req, resp) => {
+  const { user_id} = req.body;
+  const { isValid, errors } = validateFields(mergeParam(req), {
+    user_id: ["required"],
+     });
+
+  if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+     const user= await queryDB(
+        `SELECT user_id, name, email,mobile,temple_id,user_type,
+         (SELECT counsller_id FROM user_counsellors WHERE user_id = users.user_id)
+          AS counsller_id FROM 
+          users WHERE user_id = ?`,
+        [user_id],
+      );
+
+    if(!user){
+      return resp.json({
+        status: 0,
+        code: 404,        
+
+        message: ["User not found"],
+      });
+    }
+    const rewards = await getUserRewards(user_id);
+  return resp.json({
+    status: 1,
+    code: 200,
+    data: {user,rewards},
+    message: ["User data fetched successfully"],
+  }); 
+
+  });
+  const getUserRewards = async (user_id) => {
+
+  const [rows] = await db.execute(
+    `SELECT fa.activity_id,r.reward_name,fa.name as activity_name,fa.activity_type,r.target_value,r.required_days, 
+ count(dr.id) as completed_days, DATE_FORMAT(r.created_at, '%d-%m-%Y') as rewared_date from
+    users u
+    LEFT JOIN user_rewards ur on u.user_id=ur.user_id
+    join reward_rules r on ur.reward_id=r.reward_id
+    JOIN fix_activities fa on ur.activity_id=fa.activity_id
+JOIN daily_report dr 
+    ON dr.user_id = u.user_id 
+    AND dr.activity_id = ur.activity_id
+    where u.user_id=? 
+    GROUP BY ur.reward_id
+    `,
+    [user_id]
+  );
+
+  return rows;
+}
+
+export const UsernotificationList = asyncHandler(async (req, resp) => {
+    const { user_id, page_no} = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        user_id: ["required"], page_no: ["required"],
+    });
+
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const limit = 10;
+    const start = parseInt((page_no * limit) - limit, 10);
+
+    const totalRows = await queryDB(`SELECT COUNT(*) AS total FROM notifications WHERE   panel_to = ? AND receive_id = ?`, ['student', user_id]);
+    const total_page = Math.ceil(totalRows.total / limit) || 1; 
+    
+    const [rows] = await db.execute(`SELECT id, heading, description, module_name, panel_to, panel_from, receive_id, status, ${formatDateTimeInQuery(['created_at'])}, href
+        FROM notifications WHERE  panel_to = 'Rider' AND receive_id = ? ORDER BY id DESC LIMIT ${start}, ${parseInt(limit)} 
+    `, [user_id]);
+    
+    const notifications = rows;
+    
+    await db.execute(`UPDATE notifications SET status=? WHERE  status=? AND panel_to=? AND receive_id=?`, ['1', '0', 'student', rider_id]);
+    
+    return resp.json({status:1, code: 200, message: "Notification list fetch successfully", data: notifications, total_page: total_page, totalRows: totalRows.total});
+});

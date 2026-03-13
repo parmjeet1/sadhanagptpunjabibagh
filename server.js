@@ -19,16 +19,9 @@ import session from "express-session";
 import authRoutes from "./routes/auth.js";
 import "./config/passport.js";
 import logger from './logger.js';
+import { processRewardRules } from './SadhanaGPT/Controllers/CronJobController.js';
 
 // https://desktop-4ntjhpk.tail18c2a1.ts.net/auth/google
-process.on("uncaughtException", (err) => {
-   logger.error({
-    api: "unhandledRejection",
-    message: reason.message,
-    stack: reason.stack
-  });
-
-});
 
 process.on("unhandledRejection", (reason) => {
     logger.error(`Unhandled Rejection: ${reason}`);
@@ -102,29 +95,8 @@ server.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
 
-
-// cron.schedule('*/10 * * * *', async () => {
-//   try {
-//    //ping
-//     // const response = await axios.get(
-//     //   'https://sadhanagpt.onrender.com/counsller-api/counsller-list',
-//     //   {
-//     //     headers: {
-//     //       Authorization: process.env.API_AUTH_KEY, // replace with your token
-//     //     },
-//     //   }
-//     // );
-//     const response = await axios.get(
-//       'https://desktop-4ntjhpk.tail18c2a1.ts.net/ping',
-//       {
-        
-//       }
-//     );
-
-//     console.log('API Response:', response.data);
-//     console.log('Cron job finished at:', new Date());
-//   } catch (error) {
-//     console.error('Error in cron job:', error.message);
-//   }
+// for 12 pm every day '0 12 * * *
+// cron.schedule('*/1  * * * *', async () => {
+// processRewardRules();
 // });
 
