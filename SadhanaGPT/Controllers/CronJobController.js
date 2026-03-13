@@ -128,7 +128,7 @@ console.log("after condition  matched required_days",activity);
             VALUES (?, ?,?)
           `,[student_id,activity_id,reward_id]);
           
-          
+          //updated
       await sendNotification("USER_REWARDED",{reward_id,student_name,reward_name},student_id,"")
 await pushNotification(fcm_token, "hare krsna paramjeet","you are doing good",  'user' );
             // }
