@@ -1,5 +1,5 @@
 import db from "../config/database.js";
-import { mergeParam } from "../utils/utils.js";
+import { mergeParam } from "@sadhna/utils/utils.js";
 
 export const apiAuthentication = async (req, resp, next) => {
   try{  
