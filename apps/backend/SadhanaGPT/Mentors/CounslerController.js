@@ -7,9 +7,9 @@ import {
   insertRecord,
   queryDB,
   updateRecord,
-} from "../../utils/dbUtils.js";
-import { asyncHandler, mergeParam } from "../../utils/utils.js";
-import validateFields from "../../utils/validation.js";
+} from "@sadhna/utils/dbUtils.js";
+import { asyncHandler, mergeParam } from "@sadhna/utils/utils.js";
+import validateFields from "@sadhna/utils/validation.js";
 import axios from "axios";
 import moment from "moment";
 import ExcelJS from "exceljs";

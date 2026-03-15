@@ -1,5 +1,5 @@
 import db from "../../config/database.js";
-import { createNotification, pushNotification, sendNotification } from "../../utils/utils.js";
+import { createNotification, pushNotification, sendNotification } from "@sadhna/utils/utils.js";
 
 export const processRewardRules = async () => {
 

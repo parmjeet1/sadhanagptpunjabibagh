@@ -8,18 +8,18 @@ import {
   checkNumber,
   generateOTP,
   mergeParam,
-} from "../../../utils/utils.js";
-import validateFields from "../../../utils/validation.js";
+} from "@sadhna/utils/utils.js";
+import validateFields from "@sadhna/utils/validation.js";
 import {
   deleteRecord,
   getPaginatedData,
   insertRecord,
   queryDB,
   updateRecord,
-} from "../../../utils/dbUtils.js";
+} from "@sadhna/utils/dbUtils.js";
 import moment from "moment";
 import db from "../../../config/database.js";
-import emailQueue from "../../../utils/emails/emailQueue.js";
+import emailQueue from "@sadhna/utils/emails/emailQueue.js";
 
 export const studentRegister = asyncHandler(async (req, resp) => {
   const {

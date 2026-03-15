@@ -1,5 +1,5 @@
-import { queryDB } from "../../../utils/dbUtils.js";
-import { asyncHandler } from "../../../utils/utils.js";
+import { queryDB } from "@sadhna/utils/dbUtils.js";
+import { asyncHandler } from "@sadhna/utils/utils.js";
 
 export const registerOnboarding = asyncHandler(async (req, resp) => {
 

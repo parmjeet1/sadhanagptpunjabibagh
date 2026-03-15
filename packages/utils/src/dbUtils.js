@@ -1,5 +1,5 @@
 import moment from "moment";
-import db from "../config/database.js";
+import db from "../../../apps/backend/config/database.js";
 
 /**
  * Inserts a new record into the specified table.
