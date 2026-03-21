@@ -968,73 +968,9 @@ export const updateStudentDetails = asyncHandler(async (req, resp) => {
   });
 });
 
-export const registerStudentEmailOnly = asyncHandler(async (req, resp) => {
-  const data = mergeParam(req);
-
-  const { email } = data;
-
-  const { isValid, errors } = validateFields(data, {
-    email: ["required"],
-  });
-
-  if (!isValid) {
-    return resp.json({
-      status: 0,
-      code: 422,
-      message: errors,
-    });
-  }
-
-  //  Check email already exists
-  const [[isExist]] = await db.execute(
-    `
-        SELECT user_id, email FROM users WHERE email = ?
-    `,
-    [email],
-  );
-
-  if (isExist) {
-    return resp.json({
-      status: 1,
-      code: 200,
-      message: ["User already exists"],
-    });
-  }
-
-  // Insert new user (trigger will create user_id)
-  await db.execute(
-    `
-        INSERT INTO users
-        (
-            email,
-            status
-        )
-        VALUES (?, ?)
-    `,
-    [email, 1],
-  );
-
-  //  Fetch again to get trigger generated user_id
-  const [[newUser]] = await db.execute(
-    `
-        SELECT user_id, email FROM users WHERE email = ?
-    `,
-    [email],
-  );
-
-  return resp.json({
-    status: 1,
-    code: 200,
-    message: ["Student registered successfully"],
-
-    data: {
-      user_id: newUser.user_id,
-      email: newUser.email,
-    },
-  });
-});
 
 export const onBoarding = asyncHandler(async (req, resp) => {
+  // here consler email will be ask form studnet ,
   const {
     name,
     email,

@@ -3,7 +3,7 @@ import { Router } from "express";
 
 import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, registerStudentEmailOnly, onBoarding, userData, UsernotificationList} from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userData, UsernotificationList} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
 import { addCenter, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
 
@@ -11,7 +11,7 @@ const router = Router();
 
 
 const authzAndAuthRoutes = [
-             {method: 'post', path: '/register',    handler: registerStudentEmailOnly},
+
              {method: 'post', path: '/on-boarding', handler: onBoarding},
         //  {method: 'post', path: '/register',     handler: Registertest},
         // {method: 'get', path: '/google-call-back', handler: googleLogin},
