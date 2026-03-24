@@ -862,10 +862,10 @@ export const templeList = asyncHandler(async (req, resp) => {
 export const listCounsellor = asyncHandler(async (req, resp) => {
   const request = mergeParam(req);
 
-  const { temple_id } = request;
-
+  const { search_text, } = request;
+console.log("request", request);
   const { isValid, errors } = validateFields(request, {
-    temple_id: ["required"],
+    // temple_id: ["required"],
   });
 
   if (!isValid)
@@ -878,10 +878,9 @@ export const listCounsellor = asyncHandler(async (req, resp) => {
   const [counsellor_list] = await db.execute(
     `SELECT user_id, name
          FROM users
-         WHERE temple_id = ?
-         AND user_type = ?
+         WHERE  user_type = ?
          AND status = 1`,
-    [temple_id, "counsellor"],
+    [ "counsellor"],
   );
 
   if (!counsellor_list || counsellor_list.length === 0) {
@@ -1003,7 +1002,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
   }
 
   const isExist = await queryDB(
-    `SELECT profile, user_id,email,mobile,temple_id,user_type, (SELECT counsller_id FROM user_counsellors WHERE user_id = users.user_id) AS counsller_id FROM users WHERE google_id = ?`,
+    `SELECT profile, access_token,user_id,email,mobile,temple_id,user_type, (SELECT counsller_id FROM user_counsellors WHERE user_id = users.user_id) AS counsller_id FROM users WHERE google_id = ?`,
     [google_id],
   );
   const access_token = crypto.randomBytes(12).toString("hex");
@@ -1024,6 +1023,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
         email: isExist.email,
         name: isExist.name,
         mobile: isExist.mobile,
+        access_token: isExist.access_token,
         temple_id: isExist.temple_id,
         user_type: isExist.user_type,
         counsller_id: isExist.counsller_id,
@@ -1074,7 +1074,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     device_name,
     access_token,
     google_id,
-    profile,
+    profile
   );
   return resp.json(result);
 });
@@ -1145,6 +1145,7 @@ const registerUser = async (
         temple_id,
         user_type,
         counsller_id,
+        access_token
       },
     };
   }

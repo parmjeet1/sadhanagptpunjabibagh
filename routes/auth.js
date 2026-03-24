@@ -33,10 +33,13 @@ router.get(
   // }
   (req, res) => {
      const user = req.user;
-   res.json({
-      message: "Login successful",
-      user,
-    });
+     const frontendUrl = "http://localhost:5173/auth/callback";
+const userParam = encodeURIComponent(JSON.stringify(user));
+res.redirect(`${frontendUrl}?user=${userParam}`);
+  //  res.json({
+  //     message: " Login successful",
+  //     // user,
+  //   });
   }
 );
 

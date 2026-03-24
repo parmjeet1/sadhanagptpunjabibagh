@@ -17,7 +17,8 @@ const authzAndAuthRoutes = [
         // {method: 'get', path: '/google-call-back', handler: googleLogin},
             {method: 'post',    path: '/login',         handler: login},
             {method: 'get',     path: '/temple-list',   handler: templeList},
-            {method: 'post',    path: '/logout',        handler: logout},  
+            {method: 'post',    path: '/logout',        handler: logout},
+             {method: 'get',         path: '/counsellor-list',           handler: listCounsellor ,role: "student"},  
             
 ];
     authzAndAuthRoutes.forEach(({ method, path, handler }) => {
@@ -32,7 +33,7 @@ const authzAndAuthRoutes = [
         
         //studnet apis
         {method: 'post',        path: '/add-temple',                handler: addTemple ,role: "student"},
-        {method: 'get',         path: '/counsellor-list',           handler: listCounsellor ,role: "student"},
+       
         {method: 'post',        path: '/update-student-profile',    handler: updateStudentDetails ,role: "student"},
         {method: 'post',        path: '/add-counsller',    handler: updateStudentDetails ,role: "student"},
        {method: 'post',        path: '/student-notification-list',    handler: UsernotificationList ,role: "student"},

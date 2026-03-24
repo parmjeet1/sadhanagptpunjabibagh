@@ -46,6 +46,7 @@ const corsOptions = {
     'http://192.168.1.29:1112',
     'http://localhost:5173',
     'http://localhost:5173'
+    
 
   ],
   // origin : "*",
@@ -89,12 +90,12 @@ app.get('/google-call-back', (req, res) => {
 app.use('/api', Routes);
 app.use(errorHandler);
 
+//paramjeet udpate 
 
-
-app.use(express.static(path.join(__dirname, 'dist')));
-app.get('/*', function (req, res) {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
+// app.use(express.static(path.join(__dirname, 'dist')));
+// app.get('*', function (req, res) {
+//     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+// });
 const server = http.createServer(app);
 server.listen(PORT,'0.0.0.0', () => {
   console.log(`Server is running on http://localhost:${PORT}`);
