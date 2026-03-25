@@ -43,11 +43,11 @@ const authzAndAuthRoutes = [
         {method: 'post', path: '/add-acitivity',                handler: addactivity ,role: "student"},
         {method: 'post', path: '/edit-acitivity',               handler: editActivity ,role: "student"},
         {method: 'post', path: '/delete-acitivity',             handler: deleteActivity ,role: "student"},
-        {method: 'get', path: '/acitivity-list',                handler: listActivities ,role: "student"},
+        {method: 'get', path: '/activity-list',                handler: listActivities ,role: "student"},
     
         {method: 'post', path: '/add-daily-report',             handler: addSadhna ,role: "student"},
     
-        {method: 'get', path: '/today-report',                  handler: todayReportlist ,role: "student"},
+        {method: 'get', path: '/report-as-per-date',                  handler: todayReportlist ,role: "student"},
         {method: 'get', path: '/detail-report',                 handler: detailReport ,role: "student"},
         {method: 'post', path: '/forget-password',              handler: forgetPassword ,role: "student"}, 
         {method: 'post', path: '/verify-otp',                   handler: verifyOTP ,role: "student"},

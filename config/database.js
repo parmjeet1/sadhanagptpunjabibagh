@@ -17,5 +17,5 @@ const db = mysql.createPool({
     // connectTimeout     : 10000,
 });
 
-console.log("india databse")
+
 export default db;

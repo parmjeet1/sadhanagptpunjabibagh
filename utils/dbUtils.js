@@ -86,6 +86,7 @@ export const updateRecord = async (table, updates, whereColumns, whereValues, co
  */
 export const queryDB = async (query, params, connection = null) => {
   const dbConn = connection ? connection : await db.getConnection();
+  console.log("Executing Query:", query);
   const [[results]] = await dbConn.execute(query, params);
   if (!connection) {
     dbConn.release();

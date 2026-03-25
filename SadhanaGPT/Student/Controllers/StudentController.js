@@ -453,7 +453,7 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
 });
 
 export const addactivity = asyncHandler(async (req, resp) => {
-  const { user_id, name, description, unit, activity_type } = req.body;
+  const { user_id, name, description,target, unit, activity_type } = req.body;
   const { isValid, errors } = validateFields(mergeParam(req), {
     user_id: ["required"],
     name: ["required"],
@@ -490,14 +490,25 @@ export const editActivity = asyncHandler(async (req, resp) => {
   });
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-
+console.log("req.body", req.body,"data",name, description, unit, activity_type);
+  // const update_data = await updateRecord(
+  //   "fix_activities",
+  //   ["name", "description", "unit", "activity_type"],
+  //   [name, description, unit, activity_type],
+  //   "activity_id",
+  //   activity_id
+  // );
   const update_data = await updateRecord(
-    "fix_activities",
-    ["name", "description", "unit", "activity_type"],
-    [name, description, unit, activity_type],
-    "activity_id",
-    activity_id
-  );
+  "fix_activities",
+  {
+    name,
+    description,
+    unit,
+    activity_type
+  },
+  ["activity_id"],
+  [activity_id]
+);
 
   if (update_data) {
     return resp.json({
@@ -535,7 +546,7 @@ export const deleteActivity = asyncHandler(async (req, resp) => {
 });
 
 export const listActivities = asyncHandler(async (req, resp) => {
-  const { user_id } = req.body;
+  const { user_id } = mergeParam(req);
 
   const { isValid, errors } = validateFields(mergeParam(req), {
     user_id: ["required"],
@@ -545,9 +556,9 @@ export const listActivities = asyncHandler(async (req, resp) => {
 
   
   const [all_activities] =
-    await db.execute(`SELECT activity_id, name,description,unit,activity_type
+    await db.execute(`SELECT activity_id, name,description,unit,activity_type,target
         
-         FROM fix_activities where own_by=1 OR user_id=?`,[user_id]);
+         FROM fix_activities where user_id=?`,[user_id]);//
 
   // if (activities && activities.length=== 0) {
   // return resp.json({ status: 0, code: 404, message: ['No activities found for this user'] });
@@ -573,7 +584,7 @@ export const todayReportlist = asyncHandler(async (req, resp) => {
     `SELECT 
       a.name, a.count_type, a.activity_type, r.note,r.activity_id,r.count
        from daily_report r
-       JOIN activities a on r.activity_id=a.id
+       JOIN f-xactivities a on r.activity_id=a.id
        where  r.user_id=? and DATE(r.created_at)=?
         `,
     [user_id, today_date],
@@ -696,21 +707,22 @@ export const addSadhna = asyncHandler(async (req, resp) => {
     activity_date: ["required"],
     count: ["required"],
     user_id: ["required"],
-    unit: ["required"],
+    // unit: ["required"],
   });
+  console.log("req.body", req.body);
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
   const today = moment().format("YYYY-MM-DD");
   const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
   const check_today_sadhana = await queryDB(
-    `SELECT activity_id,unit ,note,activity_date,count from daily_report where
+    `SELECT activity_id,note,activity_date,count from daily_report where
          activity_id=? and DATE(activity_date)=? `,
     [activity_id, final_activity_date],
   );
 
   if (check_today_sadhana) {
     const [[report]] = await db.execute(
-      `SELECT activity_id,unit ,note, activity_date,count from daily_report where
+      `SELECT activity_id,note, activity_date,count from daily_report where
           DATE(activity_date)=? and user_id=? and activity_id=?`,
       [today, user_id, activity_id],
     );
@@ -728,16 +740,16 @@ export const addSadhna = asyncHandler(async (req, resp) => {
       data: { today_report: report },
     });
   }
-
+console.log("final_activity_date", user_id, activity_id,  count,  final_activity_date);
   const insert_data = await insertRecord(
     "daily_report",
-    ["user_id", "activity_id", "note", "count", "unit", "activity_date"],
-    [user_id, activity_id, note, count, unit, final_activity_date],
+    ["user_id", "activity_id", "count",  "activity_date"],
+    [user_id, activity_id,  count,final_activity_date],
   );
 
   if (insert_data) {
     const [[report]] = await db.execute(
-      `SELECT activity_id,unit ,note, activity_date,count from daily_report where
+      `SELECT activity_id, activity_date,count from daily_report where
           DATE(activity_date)=? and user_id=? and activity_id=?`,
       [today, user_id, activity_id],
     );
@@ -981,7 +993,10 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     device_name = "",
     google_id,
     profile,
-  } = req.body;
+  } = 
+ 
+ req.body;
+ console.log(" req.body", req.body);
 
   const { isValid, errors } = validateFields(req.body, {
     email: ["required"],
@@ -1132,6 +1147,14 @@ const registerUser = async (
         [user_id, counsller_id],
       );
     }
+
+   await db.query(
+  `INSERT INTO fix_activities 
+   (user_id,target, name, description, unit, activity_type, own_by)
+   SELECT ?,a.target, a.name, a.description, a.unit, a.activity_type, 0
+   FROM activities a
+   WHERE NOT EXISTS (SELECT 1 FROM fix_activities f  WHERE f.user_id = ? AND f.name = a.name)`,
+   [user_id, user_id]);
 
     return {
       message: ["successfully registered"],
