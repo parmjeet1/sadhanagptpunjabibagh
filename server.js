@@ -51,7 +51,7 @@ const corsOptions = {
 // app.post('/api/stripe-webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.options('/*', cors(corsOptions));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(bodyParser.json());
