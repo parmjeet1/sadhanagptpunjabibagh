@@ -59,8 +59,8 @@ async (req, res) => {
   try {
     const user = req.user;
 
-    const frontendUrl = "http://localhost:5173/auth/callback";
-console.log("Google user profile:", user.email);
+    const frontendUrl = "https://www.sadhanagpt.com/auth/callback";
+
     // ✅ Check user in DB
     const user_check = await queryDB(
       `SELECT u.user_id, u.name, u.email, u.user_type, 
@@ -71,12 +71,11 @@ console.log("Google user profile:", user.email);
     );
 
     let responseData = {};
-    console.log("User check result:", user_check);
-
+   
     if (user_check) {
 
       const access_token = crypto.randomBytes(12).toString("hex");
-console.log("access_token", access_token);
+
       await db.execute(
         'UPDATE users SET access_token = ? WHERE email = ?',
         [access_token, user.email]
@@ -110,7 +109,7 @@ console.log("access_token", access_token);
 
   } catch (err) {
     console.error(err);
-    res.redirect("http://localhost:5173/login?error=auth_failed");
+    res.redirect("https://www.sadhanagpt.com/login?error=auth_failed");
   }
 }
 );
