@@ -3,7 +3,7 @@ import { Router } from "express";
 
 import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userData, UsernotificationList} from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
 import { addCenter, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
 
@@ -35,20 +35,26 @@ const authzAndAuthRoutes = [
         {method: 'post',        path: '/add-temple',                handler: addTemple ,role: "student"},
        
         {method: 'post',        path: '/update-student-profile',    handler: updateStudentDetails ,role: "student"},
-        {method: 'post',        path: '/add-counsller',    handler: updateStudentDetails ,role: "student"},
+        {method: 'post',        path: '/add-counsllor',    handler: addCounsellor ,role: "student"},
        {method: 'post',        path: '/student-notification-list',    handler: UsernotificationList ,role: "student"},
         //counsellor apis
 
-        {method: 'get', path: '/user-data',                     handler: userData ,role: "student"},
+        {method: 'get', path: '/user-profile',                     handler: userProfile ,role: "student"},
+        {method: 'post', path: '/edit-profile',                     handler: editProfile ,role: "student"},
+        
         {method: 'post', path: '/add-acitivity',                handler: addactivity ,role: "student"},
         {method: 'post', path: '/edit-acitivity',               handler: editActivity ,role: "student"},
         {method: 'post', path: '/delete-acitivity',             handler: deleteActivity ,role: "student"},
         {method: 'get', path: '/activity-list',                handler: listActivities ,role: "student"},
+        
     
         {method: 'post', path: '/add-daily-report',             handler: addSadhna ,role: "student"},
     
-        {method: 'get', path: '/report-as-per-date',                  handler: todayReportlist ,role: "student"},
+        {method: 'post', path: '/report-as-per-date',                  handler: todayReportlist ,role: "student"},
+        {method: 'get', path: '/student-activities-analytics',                 handler: StudentActivitiesAnalytics ,role: "student"},
+        
         {method: 'get', path: '/detail-report',                 handler: detailReport ,role: "student"},
+     
         {method: 'post', path: '/forget-password',              handler: forgetPassword ,role: "student"}, 
         {method: 'post', path: '/verify-otp',                   handler: verifyOTP ,role: "student"},
         
@@ -66,7 +72,7 @@ const authzAndAuthRoutes = [
 
     {method: 'post',     path: '/add-lable',                  handler: addLable, role: "counsellor"},
     
-    {method: 'put',     path: '/edit-lable',                  handler: editLable, role: "counsellor"},
+    {method: 'post',     path: '/edit-lable',                  handler: editLable, role: "counsellor"},
     {method: 'delete',  path: '/delete-lable',                handler: deleteLable,             role: "counsellor"},
     {method: 'post',    path: '/bulk-assign-label',           handler: bulkAssignLabel,         role: "counsellor"},
 

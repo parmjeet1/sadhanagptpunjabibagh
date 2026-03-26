@@ -520,16 +520,18 @@ console.log("req.body", req.body,"data",name, description, unit, activity_type);
 });
 export const deleteActivity = asyncHandler(async (req, resp) => {
   const { activity_id, user_id } = req.body;
+  console.log("deleteActivity req.body", req.body);
 
   const { isValid, errors } = validateFields(mergeParam(req), {
     activity_id: ["required"],
   });
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-
-  const delete_data = await db.excute(`DELETE FROM fix_activities
-     where  own_by=0 andactivity_id=? and user_id=? `,[activity_id,user_id]) //("fix_activities", "id", activity_id);
-
+const delete_data = await db.execute(
+  `DELETE FROM fix_activities 
+   WHERE activity_id = ? AND user_id = ?`,
+  [activity_id, user_id]
+);
   if (delete_data) {
     return resp.json({
       status: 1,
@@ -569,7 +571,7 @@ export const listActivities = asyncHandler(async (req, resp) => {
   };
   return resp.json({ status: 1, code: 200, data });
 });
-export const todayReportlist = asyncHandler(async (req, resp) => {
+export const oldtodayReportlist = asyncHandler(async (req, resp) => {
   const { user_id } = req.body;
 
   const { isValid, errors } = validateFields(mergeParam(req), {
@@ -608,6 +610,49 @@ export const todayReportlist = asyncHandler(async (req, resp) => {
     user_activities: user_activities,
   };
   return resp.json({ status: 1, code: 200, data });
+});
+export const todayReportlist = asyncHandler(async (req, resp) => {
+  const { user_id, activity_date } = req.body;
+
+  const { isValid, errors } = validateFields(mergeParam(req), {
+    user_id: ["required"],
+    activity_date: ["required"],
+  });
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  try {
+    const [rows] = await db.execute(
+      `SELECT activity_id, count 
+       FROM daily_report
+       WHERE user_id = ? AND DATE(activity_date) = ?`,
+      [user_id, activity_date]
+    );
+
+    const response = {
+      user_id,
+      activity_date,
+      daily_reports: rows.map((item) => ({
+        activity_id: item.activity_id,
+        count: item.count,
+      })),
+    };
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      data: response,
+    });
+
+  } catch (error) {
+    return resp.json({
+      status: 0,
+      code: 500,
+      message: error.message,
+    });
+  }
 });
 export const detailReport = asyncHandler(async (req, resp) => {
   const { user_id, activity_id } = req.body;
@@ -709,8 +754,7 @@ export const addSadhna = asyncHandler(async (req, resp) => {
     user_id: ["required"],
     // unit: ["required"],
   });
-  console.log("req.body", req.body);
-
+  
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
   const today = moment().format("YYYY-MM-DD");
   const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
@@ -721,26 +765,23 @@ export const addSadhna = asyncHandler(async (req, resp) => {
   );
 
   if (check_today_sadhana) {
-    const [[report]] = await db.execute(
-      `SELECT activity_id,note, activity_date,count from daily_report where
-          DATE(activity_date)=? and user_id=? and activity_id=?`,
-      [today, user_id, activity_id],
-    );
+    
 
-    updateRecord(
+    await updateRecord(
       "daily_report",
-      { count, note, unit },
-      ["id"],
-      [check_today_sadhana.id],
+      { count, count },
+      ["activity_id","user_id","activity_date"],
+      [activity_id,user_id,final_activity_date],
     );
+        console.log("updated")
     return resp.json({
       status: 0,
       code: 200,
       message: ["updated activity!"],
-      data: { today_report: report },
+      data: {  },
     });
   }
-console.log("final_activity_date", user_id, activity_id,  count,  final_activity_date);
+
   const insert_data = await insertRecord(
     "daily_report",
     ["user_id", "activity_id", "count",  "activity_date"],
@@ -748,16 +789,13 @@ console.log("final_activity_date", user_id, activity_id,  count,  final_activity
   );
 
   if (insert_data) {
-    const [[report]] = await db.execute(
-      `SELECT activity_id, activity_date,count from daily_report where
-          DATE(activity_date)=? and user_id=? and activity_id=?`,
-      [today, user_id, activity_id],
-    );
+    console.log("inserted")
+    
     return resp.json({
       status: 1,
       code: 200,
       message: ["Report added successfully!"],
-      data: { today_report: report },
+      data: { },
     });
   }
 });
@@ -978,25 +1016,98 @@ export const updateStudentDetails = asyncHandler(async (req, resp) => {
     },
   });
 });
+export const addCounsellor = asyncHandler(async (req, resp) => {
+  const { user_id, counsller_id } = mergeParam(req);
 
+  /* ---------------------------
+     VALIDATION
+  ----------------------------*/
+  const { isValid, errors } = validateFields(
+    { user_id, counsller_id },
+    {
+      user_id: ["required"],
+      counsller_id: ["required"],
+    }
+  );
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  /* ---------------------------
+     CHECK USER EXISTS
+  ----------------------------*/
+  const [user] = await db.execute(
+    `SELECT user_id FROM users WHERE user_id = ?`,
+    [user_id]
+  );
+
+  if (!user.length) {
+    return resp.json({
+      status: 0,
+      code: 404,
+      message: ["User not found"],
+    });
+  }
+
+  /* ---------------------------
+     CHECK COUNSELLOR EXISTS
+  ----------------------------*/
+  const [counsellor] = await db.execute(
+    `SELECT user_id FROM users WHERE user_id = ?`,
+    [counsller_id]
+  );
+
+  if (!counsellor.length) {
+    return resp.json({
+      status: 0,
+      code: 404,
+      message: ["Counsellor not found"],
+    });
+  }
+
+  /* ---------------------------
+     CHECK DUPLICATE ENTRY
+  ----------------------------*/
+  const [exists] = await db.execute(
+    `
+    SELECT id 
+    FROM user_counsellors 
+    WHERE user_id = ? AND counsller_id = ?
+    `,
+    [user_id, counsller_id]
+  );
+
+  if (exists.length) {
+    return resp.json({
+      status: 0,
+      code: 409,
+      message: ["Counsellor already assigned to this user"],
+    });
+  }
+
+  /* ---------------------------
+     INSERT
+  ----------------------------*/
+  await insertRecord(
+    "user_counsellors",
+    ["user_id", "counsller_id"],
+    [user_id, counsller_id]
+  );
+
+  return resp.json({
+    status: 1,
+    code: 200,
+    message: ["Counsellor added successfully"],
+  });
+});
 
 export const onBoarding = asyncHandler(async (req, resp) => {
   // here consler email will be ask form studnet ,
-  const {
-    name,
-    email,
-    mobile,
-    temple_id,
-    user_type,
-    counsellor_id,
-    added_from = "",
-    device_name = "",
+  const { name,email, mobile, temple_id,user_type, counsellor_id, added_from = "",device_name = "",
     google_id,
     profile,
-  } = 
- 
- req.body;
- console.log(" req.body", req.body);
+  } = req.body;
 
   const { isValid, errors } = validateFields(req.body, {
     email: ["required"],
@@ -1143,8 +1254,8 @@ const registerUser = async (
     if (user_type === "student") {
       await insertRecord(
         "user_counsellors",
-        ["user_id", "counsller_id"],
-        [user_id, counsller_id],
+        ["user_id", "counsller_id","counsllor_type"],
+        [user_id, counsller_id,"primary"],
       );
     }
 
@@ -1153,7 +1264,7 @@ const registerUser = async (
    (user_id,target, name, description, unit, activity_type, own_by)
    SELECT ?,a.target, a.name, a.description, a.unit, a.activity_type, 0
    FROM activities a
-   WHERE NOT EXISTS (SELECT 1 FROM fix_activities f  WHERE f.user_id = ? AND f.name = a.name)`,
+   WHERE  a.status = 1 AND NOT EXISTS (SELECT 1 FROM fix_activities f  WHERE f.user_id = ? AND f.name = a.name)`,
    [user_id, user_id]);
 
     return {
@@ -1173,8 +1284,8 @@ const registerUser = async (
     };
   }
 };
-export const userData = asyncHandler(async (req, resp) => {
-  const { user_id} = req.body;
+export const olduserProfile = asyncHandler(async (req, resp) => {
+  const { user_id} = mergeParam(req);
   const { isValid, errors } = validateFields(mergeParam(req), {
     user_id: ["required"],
      });
@@ -1205,6 +1316,170 @@ export const userData = asyncHandler(async (req, resp) => {
   }); 
 
   });
+  export const userProfile = asyncHandler(async (req, resp) => {
+  const { user_id } = mergeParam(req);
+
+  const { isValid, errors } = validateFields({ user_id }, {
+    user_id: ["required"],
+  });
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  /* ---------------------------
+     FETCH USER
+  ----------------------------*/
+  const [users] = await db.execute(
+    `
+    SELECT 
+      u.user_id,
+      u.name,
+      u.email,
+      u.mobile,
+      u.profile,
+      u.temple_id
+    FROM users u
+    WHERE u.user_id = ?
+    `,
+    [user_id]
+  );
+
+  if (!users.length) {
+    return resp.json({
+      status: 0,
+      code: 404,
+      message: ["User not found"],
+    });
+  }
+
+  const userData = users[0];
+
+  /* ---------------------------
+     FETCH MENTORS
+  ----------------------------*/
+  const [mentors] = await db.execute(
+    `
+    SELECT 
+      uc.counsller_id AS mentor_id,
+      usr.name,
+     
+      usr.profile AS avatar
+    FROM user_counsellors uc
+    JOIN users usr ON uc.counsller_id = usr.user_id
+   
+    WHERE uc.user_id = ?
+    `,
+    [user_id]
+  );
+// LEFT JOIN temples t ON usr.temple_id = t.temple_id
+  /* ---------------------------
+     FETCH REWARDS (your function)
+  ----------------------------*/
+  const rewards = await getUserRewards(user_id);
+
+  /* ---------------------------
+     FORMAT RESPONSE
+  ----------------------------*/
+  const response = {
+    status: 1,
+    code: 200,
+    data: {
+      user: {
+        name: userData.name,
+        email: userData.email,
+        mobile: userData.mobile,
+        profile: userData.profile,
+      },
+
+      mentors: mentors.map((m) => ({
+        mentor_id: m.mentor_id,
+        name: m.name,
+        temple: m.temple || "",
+        avatar: m.avatar,
+      })),
+
+      rewards: rewards || [],
+    },
+  };
+
+  return resp.json(response);
+});
+export const editProfile = asyncHandler(async (req, resp) => {
+  const { user_id, name, mobile } = mergeParam(req);
+
+  /* ---------------------------
+     VALIDATION
+  ----------------------------*/
+  const { isValid, errors } = validateFields(
+    { user_id, name, mobile },
+    {
+      user_id: ["required"],
+      name: ["required"],
+      mobile: ["required"],
+    }
+  );
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  /* ---------------------------
+     CHECK USER EXISTS
+  ----------------------------*/
+  const [user] = await db.execute(
+    `SELECT user_id FROM users WHERE user_id = ?`,
+    [user_id]
+  );
+
+  if (!user.length) {
+    return resp.json({
+      status: 0,
+      code: 404,
+      message: ["User not found"],
+    });
+  }
+
+  /* ---------------------------
+     OPTIONAL: CHECK DUPLICATE MOBILE
+  ----------------------------*/
+  const [mobileCheck] = await db.execute(
+    `SELECT user_id FROM users WHERE mobile = ? AND user_id != ?`,
+    [mobile, user_id]
+  );
+
+  if (mobileCheck.length) {
+    return resp.json({
+      status: 0,
+      code: 409,
+      message: ["Mobile number already in use"],
+    });
+  }
+
+  /* ---------------------------
+     UPDATE PROFILE
+  ----------------------------*/
+  await db.execute(
+    `
+    UPDATE users 
+    SET name = ?, mobile = ?
+    WHERE user_id = ?
+    `,
+    [name, mobile, user_id]
+  );
+
+  /* ---------------------------
+     FETCH UPDATED USER
+  ----------------------------*/
+  
+  
+  return resp.json({
+    status: 1,
+    code: 200,
+    message: ["Profile updated successfully"],
+    
+  });
+});
   const getUserRewards = async (user_id) => {
 
   const [rows] = await db.execute(
@@ -1250,4 +1525,330 @@ export const UsernotificationList = asyncHandler(async (req, resp) => {
     await db.execute(`UPDATE notifications SET status=? WHERE  status=? AND panel_to=? AND receive_id=?`, ['1', '0', 'student', rider_id]);
     
     return resp.json({status:1, code: 200, message: "Notification list fetch successfully", data: notifications, total_page: total_page, totalRows: totalRows.total});
+});
+
+export const oldStudentActivitiesAnalytics = asyncHandler(async (req,res)=>{
+ const {  user_id,start_date,end_date,filter='7days'    } = mergeParam(req);
+     const { isValid, errors } = validateFields(mergeParam(req), {
+      user_id: ["required"],
+     
+    });
+
+    if (!isValid)      return res.json({ status: 0, code:422, message: errors });
+    let start_formatted_date;
+    let end_formatted_date;
+
+const today_moment = moment();
+    switch (filter) {
+
+      case "30days":
+        end_formatted_date = today_moment.format("YYYY-MM-DD");
+        start_formatted_date = today_moment.clone().subtract(29, "days").format("YYYY-MM-DD");
+        break;
+
+      case "custom":
+        start_formatted_date = moment(start_date).format("YYYY-MM-DD");
+        end_formatted_date = moment(end_date).format("YYYY-MM-DD");
+        break;
+
+      case "7days":
+      default:
+        end_formatted_date = today_moment.format("YYYY-MM-DD");
+        start_formatted_date = today_moment.clone().subtract(6, "days").format("YYYY-MM-DD");
+    }
+
+
+console.log("filter",filter,start_formatted_date,end_formatted_date)
+  
+const today = moment().format("YYYY-MM-DD");
+
+ if (moment(end_formatted_date).isAfter(today)) {
+  end_formatted_date = today;
+}
+let dates = [];
+
+let current = moment(start_formatted_date);
+
+while (current.isSameOrBefore(end_formatted_date)) {
+  dates.push(current.format("YYYY-MM-DD"));
+  current.add(1, "days");
+}
+
+// console.log(dates);
+
+      const [chartData] = await db.execute(
+      `
+      SELECT 
+       DATE_FORMAT(dr.activity_date,'%Y-%m-%d') as date
+       , 1 as count
+from daily_report dr where 
+      dr.user_id = ?
+      
+      and DATE(dr.activity_date) BETWEEN ? AND ?
+      order by dr.id ASC
+
+      `,
+      [user_id,start_date,end_date]
+      );
+   const dataMap = {};
+chartData.forEach(item => {
+  dataMap[item.date] = item.count;
+});
+  let currentStreak = 0;
+  let bestStreak = 0;
+
+const mergedData = dates.map(date => {
+
+  const count = dataMap[date] || 0;
+
+  if (count === 1) {
+    currentStreak++;
+    bestStreak = Math.max(bestStreak, currentStreak);
+  } else {
+    currentStreak = 0;
+  }
+
+  return {
+    date,
+    count
+  };
+});
+
+
+// merge with full date list
+// const mergedData = dates.map(date => ({
+//   date,
+//   count: dataMap[date] || 0
+// }));      
+
+    /* ---------------------------
+        Activity summary
+    ----------------------------*/
+    const [student_data] = await db.execute(
+      `
+      SELECT
+      
+CASE 
+    WHEN fa.activity_type IN ('numb','min')
+        THEN ROUND(AVG(CAST(dr.count AS DECIMAL(10,2))),2)
+
+    WHEN fa.activity_type = 'time'
+        THEN SEC_TO_TIME(AVG(TIME_TO_SEC(dr.count)))
+
+    ELSE NULL
+END AS average_value,
+      u.name AS student_name,
+      u.email,
+      u.mobile,
+      u.user_type, 
+    fa.activity_id,
+    fa.name AS activity_name,
+     fa.description,fa.unit,fa.activity_type,
+
+    COUNT(dr.id) AS attendance_count,
+    
+    DATE_FORMAT(MAX(u.created_at), '%Y-%m-%d') AS joined_date,
+    DATE_FORMAT(MAX(dr.activity_date), '%Y-%m-%d') AS last_attended_date,
+    
+    DATEDIFF(MAX(dr.activity_date), MAX(u.created_at)) AS total_days,
+    ROUND((COUNT(dr.id) / DATEDIFF(MAX(dr.activity_date), u.created_at)) * 100, 2) 
+AS user_performance_percentage
+FROM fix_activities fa
+
+  LEFT JOIN daily_report dr 
+    ON dr.activity_id = fa.activity_id  AND dr.user_id = ?
+  JOIN users u ON u.user_id = ?
+    WHERE
+         fa.user_id = ? GROUP BY fa.activity_id
+      `,
+      [user_id,user_id,user_id]
+    );
+
+    const attendance_days=student_data[0].attendance_count 
+   const total_days = moment(end_formatted_date).diff(moment(start_formatted_date), "days") + 1;
+   const performance_filter = ((attendance_days / total_days) * 100).toFixed(2);
+student_data[0].performance_filter = performance_filter;
+//
+student_data[0].bestStreak = bestStreak;
+
+
+// console.log(attendance_days,end_formatted_date,start_formatted_date,"student data",performance);
+ return res.json({
+   status:1,
+ data:{student_data,chart_data:mergedData}
+   //  data:{
+  //    ...activity[0],
+  //    history
+  //  }
+ });
+
+});
+
+export const StudentActivitiesAnalytics = asyncHandler(async (req, res) => {
+  const { user_id, start_date, end_date, filter = "7days" } = mergeParam(req);
+
+  const { isValid, errors } = validateFields(mergeParam(req), {
+    user_id: ["required"],
+  });
+
+  if (!isValid) {
+    return res.json({ status: 0, code: 422, message: errors });
+  }
+
+  /* ---------------------------
+     DATE FILTER LOGIC
+  ----------------------------*/
+  let start_formatted_date;
+  let end_formatted_date;
+
+  const today_moment = moment();
+
+  switch (filter) {
+    case "30days":
+      end_formatted_date = today_moment.format("YYYY-MM-DD");
+      start_formatted_date = today_moment
+        .clone()
+        .subtract(29, "days")
+        .format("YYYY-MM-DD");
+      break;
+
+    case "custom":
+      start_formatted_date = moment(start_date).format("YYYY-MM-DD");
+      end_formatted_date = moment(end_date).format("YYYY-MM-DD");
+      break;
+
+    case "7days":
+    default:
+      end_formatted_date = today_moment.format("YYYY-MM-DD");
+      start_formatted_date = today_moment
+        .clone()
+        .subtract(6, "days")
+        .format("YYYY-MM-DD");
+  }
+
+  const today = moment().format("YYYY-MM-DD");
+  if (moment(end_formatted_date).isAfter(today)) {
+    end_formatted_date = today;
+  }
+
+  /* ---------------------------
+     GENERATE DATE RANGE ARRAY
+  ----------------------------*/
+  let dates = [];
+  let current = moment(start_formatted_date);
+
+  while (current.isSameOrBefore(end_formatted_date)) {
+    dates.push(current.format("YYYY-MM-DD"));
+    current.add(1, "days");
+  }
+
+  /* ---------------------------
+     FETCH DAILY ACTIVITY DATA
+  ----------------------------*/
+  const [dailyActivityData] = await db.execute(
+    `
+    SELECT 
+      dr.activity_id,
+      DATE_FORMAT(dr.activity_date,'%Y-%m-%d') as activity_date,
+      dr.count
+    FROM daily_report dr
+    WHERE dr.user_id = ?
+    AND DATE(dr.activity_date) BETWEEN ? AND ?
+    ORDER BY dr.activity_date ASC
+    `,
+    [user_id, start_formatted_date, end_formatted_date]
+  );
+
+  /* ---------------------------
+     GROUP DATA BY ACTIVITY
+  ----------------------------*/
+  const activityMap = {};
+
+  dailyActivityData.forEach((item) => {
+    if (!activityMap[item.activity_id]) {
+      activityMap[item.activity_id] = {};
+    }
+    activityMap[item.activity_id][item.activity_date] = item.count;
+  });
+
+  /* ---------------------------
+     FETCH ACTIVITY SUMMARY
+  ----------------------------*/
+  const [student_data] = await db.execute(
+    `
+    SELECT
+      CASE 
+        WHEN fa.activity_type IN ('numb','min')
+          THEN ROUND(AVG(CAST(dr.count AS DECIMAL(10,2))),2)
+
+        WHEN fa.activity_type = 'time'
+          THEN SEC_TO_TIME(AVG(TIME_TO_SEC(dr.count)))
+
+        ELSE NULL
+      END AS average_value,
+
+      fa.activity_id,
+      fa.name AS activity_name,
+      fa.description,
+      fa.unit,
+      fa.activity_type,
+
+      COUNT(dr.id) AS attendance_count
+
+    FROM fix_activities fa
+    LEFT JOIN daily_report dr 
+      ON dr.activity_id = fa.activity_id 
+      AND dr.user_id = ?
+    WHERE fa.user_id = ?
+    GROUP BY fa.activity_id
+    `,
+    [user_id, user_id]
+  );
+
+  /* ---------------------------
+     BUILD FINAL RESPONSE
+  ----------------------------*/
+  const colors = ["#1a73e8", "#20c997", "#f59f00", "#e64980"];
+
+  const activities_analytics = student_data.map((activity, index) => {
+    const daily_data = dates.map((date) => ({
+      activity_date: date,
+      count: activityMap?.[activity.activity_id]?.[date] || 0,
+    }));
+
+    /* -------- Trend Logic -------- */
+    const last = daily_data[daily_data.length - 1]?.count || 0;
+    const prev = daily_data[daily_data.length - 2]?.count || 0;
+
+    let trend = "Stable";
+    if (last > prev) trend = "+";
+    else if (last < prev) trend = "-";
+
+    /* -------- Label Logic -------- */
+    let label = "";
+    if (activity.activity_type === "time") label = "Avg. Time";
+    else if (activity.unit === "min") label = "Avg. Minutes";
+    else label = "Avg. Count";
+
+    return {
+      activity_id: activity.activity_id,
+      name: activity.activity_name,
+      value: activity.average_value,
+      label,
+      trend,
+      color: colors[index % colors.length],
+      daily_data,
+    };
+  });
+
+  /* ---------------------------
+     FINAL RESPONSE
+  ----------------------------*/
+  return res.json({
+    status: 1,
+    code: 200,
+    data: {
+      activities_analytics,
+    },
+  });
 });

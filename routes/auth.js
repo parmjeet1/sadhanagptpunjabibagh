@@ -63,13 +63,15 @@ async (req, res) => {
 console.log("Google user profile:", user.email);
     // ✅ Check user in DB
     const user_check = await queryDB(
-      `SELECT u.user_id, u.name, u.email, u.user_type, uc.counsller_id as primary_counsller_id FROM users u
-      join user_counsellors uc on u.user_id = uc.user_id AND uc.counsllor_type='primary'
-      WHERE email = ? `,
+      `SELECT u.user_id, u.name, u.email, u.user_type, 
+      uc.counsller_id as primary_counsller_id FROM users u
+      LEFT JOIN user_counsellors uc on u.user_id = uc.user_id AND uc.counsllor_type='primary'
+      WHERE u.email = ? `,
       [user.email]
     );
 
     let responseData = {};
+    console.log("User check result:", user_check);
 
     if (user_check) {
 
