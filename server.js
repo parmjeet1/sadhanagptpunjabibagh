@@ -38,6 +38,9 @@ const __dirname = path.dirname(__filename);
 const corsOptions = {
   origin: [
     "https://sadhanagpt.com",
+     "http://localhost:5173",
+    "http://98.93.17.203:3000",
+    
     
   ],
   // origin : "*",
