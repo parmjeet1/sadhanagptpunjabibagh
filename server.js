@@ -37,8 +37,8 @@ const __dirname = path.dirname(__filename);
 
 const corsOptions = {
   origin: [
-    "https://sadhanagpt.com/",
-    "https://sadhanagpt.com/api/"
+    "https://sadhanagpt.com",
+    
   ],
   // origin : "*",
   methods: 'GET, POST, PUT, DELETE',
@@ -84,8 +84,8 @@ app.use('/api', Routes);
 
 
 app.use(express.static(path.join(__dirname, 'dist')));
-app.get('/*', function (req, res) {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 app.use(errorHandler);
 const server = http.createServer(app);
