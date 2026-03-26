@@ -1,10 +1,8 @@
 import express from 'express';
 import cron from 'node-cron';
-import axios from 'axios';
 
 import bodyParser from 'body-parser';
 import Routes from './routes/Routes.js';
-// import StudentRoutes from './SadhanaGPT/Student/Routes/StudentRoutes.js'
 
 import path from 'path';
 import cors from 'cors';
@@ -21,7 +19,6 @@ import "./config/passport.js";
 import logger from './logger.js';
 import { processRewardRules } from './SadhanaGPT/Controllers/CronJobController.js';
 
-// https://desktop-4ntjhpk.tail18c2a1.ts.net/auth/google
 
 process.on("unhandledRejection", (reason) => {
   logger.error(`Unhandled Rejection: ${reason}`);
@@ -40,14 +37,8 @@ const __dirname = path.dirname(__filename);
 
 const corsOptions = {
   origin: [
-
-    'http://100.91.77.127:2424',
-    'http://192.168.1.37:2424',
-    'http://192.168.1.29:1112',
-    'http://localhost:5173',
-    'http://localhost:5173'
-    
-
+    "https://sadhanagpt.com/",
+    "https://sadhanagpt.com/api/"
   ],
   // origin : "*",
   methods: 'GET, POST, PUT, DELETE',
@@ -63,7 +54,7 @@ app.use(bodyParser.json());
 app.use(cookieParser());
 app.get('/ping', (req, res) => {
   console.log("pong");
-  return res.json({ status: 1, code: 200, message: "local server is alive" })
+  return res.json({ status: 1, code: 200, message: "latest updated v1" })
   //   res.send('Server is alive');
 
 });
@@ -79,23 +70,24 @@ app.use(
 
 app.use(passport.initialize());
 app.use(passport.session());
+
 app.get('/google-call-back', (req, res) => {
   return res.json({ status: 1, code: 200, message: "google-call-back" })
-  //   res.send('Server is alive');
 
 });
 
 
-// app.use('/api',StudentRoutes );
+
 app.use('/api', Routes);
+
+
+
+
+app.use(express.static(path.join(__dirname, 'dist')));
+app.get('*', function (req, res) {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 app.use(errorHandler);
-
-//paramjeet udpate 
-
-// app.use(express.static(path.join(__dirname, 'dist')));
-// app.get('*', function (req, res) {
-//     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-// });
 const server = http.createServer(app);
 server.listen(PORT,'0.0.0.0', () => {
   console.log(`Server is running on http://localhost:${PORT}`);
