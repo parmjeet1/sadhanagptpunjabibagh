@@ -41,6 +41,7 @@ const corsOptions = {
     "http://sadhanagpt.com",
      "http://localhost:5173",
     "http://98.93.17.203:3000",
+    "https://www.sadhanagpt.com",
     
     
   ],
