@@ -29,7 +29,7 @@ process.on("warning", (warning) => {
 });
 const app = express();
 app.set('trust proxy', true);
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT ||3000;
 
 
 const __filename = fileURLToPath(import.meta.url);
