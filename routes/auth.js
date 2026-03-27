@@ -58,9 +58,8 @@ router.get(
 async (req, res) => {
   try {
     const user = req.user;
-
-    // const frontendUrl = "https://www.sadhanagpt.com/auth/callback";
-    const frontendUrl = "https://www.sadhanagpt.com/oauth-success";
+//new updated
+     const frontendUrl = "https://www.sadhanagpt.com/oauth-success";
     
 
     // ✅ Check user in DB
