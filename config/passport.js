@@ -10,11 +10,13 @@ passport.use(
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       // callbackURL: "/auth/google/callback",
-     callbackURL: "https://sadhanagpt.com/auth/google/callback"
+     callbackURL:process.env.FRONT_END_CALL_BACK_URL //"https://sadhanagpt.com/auth/google/callback"
 
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
+console.log("googlelogin pasport")
+
 
        const user = {
           google_id: profile.id,

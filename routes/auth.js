@@ -1,4 +1,5 @@
 import express from "express";
+import { configDotenv } from "dotenv";
 import passport from "passport";
 import { queryDB } from "../utils/dbUtils.js";
 import crypto from "crypto";
@@ -59,8 +60,9 @@ async (req, res) => {
   try {
     const user = req.user;
 //new updated
-     const frontendUrl = "https://www.sadhanagpt.com/oauth-success";
-    
+console.log("googlelogin backend")
+     const frontendUrl =process.env.FRONT_END_CALL_BACK_URL //"https://www.sadhanagpt.com/oauth-success";
+    console.log("Google user:", user);
 
     // ✅ Check user in DB
     const user_check = await queryDB(
