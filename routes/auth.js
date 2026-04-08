@@ -4,6 +4,8 @@ import { queryDB } from "../utils/dbUtils.js";
 import crypto from "crypto";
 const router = express.Router();
 import db from "../config/database.js";
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Google Login
 router.get(
@@ -22,44 +24,14 @@ router.get(
   passport.authenticate("google", { 
     failureRedirect: "/",
    session: false, }),
-  // (req, res) => {
-  //    const user = req.user;
-
-  //   const googleUser = {
-  //     google_id: user.id,
-  //     name: user.displayName,
-  //     email: user.emails?.[0]?.value,
-  //     picture: user.photos?.[0]?.value,
-  //   };
-  //  res.json(googleUser);
-  // }
-//   async (req, res) => {
-//      const user = req.user;
-//      let frontendUrl = "http://localhost:5173/auth/callback";
-// const userParam = encodeURIComponent(JSON.stringify(user))
-
-
-//      const user_check =await queryDB('SELECT user_id, name, email,user_type,counsller_id FROM users WHERE email = ? and google_id=?', [user.emails,user.google_id]);
-//      if(user_check){
-//        const access_token = crypto.randomBytes(12).toString("hex");
-//       await queryDB('UPDATE users SET access_token  = ? WHERE email = ? and google_id=?', [access_token,user.emails,user.google_id]);
-
-//      }
-//      ;
-
-
-// //console.log("url",`${frontendUrl}?user=${userParam}`);
-// res.redirect(`${frontendUrl}?user=${userParam}`);
-//   //  res.json({
-//   //     message: " Login successful",
-//   //     // user,
-//   //   });
-//   }
+  
 async (req, res) => {
   try {
     const user = req.user;
 //new updated
-     const frontendUrl = "https://www.sadhanagpt.com/oauth-success";
+
+    //  const frontendUrl = "https://www.sadhanagpt.com/oauth-success";
+     const frontendUrl = process.env.FRONT_END_CALL_BACK_URL //"http://localhost:5173/oauth-success";
     
 
     // ✅ Check user in DB
@@ -105,7 +77,7 @@ async (req, res) => {
 
     // ✅ Encode and send
     const encodedData = encodeURIComponent(JSON.stringify(responseData));
-
+console.log("Redirecting to:", `${frontendUrl}?data=${encodedData}`);
     res.redirect(`${frontendUrl}?data=${encodedData}`);
 
   } catch (err) {
