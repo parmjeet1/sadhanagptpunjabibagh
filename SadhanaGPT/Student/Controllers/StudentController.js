@@ -20,6 +20,7 @@ import {
 import moment from "moment";
 import db from "../../../config/database.js";
 import emailQueue from "../../../utils/emails/emailQueue.js";
+import { Console } from "console";
 
 export const studentRegister = asyncHandler(async (req, resp) => {
   const {
@@ -111,7 +112,7 @@ export const studentRegister = asyncHandler(async (req, resp) => {
   ]);
 
   const result = {
-    student_id: user_id,
+    user_id: user_id,
     name: name,
     email: email,
     country_code: country_code,
@@ -453,7 +454,7 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
 });
 
 export const addactivity = asyncHandler(async (req, resp) => {
-  const { user_id, name, description,target, unit, activity_type } = req.body;
+  const { user_id, name, description='',target, unit, activity_type } = req.body;
   const { isValid, errors } = validateFields(mergeParam(req), {
     user_id: ["required"],
     name: ["required"],
@@ -478,8 +479,8 @@ export const addactivity = asyncHandler(async (req, resp) => {
   }
 });
 export const editActivity = asyncHandler(async (req, resp) => {
-  const { activity_id, user_id, name, description, unit, activity_type } = req.body;
-
+  const { activity_id, user_id, target, name, description='', unit, activity_type } = req.body;
+console.log("mergeParam(req)",mergeParam(req))
   const { isValid, errors } = validateFields(mergeParam(req), {
     activity_id: ["required"],
     user_id: ["required"],
@@ -504,7 +505,8 @@ console.log("req.body", req.body,"data",name, description, unit, activity_type);
     name,
     description,
     unit,
-    activity_type
+    activity_type,
+    target
   },
   ["activity_id"],
   [activity_id]
@@ -1851,4 +1853,250 @@ export const StudentActivitiesAnalytics = asyncHandler(async (req, res) => {
       activities_analytics,
     },
   });
+});
+
+export const acontentListStudent = asyncHandler(async (req, resp) => {
+  try {
+
+    const {
+      page_no = 1,
+      user_id,
+      search_text = "",
+      rowSelected,
+      content_type   // optional filter
+    } = mergeParam(req);
+    console.log("content_type",content_type)
+
+    // ✅ Validation
+    const { isValid, errors } = validateFields(mergeParam(req), {
+      page_no: ["required"],
+      user_id: ["required"]
+    });
+
+    if (!isValid) {
+      return resp.json({ status: 0, code: 422, message: errors });
+    }
+
+    // ✅ Get student details (for filtering)
+    const student = await queryDB(
+      `SELECT user_id, name, center_id, label_id 
+       FROM users 
+       WHERE user_id = ?`,
+      [user_id]
+    );
+
+    if (!student) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["Student not found"]
+      });
+    }
+
+    // ✅ Build dynamic WHERE conditions
+    let whereConditions = `
+      cg.group_id IS NULL OR 1=1
+    `;
+
+    let paramsArr = [];
+
+    // 👉 Filter by center (via groups if needed)
+    // (Optional: if group system mapped to center, else skip)
+
+    // 👉 Filter by label
+    if (student.label_id) {
+      whereConditions += ` AND (cl.label_id = ? OR cl.label_id IS NULL)`;
+      paramsArr.push(student.label_id);
+    }
+
+    // 👉 Filter by content type
+    if (content_type) {
+      whereConditions += ` AND c.content_type = ?`;
+      paramsArr.push(content_type);
+    }
+
+    // 👉 Search
+    if (search_text) {
+      whereConditions += ` AND c.content LIKE ?`;
+      paramsArr.push(`%${search_text}%`);
+    }
+
+    const limit = rowSelected || 10;
+    const offset = (page_no - 1) * limit;
+
+    // ✅ Main Query
+   let query=`SELECT 
+        c.id,
+        c.content_type,
+        c.content,
+        c.created_at
+      FROM contents c
+      LEFT JOIN content_labels cl ON cl.content_id = c.id
+      LEFT JOIN content_groups cg ON cg.content_id = c.id
+      WHERE ${whereConditions}
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+      LIMIT ? OFFSET ?`;
+      console.log("query",query)
+    const [data] = await db.execute(
+      query,
+      [...paramsArr, limit, offset]
+    );
+
+    // ✅ Count Query
+    const [countResult] = await db.execute(
+      `
+      SELECT COUNT(DISTINCT c.id) as total
+      FROM contents c
+      LEFT JOIN content_labels cl ON cl.content_id = c.id
+      LEFT JOIN content_groups cg ON cg.content_id = c.id
+      WHERE ${whereConditions}
+      `,
+      paramsArr
+    );
+
+    const total = countResult[0]?.total || 0;
+    const total_page = Math.ceil(total / limit);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Content list fetched successfully!"],
+      student,
+      data,
+      total_page,
+      total
+    });
+
+  } catch (error) {
+
+    console.error("Error fetching content list:", error);
+
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: "Error fetching content list"
+    });
+  }
+});
+
+
+export const contentListStudent = asyncHandler(async (req, resp) => {
+  try {
+
+    const {
+      page_no = 1,
+      user_id,
+      search_text = "",
+      content_type   // optional
+    } = mergeParam(req);
+
+    console.log("content_type", content_type);
+
+    // ✅ Validation
+    const { isValid, errors } = validateFields(mergeParam(req), {
+      page_no: ["required"],
+      user_id: ["required"]
+    });
+
+    if (!isValid) {
+      return resp.json({ status: 0, code: 422, message: errors });
+    }
+
+    // ✅ Get student
+    const student = await queryDB(
+      `SELECT user_id, name, center_id, label_id 
+       FROM users 
+       WHERE user_id = ?`,
+      [user_id]
+    );
+
+    if (!student) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["Student not found"]
+      });
+    }
+
+    // ✅ WHERE conditions
+    let whereConditions = `1=1`;
+    let paramsArr = [];
+
+    // 👉 Label filter (important logic)
+    if (student.label_id) {
+      whereConditions += ` AND (cl.label_id = ? OR cl.label_id IS NULL)`;
+      paramsArr.push(student.label_id);
+    }
+
+    // 👉 Content type filter
+    if (content_type) {
+      whereConditions += ` AND c.content_type = ?`;
+      paramsArr.push(content_type);
+    }
+
+    // 👉 Search
+    if (search_text) {
+      whereConditions += ` AND c.content LIKE ?`;
+      paramsArr.push(`%${search_text}%`);
+    }
+
+    // ✅ FIXED: 5 items per page
+    const limit = 5;
+    const offset = (page_no - 1) * limit;
+
+    // ✅ Main Query
+    const query = `
+      SELECT DISTINCT
+        c.id,
+        c.content_type,
+        c.content,
+        c.created_at
+      FROM contents c
+      LEFT JOIN content_labels cl ON cl.content_id = c.id
+      WHERE ${whereConditions}
+      ORDER BY c.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [data] = await db.execute(
+      query,
+      [...paramsArr, limit, offset]
+    );
+
+    // ✅ Count Query
+    const [countResult] = await db.execute(
+      `
+      SELECT COUNT(DISTINCT c.id) as total
+      FROM contents c
+      LEFT JOIN content_labels cl ON cl.content_id = c.id
+      WHERE ${whereConditions}
+      `,
+      paramsArr
+    );
+
+    const total = countResult[0]?.total || 0;
+    const total_page = Math.ceil(total / limit);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Content list fetched successfully!"],
+      student,
+      data,
+      total_page,
+      total
+    });
+
+  } catch (error) {
+
+    console.error("Error fetching content list:", error);
+
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: "Error fetching content list"
+    });
+
+  }
 });

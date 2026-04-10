@@ -32,7 +32,7 @@ export const apiAuthentication = async (req, resp, next) => {
 export const checkCounsellor = async (req, res, next) => {
   try {
 
-    const { user_id } = req.body;
+    const { user_id } = mergeParam(req) ;
 
     if (!user_id) {
       return res.status(400).json({

@@ -3,9 +3,10 @@ import { Router } from "express";
 
 import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor} from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor, contentListStudent} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { handleFileUpload } from "../utils/fileUpload.js";
 
 const router = Router();
 
@@ -36,10 +37,11 @@ const authzAndAuthRoutes = [
        
         {method: 'post',        path: '/update-student-profile',    handler: updateStudentDetails ,role: "student"},
         {method: 'post',        path: '/add-counsllor',    handler: addCounsellor ,role: "student"},
-       {method: 'post',        path: '/student-notification-list',    handler: UsernotificationList ,role: "student"},
+       {method: 'get',        path: '/student-notification-list',    handler: UsernotificationList ,role: "student"},
         //counsellor apis
 
         {method: 'get', path: '/user-profile',                     handler: userProfile ,role: "student"},
+        
         {method: 'post', path: '/edit-profile',                     handler: editProfile ,role: "student"},
         
         {method: 'post', path: '/add-acitivity',                handler: addactivity ,role: "student"},
@@ -57,7 +59,9 @@ const authzAndAuthRoutes = [
      
         {method: 'post', path: '/forget-password',              handler: forgetPassword ,role: "student"}, 
         {method: 'post', path: '/verify-otp',                   handler: verifyOTP ,role: "student"},
-        
+     
+        {method: 'get', path: '/student-content-list',                 handler: contentListStudent ,role: "student"},
+
 
         // // counsler routes
         {method: 'post', path: '/add-note', handler: addNote, role: "counsellor"},
@@ -69,11 +73,16 @@ const authzAndAuthRoutes = [
        {method: 'post',        path: '/counsellor-notification-list',    handler: UsernotificationList ,role: "student"},
 
     {method: 'post', path: '/cusotm-notification', handler: CustomNotification ,role: "student"},
+        {method: 'get', path: '/counslor-user-profile',                     handler: userProfile ,role: "counsellor"},
 
     {method: 'post',     path: '/add-lable',                  handler: addLable, role: "counsellor"},
     
+    {method: 'get',     path: '/lable-list',                  handler: LableList, role: "counsellor"},
+
+    
     {method: 'post',     path: '/edit-lable',                  handler: editLable, role: "counsellor"},
-    {method: 'delete',  path: '/delete-lable',                handler: deleteLable,             role: "counsellor"},
+    {method: 'post',  path: '/delete-lable',                handler: deleteLable,             role: "counsellor"},
+    
     {method: 'post',    path: '/bulk-assign-label',           handler: bulkAssignLabel,         role: "counsellor"},
 
     {method: 'get',     path: '/student-list',                  handler: studentlist,           role: "counsellor"},
@@ -88,13 +97,16 @@ const authzAndAuthRoutes = [
     
     {method: 'post',     path: '/ai-report',       handler: aiReport,       role: "counsellor"},// not completed
     
-    {method: 'get',     path: '/center-list',                   handler: centerlist, role: "counsellor"},
-    {method: 'post',    path: '/add-new-center',                handler: addCenter,role: "counsellor"},
+    {method: 'get',     path: '/group-list',                   handler: centerlist, role: "counsellor"},
+    {method: 'post',    path: '/add-new-group',                handler: addCenter,role: "counsellor"},
     {method: 'post',    path: '/edit-center',                   handler: editCenter,role: "counsellor"},
     {method: 'delete',  path: '/delete-center',                 handler: deleteCenter,role: "counsellor"},
     {method: 'delete',  path: '/assign-student-to-center',      handler: assignStudentToCenter,role: "counsellor"},
-    {method: 'post',     path: '/bulk-assign-student-to-center',handler: bulkAssignStudents,role: "counsellor"},
+    {method: 'post',     path: '/assign-student-center-label',handler: bulkAssignStudents,role: "counsellor"},
     {method: 'get', path: '/student-sadhana-report',            handler: sadhanReportlist,role: "counsellor"},// 
+    {method: 'post',    path: '/add-new-content',                handler: addContent,role: "counsellor"},
+    {method: 'post',    path: '/content-list-counslor',                handler: addContent,role: "counsellor"},
+
 
         
         // {method: 'get', path: '/chart-details', handler: chartdetail},
@@ -104,12 +116,18 @@ const authzAndAuthRoutes = [
 
         //student detail page.      
     ];
+
+    const uploadRules = {
+    // 
+        '/add-new-content' : { folder: 'content',    fields: ['image'], maxCount: 2,condition: (req) => req.body?.content_type === 'image' },
+    }
     LoggedinRoute.forEach(({ method, path, handler,role }) => {
         const middlewares = [Authorization];  // rateLimit
         middlewares.push(apiAuthentication)
         if (role === "counsellor") {
         middlewares.push(checkCounsellor);
         }
+        
             router[method](path, ...middlewares, handler);
     });
     

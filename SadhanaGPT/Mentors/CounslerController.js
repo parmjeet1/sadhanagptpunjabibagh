@@ -14,17 +14,76 @@ import axios from "axios";
 import moment from "moment";
 import ExcelJS from "exceljs";
 import { Parser } from "json2csv";
+import { uploadFiles } from "../../utils/fileUpload.js";
 
 
+export const LableList = asyncHandler(async (req, resp) => {
+
+  const request = req.query;
+  const { user_id, center_id } = request;
+
+  // ✅ Validation
+  if (!user_id || !center_id) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: ["user_id and center_id are required"]
+    });
+  }
+
+  try {
+
+    // ✅ Fetch labels mapped to this center & user
+    const [labels] = await db.execute(
+      `
+     SELECT 
+  ll.id AS label_id,
+  CONCAT(ll.name, ' ', COUNT(u.user_id)) AS label_name,
+  COUNT(u.user_id) AS total_students
+FROM label_centers lc
+INNER JOIN labels_list ll 
+  ON lc.label_id = ll.id
+LEFT JOIN users u 
+  ON u.label_id = ll.id 
+  AND u.center_id = lc.center_id   -- important filter
+WHERE 
+  lc.center_id = ?
+  AND ll.counsellor_id = ?
+GROUP BY ll.id, ll.name
+ORDER BY ll.id DESC;
+      `,
+      [center_id, user_id]
+    );
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Label list fetched successfully"],
+      data: labels
+    });
+
+  } catch (err) {
+
+    console.log("getLableList error:", err);
+
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
+    });
+  }
+
+});
 export const addLable = asyncHandler(async (req, resp) => {
 
   const request = req.body;
-  const { user_id, lable_name, center_ids = [] } = request;
+  const { user_id, lable_name, center_id } = request;
 
+  // ✅ Validation
   const { isValid, errors } = validateFields(request, {
     user_id: ["required"],
     lable_name: ["required"],
-    center_ids: ["required"]
+    center_id: ["required"]
   });
 
   if (!isValid) {
@@ -37,33 +96,55 @@ export const addLable = asyncHandler(async (req, resp) => {
 
   try {
 
-    // 1️⃣ Insert Label
-    const labelInsert = await insertRecord(
-      "labels_list",
-      ["counsellor_id", "name"],
+    // ✅ 1. Check if label already exists for this user
+    const [existingLabel] = await db.execute(
+      `SELECT id FROM labels_list WHERE counsellor_id = ? AND name = ?`,
       [user_id, lable_name]
     );
 
-    const label_id = labelInsert.insertId;
+    let label_id;
 
-    // 2️⃣ Prepare center mappings
-    const values = center_ids.map(center_id => [label_id, center_id]);
-
-    // 3️⃣ Insert center mappings
-    for (const center of values) {
-      await insertRecord(
-        "label_centers",
-        ["label_id", "center_id"],
-        center
+    if (existingLabel.length > 0) {
+      label_id = existingLabel[0].id;
+    } else {
+      // ✅ Create new label
+      const labelInsert = await insertRecord(
+        "labels_list",
+        ["counsellor_id", "name"],
+        [user_id, lable_name]
       );
+
+      label_id = labelInsert.insertId;
     }
+
+    // ✅ 2. Check if mapping already exists
+    const [existingMapping] = await db.execute(
+      `SELECT id FROM label_centers WHERE label_id = ? AND center_id = ?`,
+      [label_id, center_id]
+    );
+
+    if (existingMapping.length > 0) {
+      return resp.json({
+        status: 0,
+        code: 409,
+        message: ["Label already assigned to this center"]
+      });
+    }
+
+    // ✅ 3. Insert mapping
+    await insertRecord(
+      "label_centers",
+      ["label_id", "center_id"],
+      [label_id, center_id]
+    );
 
     return resp.json({
       status: 1,
       code: 200,
-      message: ["Label added successfully!"],
+      message: ["Label added successfully"],
       data: {
-        label_id: label_id
+        label_id,
+        center_id
       }
     });
 
@@ -79,7 +160,6 @@ export const addLable = asyncHandler(async (req, resp) => {
   }
 
 });
-
 export const editLable = asyncHandler(async (req, resp) => {
 
   const request = req.body;
@@ -328,7 +408,7 @@ export const addCenter = asyncHandler(async (req, resp) => {
       return resp.json({
         status: 1,
         code: 200,
-        message: ["Center added successfully!"],
+        message: ["New Group added successfully!"],
         data: {
           center_id: insert_data.insertId,
         },
@@ -565,7 +645,7 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
       tableName: "users us",
       columns: `
 
-      us.user_id, 
+      (SELECT name from labels_list where id=us.label_id) as label_name,us.user_id, 
       (SELECT name from center_list cl where us.center_id=cl.center_id) as center_name,
       us.name,us.user_type, us.email, us.mobile, us.fcm_token, us.created_at`,
       joinCondition: "us.user_id = uc.user_id",
@@ -600,7 +680,7 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
       status: 1,
       code: 200,
       message: ["users list fetched successfully!"],
-      data: result,
+      data: result.data,
       total_page: result.totalPage,
       total: result.total,
     }); //
@@ -882,10 +962,10 @@ export const centerlist = asyncHandler(async (req, resp) => {
       rowSelected,
     } = mergeParam(req);
 
-    const { isValid, errors } = validateFields(mergeParam(req), {
-      page_no: ["required"],
-    });
-    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+    // const { isValid, errors } = validateFields(mergeParam(req), {
+    //   // page_no: ["required"],
+    // });
+    // if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     /*
         center list
@@ -894,7 +974,7 @@ city,student count as per center list
         */
     const params = {
       tableName: "center_list cl",
-      columns: `cl.name, cl.city,(SELECT COUNT(*) FROM users usr
+      columns: `cl.center_id, cl.name, cl.city,(SELECT COUNT(*) FROM users usr
             WHERE usr.center_id = cl.center_id) AS total_student`,
       //    joinCondition :'cl.group_id = uc.group_id',
       // joinTable :'user_counsellors uc',
@@ -916,7 +996,7 @@ city,student count as per center list
       status: 1,
       code: 200,
       message: ["center list fetched successfully!"],
-      data: result,
+      data: result.data,
       total_page: result.totalPage,
       total: result.total,
     }); //
@@ -1152,8 +1232,9 @@ export const bulkAssignStudents = asyncHandler(async (req, resp) => {
   try {
 
     const request = req.body;
+    console.log("bulk assign request", request);
 
-    const { user_id, center_id, student_ids } = request;
+    const { user_id, center_id,label_id, student_ids=[] } = request;
 
     // validation
     const { isValid, errors } = validateFields(request, {
@@ -1194,28 +1275,36 @@ export const bulkAssignStudents = asyncHandler(async (req, resp) => {
       });
     }
 
-    // security check
-    if (center.counsller_id != user_id) {
-      return resp.json({
-        status: 0,
-        code: 403,
-        message: ["Not authorized"]
-      });
-    }
 
     // bulk update
-    await queryDB(
-      `UPDATE users
-       SET center_id = ?
-       WHERE id IN (?)`,
-      [center_id, student_ids]
-    );
+    const placeholders = student_ids.map(() => '?').join(',');
 
-    return resp.json({
+    // ✅ Build dynamic query
+    let query = `UPDATE users SET center_id = ?`;
+    let params = [center_id];
+
+    // 👉 If label_id मौजूद है तो update करो
+    if (label_id) {
+      query += `, label_id = ?`;
+      params.push(label_id);
+    }
+
+    query += ` WHERE user_id IN (${placeholders})`;
+    params.push(...student_ids);
+
+    const updateResult = await db.execute(query, params);
+    if(updateResult){
+       return resp.json({
       status: 1,
       code: 200,
-      message: ["Students assigned to center successfully"]
+      message: ["Students updated successfully"],
+      data: {
+        affected_rows: updateResult.affectedRows,
+        label_updated: !!label_id
+      }
     });
+    }
+    
 
   } catch (err) {
 
@@ -1230,6 +1319,7 @@ export const bulkAssignStudents = asyncHandler(async (req, resp) => {
   }
 
 });
+
 
 export const aiReport = asyncHandler(async (req, resp) => {
   try {
@@ -1800,4 +1890,367 @@ export const deleteNote = asyncHandler(async (req, res) => {
 
   }
 
+});
+
+export const oldddContent = asyncHandler(async (req, resp) => {
+
+  try {
+
+    const request = req.body;
+
+    const {
+      counsellor_id,
+      content_type,               // text | image | youtube
+      content,            // text or URL
+      group_ids = [],
+      label_ids = []
+    } = request;
+
+    // ✅ Validation
+    const { isValid, errors } = validateFields(request, {
+      counsellor_id: ["required"],
+      content_type: ["required"],
+      content: ["required"]
+    });
+    
+    if (!isValid) {
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: errors
+      });
+    }
+
+    // ✅ Insert content
+    const contentInsert = await insertRecord(
+      "contents",
+      ["counsellor_id", "content_type", "content"],
+      [counsellor_id, content_type, content]
+    );
+
+    const content_id = contentInsert.insertId;
+
+    // ✅ Map groups
+    if (Array.isArray(group_ids) && group_ids.length > 0) {
+      const groupValues = group_ids.map(group_id => [content_id, group_id]);
+
+      await db.query(
+        `INSERT INTO content_groups (content_id, group_id) VALUES ?`,
+        [groupValues]
+      );
+    }
+
+    // ✅ Map labels
+    if (Array.isArray(label_ids) && label_ids.length > 0) {
+      const labelValues = label_ids.map(label_id => [content_id, label_id]);
+
+      await db.query(
+        `INSERT INTO content_labels (content_id, label_id) VALUES ?`,
+        [labelValues]
+      );
+    }
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Content added successfully"],
+      data: {
+        content_id
+      }
+    });
+
+  } catch (err) {
+
+    console.log("addContent error:", err);
+
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
+    });
+
+  }
+
+});
+export const newaddContent = asyncHandler(async (req, resp) => {
+
+  try {
+    // 1. Extract Body and File (req.file comes from multer middleware)
+    const request = req.body;
+    const file = req.file; 
+
+    let {
+      counsellor_id,
+      content_type,               // text | image | youtube | url
+      content,                    // text or URL from body
+      group_ids = [],
+      label_ids = []
+    } = request;
+
+    // 2. Parse JSON strings (FormData sends arrays as strings)
+    try {
+      if (typeof group_ids === 'string') group_ids = JSON.parse(group_ids);
+      if (typeof label_ids === 'string') label_ids = JSON.parse(label_ids);
+    } catch (e) {
+      group_ids = Array.isArray(group_ids) ? group_ids : [];
+      label_ids = Array.isArray(label_ids) ? label_ids : [];
+    }
+
+    // 3. Handle Image Logic
+    // If it's an image, the 'content' field should be the relative path or filename
+    if (content_type === 'image' && file) {
+      content = `/content/${file.filename}`; // This matches your public/content requirement
+    }
+
+    // ✅ Validation
+    const { isValid, errors } = validateFields({ ...request, content }, {
+      counsellor_id: ["required"],
+      content_type: ["required"],
+      content: ["required"] // This will now be the filename for images
+    });
+    
+    if (!isValid) {
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: errors
+      });
+    }
+
+    // ✅ Insert into contents table
+    const contentInsert = await insertRecord(
+      "contents",
+      ["counsellor_id", "content_type", "content"],
+      [counsellor_id, content_type, content]
+    );
+
+    const content_id = contentInsert.insertId;
+
+    // ✅ Map groups
+    if (Array.isArray(group_ids) && group_ids.length > 0) {
+      const groupValues = group_ids.map(group_id => [content_id, group_id]);
+
+      await db.query(
+        `INSERT INTO content_groups (content_id, group_id) VALUES ?`,
+        [groupValues]
+      );
+    }
+
+    // ✅ Map labels
+    if (Array.isArray(label_ids) && label_ids.length > 0) {
+      const labelValues = label_ids.map(label_id => [content_id, label_id]);
+
+      await db.query(
+        `INSERT INTO content_labels (content_id, label_id) VALUES ?`,
+        [labelValues]
+      );
+    }
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Content added successfully"],
+      data: {
+        content_id,
+        path: content // Return the saved path for verification
+      }
+    });
+
+  } catch (err) {
+    console.log("addContent error:", err);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
+    });
+  }
+});
+export const daddContent = asyncHandler(async (req, resp) => {
+
+    const request = req.body;
+console.log("addContent request body", request);
+    let {
+        counsellor_id,
+        content_type,
+        content,
+        image,
+        group_ids = [],
+        label_ids = []
+    } = request;
+
+    // ✅ Parse JSON strings (FormData sends arrays as strings)
+    try {
+        if (typeof group_ids === 'string') group_ids = JSON.parse(group_ids);
+        if (typeof label_ids === 'string') label_ids = JSON.parse(label_ids);
+    } catch (e) {
+        group_ids = Array.isArray(group_ids) ? group_ids : [];
+        label_ids = Array.isArray(label_ids) ? label_ids : [];
+    }
+
+    // ✅ Validate content_type early
+    const ALLOWED_CONTENT_TYPES = ['text', 'image', 'youtube', 'url'];
+    if (!ALLOWED_CONTENT_TYPES.includes(content_type)) {
+        return resp.json({
+            status: 0,
+            code: 422,
+            message: { content_type: `content_type must be one of: ${ALLOWED_CONTENT_TYPES.join(', ')}` }
+        });
+    }
+
+    // ✅ Handle image upload only when needed
+    if (content_type === 'image') {
+
+        let uploadedFiles;
+
+        try {
+            uploadedFiles = await uploadFiles(req, resp, 'image', ['image']);
+        } catch (uploadErr) {
+            return resp.status(422).json({
+                status: 0,
+                code: 422,
+                message: { [uploadErr.field]: uploadErr.message }
+            });
+        }
+
+        const imageFile = uploadedFiles?.['image']?.[0];
+
+        if (!imageFile) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: { image: 'Image file is required when content_type is image' }
+            });
+        }
+
+        content = imageFile.file_url; // ✅ /uploads/content/filename.jpg
+    }
+
+    // ✅ Validate required fields
+    const { isValid, errors } = validateFields({ ...request, content }, {
+        counsellor_id: ["required"],
+        content_type:  ["required"],
+        content:       ["required"],
+    });
+
+    if (!isValid) {
+        return resp.json({ status: 0, code: 422, message: errors });
+    }
+
+    // ✅ Insert content
+    const contentInsert = await insertRecord(
+        "contents",
+        ["counsellor_id", "content_type", "content"],
+        [counsellor_id, content_type, content]
+    );
+
+    const content_id = contentInsert.insertId;
+
+    // ✅ Map groups
+    if (group_ids.length > 0) {
+        await db.query(
+            `INSERT INTO content_groups (content_id, group_id) VALUES ?`,
+            [group_ids.map(group_id => [content_id, group_id])]
+        );
+    }
+
+    // ✅ Map labels
+    if (label_ids.length > 0) {
+        await db.query(
+            `INSERT INTO content_labels (content_id, label_id) VALUES ?`,
+            [label_ids.map(label_id => [content_id, label_id])]
+        );
+    }
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Content added successfully"],
+        data: { content_id, content }
+    });
+
+});
+export const addContent = asyncHandler(async (req, resp) => {
+    // 1. Move file upload to the very TOP
+    // We send 'public/content' as the directory name to match your requirement
+    let uploadedFiles;
+    try {
+        // We use 'content' as dirName to save in public/content
+        uploadedFiles = await uploadFiles(req, resp, 'content', ['image']);
+    } catch (uploadErr) {
+        return resp.status(422).json({
+            status: 0,
+            code: 422,
+            message: { [uploadErr.field]: uploadErr.message }
+        });
+    }
+
+    // 2. NOW req.body is populated because uploadFiles (Multer) has finished
+    const request = req.body;
+    let {
+        counsellor_id,
+        content_type,
+        content,
+        group_ids = [],
+        label_ids = []
+    } = request;
+
+    // 3. Parse JSON arrays from FormData
+    try {
+        if (typeof group_ids === 'string') group_ids = JSON.parse(group_ids);
+        if (typeof label_ids === 'string') label_ids = JSON.parse(label_ids);
+    } catch (e) {
+        group_ids = Array.isArray(group_ids) ? group_ids : [];
+        label_ids = Array.isArray(label_ids) ? label_ids : [];
+    }
+
+    // 4. Handle Content Assignment for Images
+    if (content_type === 'image') {
+        const imageFile = uploadedFiles?.['image']?.[0];
+        if (!imageFile) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: { image: 'Image file is required when content_type is image' }
+            });
+        }
+        // Use the file URL generated by uploadFiles
+        content = imageFile.file_url; 
+    }
+
+    // 5. Validation (with the newly populated content/body)
+    const { isValid, errors } = validateFields({ ...request, content }, {
+        counsellor_id: ["required"],
+        content_type:  ["required"],
+        content:       ["required"],
+    });
+
+    if (!isValid) {
+        return resp.json({ status: 0, code: 422, message: errors });
+    }
+
+    // 6. Database Insertion
+    const contentInsert = await insertRecord(
+        "contents",
+        ["counsellor_id", "content_type", "content"],
+        [counsellor_id, content_type, content]
+    );
+
+    const content_id = contentInsert.insertId;
+
+    // Map groups
+    if (group_ids.length > 0) {
+        await db.query(`INSERT INTO content_groups (content_id, group_id) VALUES ?`, [group_ids.map(gid => [content_id, gid])]);
+    }
+
+    // Map labels
+    if (label_ids.length > 0) {
+        await db.query(`INSERT INTO content_labels (content_id, label_id) VALUES ?`, [label_ids.map(lid => [content_id, lid])]);
+    }
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Content published successfully"],
+        data: { content_id, content }
+    });
 });
