@@ -1106,7 +1106,7 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
 
 export const onBoarding = asyncHandler(async (req, resp) => {
   // here consler email will be ask form studnet ,
-  const { name,email, mobile, temple_id,user_type, counsellor_id, added_from = "",device_name = "",
+  const { name,email, mobile, temple_id,user_type, counsellor_id='U000000002', added_from = "",device_name = "",
     google_id,
     profile,
   } = req.body;
@@ -1118,6 +1118,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     temple_id: user_type === "counsellor" ? ["required"] : [],
     user_type: ["required"],
     google_id: ["required"],
+    counsellor_id:["required"] ,
   });
   let final_temple_id, finally_counsller_id;
 
@@ -1495,7 +1496,15 @@ JOIN daily_report dr
     ON dr.user_id = u.user_id 
     AND dr.activity_id = ur.activity_id
     where u.user_id=? 
-    GROUP BY ur.reward_id
+    GROUP BY 
+    ur.reward_id,
+      fa.activity_id,
+      r.reward_name,
+      fa.name,
+      fa.activity_type,
+      r.target_value,
+      r.required_days,
+      r.created_at
     `,
     [user_id]
   );
@@ -1802,7 +1811,12 @@ export const StudentActivitiesAnalytics = asyncHandler(async (req, res) => {
       ON dr.activity_id = fa.activity_id 
       AND dr.user_id = ?
     WHERE fa.user_id = ?
-    GROUP BY fa.activity_id
+    GROUP BY
+    fa.activity_id,
+      fa.name,
+      fa.description,
+      fa.unit,
+      fa.activity_type
     `,
     [user_id, user_id]
   );
@@ -2059,13 +2073,13 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       LIMIT ? OFFSET ?
     `;
 
-    const [data] = await db.execute(
+    const [data] = await db.query(
       query,
-      [...paramsArr, limit, offset]
+      [...paramsArr, parseInt(limit), parseInt(offset)]
     );
 
     // ✅ Count Query
-    const [countResult] = await db.execute(
+    const [countResult] = await db.query(
       `
       SELECT COUNT(DISTINCT c.id) as total
       FROM contents c
