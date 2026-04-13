@@ -98,7 +98,12 @@ app.use(express.static(distPath));
 
 
 
-app.get(/^(?!\/api|\/auth).*/, (req, res) => {
+app.get('/*', (req, res, next) => {
+  // Skip API and auth routes
+  if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/auth')) {
+    return next();
+  }
+
   res.sendFile(path.join(distPath, 'index.html'));
 });
   app.use(errorHandler);
