@@ -2,7 +2,8 @@ import { configDotenv } from "dotenv";
 import bcrypt from "bcrypt";
 
 import crypto from "crypto";
-
+import fs from 'fs';
+import path from 'path';
 import {
   asyncHandler,
   checkNumber,
@@ -1118,7 +1119,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     temple_id: user_type === "counsellor" ? ["required"] : [],
     user_type: ["required"],
     google_id: ["required"],
-    counsellor_id:["required"] ,
+    // counsellor_id:["required"] ,
   });
   let final_temple_id, finally_counsller_id;
 
@@ -2112,5 +2113,34 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       message: "Error fetching content list"
     });
 
+  }
+});
+export const downloadErrorLog = asyncHandler(async (req, resp) => {
+  try {
+    const logFile = path.join(process.cwd(), 'error.log');
+
+    // Check if file exists
+    if (!fs.existsSync(logFile)) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["error.log file not found"]
+      });
+    }
+
+    // Download file
+    resp.setHeader('Content-Disposition', 'attachment; filename="error.log"');
+    resp.setHeader('Content-Type', 'text/plain');
+
+    const fileStream = fs.createReadStream(logFile);
+    fileStream.pipe(resp);
+
+  } catch (error) {
+    console.error("Error downloading log file:", error);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Error downloading log file"]
+    });
   }
 });
