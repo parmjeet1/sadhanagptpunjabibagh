@@ -2227,7 +2227,7 @@ export const addContent = asyncHandler(async (req, resp) => {
     if (!isValid) {
         return resp.json({ status: 0, code: 422, message: errors });
     }
-
+console.log("counsellor_id, content_type, content",counsellor_id, content_type, content);
     // 6. Database Insertion
     const contentInsert = await insertRecord(
         "contents",
