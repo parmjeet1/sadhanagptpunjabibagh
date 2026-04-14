@@ -96,26 +96,12 @@ app.use('/api', Routes);
 
 
 
-// start react
- 
-const distPath = path.join(__dirname, 'dist');
-
-console.log("Serving static files from:", distPath);
-
-// 2. Serve the static assets
-app.use(express.static(distPath));
-
-// 3. The Catch-all route (Simplified)
-// Use '*' or '/*' - this should work fine now that the path is local
-app.get('*', (req, res) => {
-    const indexPath = path.join(distPath, 'index.html');
-    
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.status(404).send("Frontend build (index.html) not found inside " + distPath);
-    }
-});
+// start react git
+  
+    app.use(express.static(path.join(__dirname, 'dist')));
+  app.use((req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
 /// end react 
 app.use(errorHandler);
 const server = http.createServer(app);
