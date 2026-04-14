@@ -693,6 +693,95 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
     });
   }
 });
+export const suCounslorList = asyncHandler(async (req, resp) => {
+  try {
+    const { user_id } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+      user_id: ["required"],
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const [sub_counselor_list] = await db.execute(
+      `SELECT 
+        u.user_id,
+        u.name,
+        
+        uc.counsllor_type
+      FROM users u 
+      JOIN user_counsellors uc ON uc.user_id = u.user_id
+      WHERE uc.counsller_id = ?
+      AND u.user_type = 'counsellor'`,
+      [user_id]
+    );
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Counselor list fetched successfully!"],
+      data: sub_counselor_list,
+      total: sub_counselor_list.length,
+    });
+
+  } catch (error) {
+    console.error("Error fetching counselor list:", error);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: "Error fetching counselor list",
+    });
+  }
+});
+export const subCounslorCenterlist = asyncHandler(async (req, resp) => {
+  try {
+    const {
+      page_no = 1,
+      user_id,
+      sub_counsellor_id,
+      search_text = "",
+      rowSelected,
+    } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+      page_no: ["required"],
+      sub_counsellor_id: ["required"],
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const params = {
+      tableName: "center_list cl",
+      columns: `cl.id, cl.name, cl.city, cl.counsller_id`,
+      sortColumn: "cl.created_at",
+      sortOrder: "DESC",
+      page_no,
+      limit: rowSelected || 10,
+      liveSearchFields: ["cl.name"],
+      liveSearchTexts: [search_text],
+      whereField: ["cl.counsller_id"],
+      whereValue: [sub_counsellor_id],
+      whereOperator: ["="],
+    };
+
+    const result = await getPaginatedData(params);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Center list fetched successfully!"],
+      data: result.data,
+      total_page: result.totalPage,
+      total: result.total,
+    });
+
+  } catch (error) {
+    console.error("Error fetching center list:", error);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: "Error fetching center list",
+    });
+  }
+});
 export const studentsadhnalist = asyncHandler(async (req, resp) => {
   try {
 

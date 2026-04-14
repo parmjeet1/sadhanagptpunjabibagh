@@ -5,7 +5,7 @@ import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
 import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor, contentListStudent, downloadErrorLog} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist, subCounslorCenterlist, suCounslorList } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
 
 const router = Router();
@@ -89,6 +89,7 @@ const authzAndAuthRoutes = [
 
     {method: 'get',     path: '/student-list',                  handler: studentlist,           role: "counsellor"},
 
+
     {method: 'get',     path: '/student-sadhana-list',       handler: studentsadhnalist,        role:"counsellor"},// not completed
     {method: 'get',     path: '/student-sadhana-details',       handler: studentActivityDetail, role: "counsellor"},// not completed
     {method: 'get',     path: '/download-user-report',       handler: downloadUserReport, role: "counsellor"},// not completed
@@ -107,8 +108,10 @@ const authzAndAuthRoutes = [
     {method: 'post',     path: '/assign-student-center-label',handler: bulkAssignStudents,role: "counsellor"},
     {method: 'get', path: '/student-sadhana-report',            handler: sadhanReportlist,role: "counsellor"},// 
     {method: 'post',    path: '/add-new-content',                handler: addContent,role: "counsellor"},
-    {method: 'post',    path: '/content-list-counslor',                handler: addContent,role: "counsellor"},
 
+    {method: 'get',     path: '/sub-counsellor-list',                  handler: suCounslorList,           role: "counsellor"},
+
+    {method: 'post',    path: '/group-list-sub-counslor',                handler: subCounslorCenterlist,role: "counsellor"},
 
         
         // {method: 'get', path: '/chart-details', handler: chartdetail},
