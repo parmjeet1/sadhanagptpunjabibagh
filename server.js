@@ -96,7 +96,7 @@
 
   app.use(express.static('/home/ubuntu/dist'));
 
-  app.get('*', (req, res) => {
+  app.get(/(.*)/, (req, res) => {
     res.sendFile('/home/ubuntu/dist/index.html');
   });
   app.use(errorHandler);
