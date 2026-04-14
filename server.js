@@ -95,16 +95,19 @@
   app.use('/api', Routes);
 const distPath = path.resolve(__dirname, '..', 'dist');
 console.log("Serving static files from:", distPath);
- app.use(express.static(path.join(__dirname, '..', 'dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  });
-  app.use(errorHandler);
-  const server = http.createServer(app);
-  server.listen(PORT,'0.0.0.0', () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-  });
+ 
+  app.use(express.static(distPath));
 
+app.get('*', (req, res) => {
+    const indexPath = path.join(distPath, 'index.html');
+    
+    // Check if file exists before sending to avoid crashing/looping
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("Frontend build (index.html) not found in " + distPath);
+    }
+});
 
 
   // for 12 pm every day '0 12 * * *
