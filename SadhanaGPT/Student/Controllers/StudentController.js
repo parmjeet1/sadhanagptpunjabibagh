@@ -928,13 +928,23 @@ console.log("request", request);
       message: errors,
     });
 
+  // const [counsellor_list] = await db.execute(
+  //   `SELECT user_id, name
+  //        FROM users
+  //        WHERE  user_type = ?
+  //        AND name LIKE ?
+  //        OR email LIKE ?
+  //        AND status = 1`,
+  //   [ "counsellor",search_text,search_text],
+  // );
   const [counsellor_list] = await db.execute(
-    `SELECT user_id, name
-         FROM users
-         WHERE  user_type = ?
-         AND status = 1`,
-    [ "counsellor"],
-  );
+  `SELECT user_id, name
+   FROM users
+   WHERE user_type = ?
+   AND status = 1
+   AND (name LIKE ? OR email LIKE ?)`,
+  ["counsellor", `%${search_text}%`, `%${search_text}%`],
+);
 
   if (!counsellor_list || counsellor_list.length === 0) {
     return resp.json({
@@ -1030,6 +1040,7 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
     {
       user_id: ["required"],
       counsller_id: ["required"],
+      
     }
   );
 
@@ -1110,6 +1121,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
   const { name,email, mobile, temple_id,user_type, counsellor_id='U000000002', added_from = "",device_name = "",
     google_id,
     profile,
+    birthday
   } = req.body;
 
   const { isValid, errors } = validateFields(req.body, {
@@ -1119,7 +1131,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     temple_id: user_type === "counsellor" ? ["required"] : [],
     user_type: ["required"],
     google_id: ["required"],
-    // counsellor_id:["required"] ,
+    birthday: ["required"],
   });
   let final_temple_id, finally_counsller_id;
 
@@ -1204,7 +1216,8 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     device_name,
     access_token,
     google_id,
-    profile
+    profile,
+    birthday
   );
   return resp.json(result);
 });
@@ -1221,6 +1234,7 @@ const registerUser = async (
   access_token,
   google_id,
   profile,
+  birthday
 ) => {
   const registration = await insertRecord(
     "users",
@@ -1235,7 +1249,8 @@ const registerUser = async (
       "device_name",
       "access_token",
       "google_id",
-      "profile"
+      "profile",
+      "birthday"
     ],
     [
       email,
@@ -1249,6 +1264,7 @@ const registerUser = async (
       access_token,
       google_id,
       profile,
+      birthday
     ],
   );
 
