@@ -104,15 +104,8 @@ app.use('/api', Routes);
 
     app.use(express.static(distPath));
 
-  app.get(/.*/, (req, res) => {
-    const indexPath = path.join(distPath, 'index.html');
-    
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        // If this hits, the path exists but index.html is missing
-        res.status(404).send("Frontend build (index.html) not found in " + distPath);
-    }
+app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
 });
 
 /// end react 
