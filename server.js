@@ -93,11 +93,11 @@
 
 
   app.use('/api', Routes);
-
-  app.use(express.static('/home/ubuntu/dist'));
-
-  app.get(/(.*)/, (req, res) => {
-    res.sendFile('/home/ubuntu/dist/index.html');
+const distPath = path.resolve(__dirname, '..', 'dist');
+console.log("Serving static files from:", distPath);
+ app.use(express.static(path.join(__dirname, '..', 'dist')));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'dist', 'index.html'));
   });
   app.use(errorHandler);
   const server = http.createServer(app);
