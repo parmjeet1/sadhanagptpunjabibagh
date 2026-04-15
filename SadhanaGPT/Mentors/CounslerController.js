@@ -750,7 +750,7 @@ export const subCounslorCenterlist = asyncHandler(async (req, resp) => {
 
     const params = {
       tableName: "center_list cl",
-      columns: `cl.id, cl.name, cl.city, cl.counsller_id`,
+      columns: `(select count(id) from users u where u.center_id=cl.center_id) as total_student, cl.center_id, cl.name, cl.city, cl.counsller_id`,
       sortColumn: "cl.created_at",
       sortOrder: "DESC",
       page_no,
@@ -1504,51 +1504,327 @@ export const aiReport = asyncHandler(async (req, resp) => {
     resp.json({ status: 0, message: "Server error" });
   }
 });
-export const getSadhanaAIAnalysis = async (report) => {
+export const bulkaiReport = asyncHandler(async (req, resp) => {
   try {
-   const url="https://api.openai.com/v1/chat/completions";
-   console.log("process.env.OPENAI_API_KEY", process.env.OPENAI_API_KEY);
-    const response = await axios.post(
-      url,
-      {
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `
-  You are a sādhana analytics assistant.
-    Analyze student sādhana logs and return a MARKDOWN TABLE.
+    const { user_id,student_ids, date_from, date_to } = mergeParam(req);
 
-  Columns:
-    Date | Wake-up | Chanting Rounds | Reading (min) | Hearing (min) | Remarks
-`
-          },
-          {
-            role: "user",
-            content: JSON.stringify(report)
-          }
-        ],
-        max_tokens: 500
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
+    // 1️⃣ Validate student IDs (expecting an array of IDs like: ["U0000001", "U0000002"])
+    let parsedStudentIds = student_ids;
+    if (typeof student_ids === 'string') {
+        // If it comes through as a stringified array from frontend
+        parsedStudentIds = JSON.parse(student_ids);
+    }
+
+    if (!parsedStudentIds || !Array.isArray(parsedStudentIds) || parsedStudentIds.length === 0) {
+      return resp.json({ status: 0, message: "No students provided" });
+    }
+
+    /* --------------------------
+       2️⃣ Students Info (Multiple)
+    ---------------------------*/
+    // Create dynamic question marks like "?, ?, ?" for the IN clause
+    const placeholders = parsedStudentIds.map(() => '?').join(',');
+
+    const [students] = await db.execute(
+      `SELECT 
+         u.user_id, 
+         u.name, 
+         DATE_FORMAT(u.created_at, '%Y-%m-%d') AS created_at,
+         c.name AS center_name,
+         l.name AS label_name
+       FROM users u
+       LEFT JOIN center_list c ON u.center_id = c.center_id
+       LEFT JOIN labels_list l ON u.label_id = l.id
+       WHERE u.user_id IN (${placeholders})`,
+      [...parsedStudentIds]
     );
 
-    
+    if (!students || students.length === 0) {
+      return resp.json({ status: 0, message: "No valid students found" });
+    }
 
-    const data = await response.json();
+    // Set up a structured map for fast lookup
+    const studentDataMap = {};
+    students.forEach(s => {
+      studentDataMap[s.user_id] = {
+        student: {
+          user_id: s.user_id,
+          name: s.name,
+          lable_name: s.label_name,
+          center_name: s.center_name,
+          joined_on: s.created_at
+        },
+        dailyMap: {} // Map to hold dates for this specific student
+      };
+    });
 
-    return data?.choices?.[0]?.message?.content || "AI analysis unavailable";
+    /* --------------------------
+       3️⃣ Activity Records (Multiple)
+    ---------------------------*/
+    const [rows] = await db.execute(
+      `SELECT
+         dr.user_id,
+        dr.activity_date,
+        dr.activity_id,
+        fa.name as activity_name,
+        dr.count
+       
+      FROM daily_report dr
+      LEFT JOIN fix_activities fa 
+      ON fa.activity_id = dr.activity_id
+      WHERE dr.user_id IN (${placeholders})
+      AND dr.activity_date BETWEEN ? AND ?
+      ORDER BY dr.activity_date`,
+      [...parsedStudentIds, date_from, date_to]
+    );
+
+    /* --------------------------
+       4️⃣ Convert to nested JSON structure
+    ---------------------------*/
+    rows.forEach(r => {
+      // Ensure safe parsing of dates
+      const date = new Date(r.activity_date).toISOString().split("T")[0];
+      const userId = r.user_id;
+
+      if (!studentDataMap[userId]) return;
+
+      if (!studentDataMap[userId].dailyMap[date]) {
+        studentDataMap[userId].dailyMap[date] = {
+          date: date,
+          activities: []
+        };
+      }
+
+      studentDataMap[userId].dailyMap[date].activities.push({
+        activity_id: r.activity_id,
+        activity_name: r.activity_name,
+        count: r.count,
+        unit: r.unit
+      });
+    });
+
+    /* --------------------------
+       5️⃣ Final JSON for AI
+    ---------------------------*/
+    // Extract everything into a clean array
+    const students_report = Object.values(studentDataMap).map(s => {
+      return {
+        student: s.student,
+        daily_report: Object.values(s.dailyMap)
+      };
+    });
+
+    const report = {
+      report_period: {
+        from_date: date_from,
+        to_date: date_to
+      },
+      students_report
+    };
+
+    // const aiReport = await getSadhanaAIAnalysis(report)
+    // console.log("aiReport", aiReport);
+
+    return resp.json({
+      status: 1,
+      data: report
+    });
 
   } catch (error) {
-    // console.error("AI Error:", error);
-    return "AI analysis failed";
+    console.error(error);
+    resp.json({ status: 0, message: "Server error" });
   }
-};
+});
+
+export const studentDetails = asyncHandler(async (req, res) => {
+  const { user_id, student_id, start_date, end_date, filter = "7days" } = mergeParam(req);
+
+  // 1: Required validation for both IDs
+  const { isValid, errors } = validateFields(mergeParam(req), {
+    user_id: ["required"],
+    student_id: ["required"]
+  });
+
+  if (!isValid) {
+    return res.json({ status: 0, code: 422, message: errors });
+  }
+
+  // 2: Fix the SQL syntax error (added `=`)
+  const [students] = await db.execute(
+      `SELECT 
+         u.user_id, 
+         u.birthday,
+         u.email,
+         u.name, 
+         DATE_FORMAT(u.created_at, '%Y-%m-%d') AS created_at,
+         c.name AS center_name,
+         l.name AS label_name
+       FROM users u
+       LEFT JOIN center_list c ON u.center_id = c.center_id
+       LEFT JOIN labels_list l ON u.label_id = l.id
+       WHERE u.user_id = ?`, 
+      [student_id]
+  );
+
+  // Failsafe in case student doesn't exist
+  if (!students || students.length === 0) {
+    return res.json({ status: 0, code: 404, message: "Student not found" });
+  }
+
+  /* ---------------------------
+     DATE FILTER LOGIC
+  ----------------------------*/
+  let start_formatted_date;
+  let end_formatted_date;
+
+  const today_moment = moment();
+
+  switch (filter) {
+    case "30days":
+      end_formatted_date = today_moment.format("YYYY-MM-DD");
+      start_formatted_date = today_moment.clone().subtract(29, "days").format("YYYY-MM-DD");
+      break;
+
+    case "custom":
+      start_formatted_date = moment(start_date).format("YYYY-MM-DD");
+      end_formatted_date = moment(end_date).format("YYYY-MM-DD");
+      break;
+
+    case "7days":
+    default:
+      end_formatted_date = today_moment.format("YYYY-MM-DD");
+      start_formatted_date = today_moment.clone().subtract(6, "days").format("YYYY-MM-DD");
+  }
+
+  const today = moment().format("YYYY-MM-DD");
+  if (moment(end_formatted_date).isAfter(today)) {
+    end_formatted_date = today;
+  }
+
+  /* ---------------------------
+     GENERATE DATE RANGE ARRAY
+  ----------------------------*/
+  let dates = [];
+  let current = moment(start_formatted_date);
+
+  while (current.isSameOrBefore(end_formatted_date)) {
+    dates.push(current.format("YYYY-MM-DD"));
+    current.add(1, "days");
+  }
+
+  /* ---------------------------
+     FETCH DAILY ACTIVITY DATA
+  ----------------------------*/
+  const [dailyActivityData] = await db.execute(
+    `
+    SELECT 
+      dr.activity_id,
+      DATE_FORMAT(dr.activity_date,'%Y-%m-%d') as activity_date,
+      dr.count
+    FROM daily_report dr
+    WHERE dr.user_id = ?
+    AND DATE(dr.activity_date) BETWEEN ? AND ?
+    ORDER BY dr.activity_date ASC
+    `,
+    [student_id, start_formatted_date, end_formatted_date]
+  );
+
+  const activityMap = {};
+
+  dailyActivityData.forEach((item) => {
+    if (!activityMap[item.activity_id]) {
+      activityMap[item.activity_id] = {};
+    }
+    activityMap[item.activity_id][item.activity_date] = item.count;
+  });
+
+  /* ---------------------------
+     FETCH ACTIVITY SUMMARY
+  ----------------------------*/
+  const [student_data] = await db.execute(
+    `
+    SELECT
+      CASE 
+        WHEN fa.activity_type IN ('numb','min')
+          THEN ROUND(AVG(CAST(dr.count AS DECIMAL(10,2))),2)
+
+        WHEN fa.activity_type = 'time'
+          THEN SEC_TO_TIME(AVG(TIME_TO_SEC(dr.count)))
+
+        ELSE NULL
+      END AS average_value,
+
+      fa.activity_id,
+      fa.name AS activity_name,
+      fa.description,
+      fa.unit,
+      fa.activity_type,
+
+      COUNT(dr.id) AS attendance_count
+
+    FROM fix_activities fa
+    LEFT JOIN daily_report dr 
+      ON dr.activity_id = fa.activity_id 
+      AND dr.user_id = ?
+    WHERE fa.user_id = ?
+    GROUP BY
+      fa.activity_id,
+      fa.name,
+      fa.description,
+      fa.unit,
+      fa.activity_type
+    `,
+    [student_id, student_id] 
+  );
+
+  /* ---------------------------
+     BUILD FINAL RESPONSE
+  ----------------------------*/
+  const colors = ["#1a73e8", "#20c997", "#f59f00", "#e64980"];
+
+  const activities_analytics = student_data.map((activity, index) => {
+    const daily_data = dates.map((date) => ({
+      activity_date: date,
+      count: activityMap?.[activity.activity_id]?.[date] || 0,
+    }));
+
+    /* -------- Trend Logic -------- */
+    // Note: Trend math works well for numbers, it might be inaccurate for Time ('H:M:S') strings unless parsed!
+    const last = daily_data[daily_data.length - 1]?.count || 0;
+    const prev = daily_data[daily_data.length - 2]?.count || 0;
+
+    let trend = "Stable";
+    if (last > prev) trend = "+";
+    else if (last < prev) trend = "-";
+
+    let label = "";
+    if (activity.activity_type === "time") label = "Avg. Time";
+    else if (activity.unit === "min") label = "Avg. Minutes";
+    else label = "Avg. Count";
+
+    return {
+      activity_id: activity.activity_id,
+      name: activity.activity_name,
+      value: activity.average_value,
+      label,
+      trend,
+      color: colors[index % colors.length],
+      daily_data,
+    };
+  });
+
+  /* ---------------------------
+     FINAL RESPONSE
+  ----------------------------*/
+  return res.json({
+    status: 1,
+    code: 200,
+    data: {
+      student: students[0],  // 3: Important! We return the student details here
+      activities_analytics,
+    },
+  });
+});
 
 export const downloadUserReport = asyncHandler(async (req, res) => {
   const { user_id, format } = req.query;
@@ -1748,6 +2024,7 @@ export const CustomNotification = asyncHandler(async (req, res) => {
 
   const { student_id, heading, description,user_id  } = req.body;
   // const created_by = req.user?.user_id 
+  console.log(req.body)
 
   const { isValid, errors } = validateFields(mergeParam(req), {
     student_id: ["required"],

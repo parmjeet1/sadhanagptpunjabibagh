@@ -3,9 +3,9 @@ import { Router } from "express";
 
 import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor, contentListStudent, downloadErrorLog} from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor, contentListStudent, downloadErrorLog, verifyCounsellor} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentlist, studentsadhnalist, subCounslorCenterlist, suCounslorList } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentsadhnalist, subCounslorCenterlist, suCounslorList } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
 
 const router = Router();
@@ -23,6 +23,8 @@ const authzAndAuthRoutes = [
             {method: 'post',    path: '/logout',        handler: logout},
              {method: 'get',         path: '/counsellor-list',           handler: listCounsellor ,role: "student"},  
             
+             {method: 'post',         path: '/verify-counsellor',           handler: verifyCounsellor ,role: "student"},  
+
 ];
     authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     const middlewares = [];
@@ -40,8 +42,7 @@ const authzAndAuthRoutes = [
         {method: 'post',        path: '/update-student-profile',    handler: updateStudentDetails ,role: "student"},
         {method: 'post',        path: '/add-counsllor',    handler: addCounsellor ,role: "student"},
        {method: 'get',        path: '/student-notification-list',    handler: UsernotificationList ,role: "student"},
-        //counsellor apis
-
+        
         {method: 'get', path: '/user-profile',                     handler: userProfile ,role: "student"},
         
         {method: 'post', path: '/edit-profile',                     handler: editProfile ,role: "student"},
@@ -85,9 +86,11 @@ const authzAndAuthRoutes = [
     {method: 'post',     path: '/edit-lable',                  handler: editLable, role: "counsellor"},
     {method: 'post',  path: '/delete-lable',                handler: deleteLable,             role: "counsellor"},
     
-    {method: 'post',    path: '/bulk-assign-label',           handler: bulkAssignLabel,         role: "counsellor"},
+    
 
     {method: 'get',     path: '/student-list',                  handler: studentlist,           role: "counsellor"},
+
+    {method: 'get',     path: '/student-details',                  handler: studentDetails,           role: "counsellor"},
 
 
     {method: 'get',     path: '/student-sadhana-list',       handler: studentsadhnalist,        role:"counsellor"},// not completed
@@ -98,21 +101,23 @@ const authzAndAuthRoutes = [
 // avtivtry-list is pending for select box
 
     
+    {method: 'post',     path: '/bulk-ai-report',       handler: bulkaiReport,       role: "counsellor"},// not completed
+
     {method: 'post',     path: '/ai-report',       handler: aiReport,       role: "counsellor"},// not completed
     
     {method: 'get',     path: '/group-list',                   handler: centerlist, role: "counsellor"},
     {method: 'post',    path: '/add-new-group',                handler: addCenter,role: "counsellor"},
     {method: 'post',    path: '/edit-center',                   handler: editCenter,role: "counsellor"},
     {method: 'delete',  path: '/delete-center',                 handler: deleteCenter,role: "counsellor"},
-    {method: 'delete',  path: '/assign-student-to-center',      handler: assignStudentToCenter,role: "counsellor"},
-    {method: 'post',     path: '/assign-student-center-label',handler: bulkAssignStudents,role: "counsellor"},
+
     {method: 'get', path: '/student-sadhana-report',            handler: sadhanReportlist,role: "counsellor"},// 
     {method: 'post',    path: '/add-new-content',                handler: addContent,role: "counsellor"},
 
     {method: 'get',     path: '/sub-counsellor-list',                  handler: suCounslorList,           role: "counsellor"},
 
-    {method: 'post',    path: '/group-list-sub-counslor',                handler: subCounslorCenterlist,role: "counsellor"},
-
+    {method: 'get',    path: '/group-list-sub-counslor',                handler: subCounslorCenterlist,role: "counsellor"},
+   
+    {method: 'post',     path: '/assign-student-center-label',handler: bulkAssignStudents,role: "counsellor"},
         
         // {method: 'get', path: '/chart-details', handler: chartdetail},
         // {method: 'get', path: '/user-activity-details', handler: activitydetail},

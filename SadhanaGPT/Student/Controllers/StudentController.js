@@ -7,6 +7,7 @@ import path from 'path';
 import {
   asyncHandler,
   checkNumber,
+  formatDateTimeInQuery,
   generateOTP,
   mergeParam,
 } from "../../../utils/utils.js";
@@ -961,6 +962,45 @@ console.log("request", request);
     message: ["Counsellor list fetched successfully"],
   });
 });
+export const verifyCounsellor = asyncHandler(async (req, resp) => {
+  const request = mergeParam(req);
+
+  const { user_id,counsellor_id } = request;
+
+  // Basic validation
+  if (!counsellor_id) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: ["counsellor_id is required"],
+    });
+  }
+
+  // Check user exists
+  const [rows] = await db.execute(
+    `SELECT user_id, name, email 
+     FROM users 
+     WHERE user_id = ? 
+     AND user_type = 'counsellor'
+     AND status = 1`,
+    [counsellor_id]
+  );
+
+  if (!rows || rows.length === 0) {
+    return resp.json({
+      status: 0,
+      code: 404,
+      message: ["Counsllor Refral not applied"],
+    });
+  }
+
+  return resp.json({
+    status: 1,
+    code: 200,
+    data: rows[0],
+    message: ["Counsellor verified successfully"],
+  });
+});
 export const updateStudentDetails = asyncHandler(async (req, resp) => {
   const data = mergeParam(req);
 
@@ -1116,7 +1156,7 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
   });
 });
 
-export const onBoarding = asyncHandler(async (req, resp) => {
+export const oldonBoarding = asyncHandler(async (req, resp) => {
   // here consler email will be ask form studnet ,
   const { name,email, mobile, temple_id,user_type, counsellor_id='U000000002', added_from = "",device_name = "",
     google_id,
@@ -1177,11 +1217,12 @@ export const onBoarding = asyncHandler(async (req, resp) => {
   }
   switch (user_type) {
     case "student":
+     
       if (!counsellor_id) {
         return resp.json({
           status: 0,
           code: 422,
-          message: ["Counsellor ID required for student"],
+          message: ["Counsellor  required for student"],
         });
       }
       const counsellor = await queryDB(
@@ -1193,6 +1234,144 @@ export const onBoarding = asyncHandler(async (req, resp) => {
       finally_counsller_id = counsellor_id;
 
       break;
+    case "counsellor":
+      finally_counsller_id = null;
+      final_temple_id = temple_id;
+      break;
+    default:
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: ["Invalid user type"],
+      });
+  }
+
+  const result = await registerUser(
+    email,
+    name,
+    mobile,
+    final_temple_id,
+    user_type,
+    finally_counsller_id,
+    added_from,
+    device_name,
+    access_token,
+    google_id,
+    profile,
+    birthday
+  );
+  return resp.json(result);
+});
+export const onBoarding = asyncHandler(async (req, resp) => {
+  // here consler email will be ask form studnet ,
+  const { name,email, mobile, temple_id,user_type, counsellor_id='U000000002', added_from = "",device_name = "",
+    google_id,
+    profile,
+    birthday,
+    new_counsellor_email
+  } = req.body;
+
+  const { isValid, errors } = validateFields(req.body, {
+    email: ["required"],
+    name: ["required"],
+    mobile: ["required"],
+    temple_id: user_type === "counsellor" ? ["required"] : [],
+    user_type: ["required"],
+    google_id: ["required"],
+    birthday: ["required"],
+  });
+  let final_temple_id, finally_counsller_id;
+
+  if (!isValid) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: errors,
+    });
+  }
+
+  const isExist = await queryDB(
+    `SELECT profile, access_token,user_id,email,mobile,temple_id,user_type, (SELECT counsller_id FROM user_counsellors WHERE user_id = users.user_id) AS counsller_id FROM users WHERE google_id = ?`,
+    [google_id],
+  );
+  const access_token = crypto.randomBytes(12).toString("hex");
+
+  if (isExist) {
+    await updateRecord(
+      "users",
+      { access_token, profile },
+      ["google_id"],
+      [google_id],
+    );
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      data: {
+        user_id:isExist.user_id,
+        email: isExist.email,
+        name: isExist.name,
+        mobile: isExist.mobile,
+        access_token: isExist.access_token,
+        temple_id: isExist.temple_id,
+        user_type: isExist.user_type,
+        counsller_id: isExist.counsller_id,
+        profile:isExist.profile ? isExist.profile : process.env.IMAGE_UPLOAD_PATH + "default_profile.png",
+      
+      },
+      message: ["User registred successfully"],
+    });
+  }
+  switch (user_type) {
+    case "student":
+  // CASE 1: Student selected an existing counsellor from dropdown
+  if (counsellor_id) {
+    const counsellor = await queryDB(
+      `SELECT temple_id FROM users WHERE user_id = ? limit 1`,
+      [counsellor_id]
+    );
+    final_temple_id = counsellor.temple_id;
+    finally_counsller_id = counsellor_id;
+  }
+  // CASE 2: Student typed a new counsellor email (not found in DB)
+  else if (new_counsellor_email) {
+    // First check if this email already exists (edge case: someone typed exact email of existing user)
+    const existingCounsellor = await queryDB(
+      `SELECT user_id, temple_id FROM users WHERE email = ? AND user_type = 'counsellor' LIMIT 1`,
+      [new_counsellor_email]
+    );
+
+    if (existingCounsellor) {
+      // Counsellor already exists with this email, just link them
+      final_temple_id = existingCounsellor.temple_id;
+      finally_counsller_id = existingCounsellor.user_id;
+    } else {
+      // Create a new placeholder counsellor
+      const newCounsellorName = new_counsellor_email.split('@')[0]; // Use email prefix as temp name
+      
+      await db.execute(
+        `INSERT INTO users (name, email, user_type, status) VALUES (?,  ?, 'counsellor', 1)`,
+        [newCounsellorName,new_counsellor_email]
+      );
+       const newCounsellor = await queryDB(
+      `SELECT user_id FROM users WHERE email = ? AND user_type = 'counsellor' LIMIT 1`,
+      [new_counsellor_email]
+    );
+
+
+      final_temple_id = null; // New counsellor has no temple yet
+      finally_counsller_id = newCounsellor.user_id;;
+    }
+  }
+  // CASE 3: Neither provided
+  else {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: ["Counsellor required for student"],
+    });
+  }
+  break;
     case "counsellor":
       finally_counsller_id = null;
       final_temple_id = temple_id;
@@ -1530,30 +1709,62 @@ JOIN daily_report dr
 }
 
 export const UsernotificationList = asyncHandler(async (req, resp) => {
-    const { user_id, page_no} = mergeParam(req);
+    // 1. Merge and Validate
+    const params = mergeParam(req);
+    const { user_id } = params;
+    // Default page_no to 1 if missing or 0
+    const page_no = parseInt(params.page_no) || 1;
 
-    const { isValid, errors } = validateFields(mergeParam(req), {
-        user_id: ["required"], page_no: ["required"],
+    const { isValid, errors } = validateFields(params, {
+        user_id: ["required"]
     });
 
-    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+    if (!isValid) {
+        return resp.json({ status: 0, code: 422, message: errors });
+    }
 
+    // 2. Pagination Logic
     const limit = 10;
-    const start = parseInt((page_no * limit) - limit, 10);
+    const start = (page_no - 1) * limit;
 
-    const totalRows = await queryDB(`SELECT COUNT(*) AS total FROM notifications WHERE   panel_to = ? AND receive_id = ?`, ['student', user_id]);
-    const total_page = Math.ceil(totalRows.total / limit) || 1; 
+    // 3. Count Total Notifications (Corrected params consistency)
+    const [totalResult] = await db.execute(
+        `SELECT COUNT(*) AS total FROM notifications WHERE panel_to = 'student' AND receive_id = ?`,
+        [user_id]
+    );
+    const totalCount = totalResult[0]?.total || 0;
+    const total_page = Math.ceil(totalCount / limit) || 1; 
+
+    // 4. Fetch Paginated Notifications
+    const [rows] = await db.execute(
+        `SELECT id, heading, description, module_name, panel_to, panel_from, receive_id, status, created_at, href
+         FROM notifications 
+         WHERE panel_to = 'student' AND receive_id = ? 
+         ORDER BY id DESC 
+         LIMIT ?, ?`,
+        [user_id, String(start), String(limit)]
+    );
+
+    // 5. Mark notifications as read (Corrected 'rider_id' to 'user_id')
+    // Doing this after fetching ensures we capture the current batch
+    if (rows.length > 0) {
+        await db.execute(
+            `UPDATE notifications SET status = '1' 
+             WHERE status = '0' AND panel_to = 'student' AND receive_id = ?`,
+            [user_id]
+        );
+    }
     
-    const [rows] = await db.execute(`SELECT id, heading, description, module_name, panel_to, panel_from, receive_id, status, ${formatDateTimeInQuery(['created_at'])}, href
-        FROM notifications WHERE  panel_to = 'Rider' AND receive_id = ? ORDER BY id DESC LIMIT ${start}, ${parseInt(limit)} 
-    `, [user_id]);
-    
-    const notifications = rows;
-    
-    await db.execute(`UPDATE notifications SET status=? WHERE  status=? AND panel_to=? AND receive_id=?`, ['1', '0', 'student', rider_id]);
-    
-    return resp.json({status:1, code: 200, message: "Notification list fetch successfully", data: notifications, total_page: total_page, totalRows: totalRows.total});
+    return resp.json({
+        status: 1, 
+        code: 200, 
+        message: "Notification list fetched successfully", 
+        data: rows, 
+        total_page: total_page, 
+        totalRows: totalCount
+    });
 });
+
 
 export const oldStudentActivitiesAnalytics = asyncHandler(async (req,res)=>{
  const {  user_id,start_date,end_date,filter='7days'    } = mergeParam(req);
