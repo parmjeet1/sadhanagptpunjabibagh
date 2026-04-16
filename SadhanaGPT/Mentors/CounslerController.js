@@ -381,7 +381,7 @@ export const addCenter = asyncHandler(async (req, resp) => {
     const { isValid, errors } = validateFields(request, {
       user_id: ["required"],
       name: ["required"],
-      city: ["required"],
+      // city: ["required"],
     });
 
     if (!isValid) {
