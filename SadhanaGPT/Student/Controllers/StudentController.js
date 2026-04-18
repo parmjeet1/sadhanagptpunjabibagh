@@ -456,21 +456,22 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
 });
 
 export const addactivity = asyncHandler(async (req, resp) => {
-  const { user_id, name, description='',target, unit, activity_type } = req.body;
+  const { user_id, name, description='',target, unit,status, activity_type } = req.body;
   const { isValid, errors } = validateFields(mergeParam(req), {
     user_id: ["required"],
     name: ["required"],
     // description: ["required"],
     unit: ["required"],
     activity_type: ["required"],
+    status: ["required"],
   });
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
   const insert_data = await insertRecord(
     "fix_activities",
-    ["user_id", "name", "description", "unit", "activity_type"],
-    [user_id, name, description, unit, activity_type],
+    ["user_id", "name", "description", "unit", "activity_type","own_by","target"],
+    [user_id, name, description, unit, activity_type,status,target],
   );
   if (insert_data) {
     return resp.json({
@@ -481,7 +482,7 @@ export const addactivity = asyncHandler(async (req, resp) => {
   }
 });
 export const editActivity = asyncHandler(async (req, resp) => {
-  const { activity_id, user_id, target, name, description='', unit, activity_type } = req.body;
+  const { activity_id, user_id, target, name, description='', unit,status, activity_type } = req.body;
 console.log("mergeParam(req)",mergeParam(req))
   const { isValid, errors } = validateFields(mergeParam(req), {
     activity_id: ["required"],
@@ -493,14 +494,6 @@ console.log("mergeParam(req)",mergeParam(req))
   });
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-console.log("req.body", req.body,"data",name, description, unit, activity_type);
-  // const update_data = await updateRecord(
-  //   "fix_activities",
-  //   ["name", "description", "unit", "activity_type"],
-  //   [name, description, unit, activity_type],
-  //   "activity_id",
-  //   activity_id
-  // );
   const update_data = await updateRecord(
   "fix_activities",
   {
@@ -508,7 +501,8 @@ console.log("req.body", req.body,"data",name, description, unit, activity_type);
     description,
     unit,
     activity_type,
-    target
+    target,
+    own_by: status
   },
   ["activity_id"],
   [activity_id]
@@ -562,7 +556,7 @@ export const listActivities = asyncHandler(async (req, resp) => {
 
   
   const [all_activities] =
-    await db.execute(`SELECT activity_id, name,description,unit,activity_type,target
+    await db.execute(`SELECT own_by as status,activity_id, name,description,unit,activity_type,target
         
          FROM fix_activities where user_id=?`,[user_id]);//
 
@@ -748,9 +742,18 @@ export const detailReport = asyncHandler(async (req, resp) => {
 
     }*/
 });
+function minutesToTime(mins) {
+  const hrs = Math.floor(mins / 60);
+  const minsPart = mins % 60;
+  const period = hrs >= 12 ? 'PM' : 'AM';
+  const hour12 = hrs % 12 === 0 ? 12 : hrs % 12;
+  return `${hour12}:${String(minsPart).padStart(2, '0')} ${period}`;
+}
 
 export const addSadhna = asyncHandler(async (req, resp) => {
+
   const { activity_id, count, activity_date, note, user_id, unit } = req.body;
+  
   const { isValid, errors } = validateFields(req.body, {
     activity_id: ["required"],
     activity_date: ["required"],
@@ -763,17 +766,20 @@ export const addSadhna = asyncHandler(async (req, resp) => {
   const today = moment().format("YYYY-MM-DD");
   const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
   const check_today_sadhana = await queryDB(
-    `SELECT activity_id,note,activity_date,count from daily_report where
-         activity_id=? and DATE(activity_date)=? `,
+    `SELECT fa.activity_type, dr.activity_id,dr.note,dr.activity_date,dr.count from daily_report dr
+    JOIN fix_activities fa ON  fa.activity_id=dr.activity_id 
+    where
+         dr.activity_id=? and DATE(dr.activity_date)=? `,
     [activity_id, final_activity_date],
   );
+  const isTime = check_today_sadhana?.activity_type === 'time';
 
+const storedCount = isTime ? minutesToTime(Number(count)) : count;
   if (check_today_sadhana) {
     
-
     await updateRecord(
       "daily_report",
-      { count, count },
+      { count: storedCount },
       ["activity_id","user_id","activity_date"],
       [activity_id,user_id,final_activity_date],
     );
@@ -789,7 +795,7 @@ export const addSadhna = asyncHandler(async (req, resp) => {
   const insert_data = await insertRecord(
     "daily_report",
     ["user_id", "activity_id", "count",  "activity_date"],
-    [user_id, activity_id,  count,final_activity_date],
+    [user_id, activity_id,  storedCount,final_activity_date],
   );
 
   if (insert_data) {
@@ -1297,12 +1303,12 @@ export const onBoarding = asyncHandler(async (req, resp) => {
   const access_token = crypto.randomBytes(12).toString("hex");
 
   if (isExist) {
-    await updateRecord(
-      "users",
-      { access_token, profile },
-      ["google_id"],
-      [google_id],
-    );
+    // await updateRecord(
+    //   "users",
+    //   { profile },
+    //   ["google_id"],
+    //   [google_id],
+    // );
 
     return resp.json({
       status: 1,
@@ -1416,8 +1422,7 @@ const registerUser = async (
   birthday
 ) => {
   const registration = await insertRecord(
-    "users",
-    [
+    "users",[
       "email",
       "name",
       "mobile",
@@ -2368,6 +2373,44 @@ export const downloadErrorLog = asyncHandler(async (req, resp) => {
       status: 0,
       code: 500,
       message: ["Error downloading log file"]
+    });
+  }
+});
+
+export const submitAppFeedback = asyncHandler(async (req, resp) => {
+  try {
+    const { user_id, name, message } = req.body;
+
+    // Basic Validation
+    if (!user_id || !message || message.trim() === '') {
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: ["user_id and message are required"]
+      });
+    }
+
+    // Securely Insert to database including the new "name" column!
+    const query = `INSERT INTO app_feedback (user_id, name, message, status) VALUES (?, ?, ?, 1)`;
+    
+    // We provide a fallback 'Unknown User' just to ensure it never crashes if the name fails to send
+    const insertResult = await db.execute(query, [user_id, name || 'Unknown User', message.trim()]);
+
+    if (insertResult) {
+      return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Thank you! Your feedback has been received."],
+        data: null
+      });
+    }
+
+  } catch (err) {
+    console.error("App Feedback Error:", err);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
     });
   }
 });

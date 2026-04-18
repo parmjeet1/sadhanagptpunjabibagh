@@ -609,3 +609,11 @@ export function normalizeSchedule(station) {
       open_timing: finalTimings
     };
 }
+
+function minutesToTime(mins) {
+  const hrs = Math.floor(mins / 60);
+  const minsPart = mins % 60;
+  const period = hrs >= 12 ? 'PM' : 'AM';
+  const hour12 = hrs % 12 === 0 ? 12 : hrs % 12;
+  return `${hour12}:${String(minsPart).padStart(2, '0')} ${period}`;
+}

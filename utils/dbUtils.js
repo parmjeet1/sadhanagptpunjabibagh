@@ -56,7 +56,7 @@ export const updateRecord = async (table, updates, whereColumns, whereValues, co
   const sql = `UPDATE ${table} SET ${setClause} WHERE ${whereClause}`;
   try {
     const dbConn = connection ? connection : await db.getConnection();
-console.log("Executing Update:", sql, [...Object.values(updates), ...whereValues]);
+// console.log("Executing Update:", sql, [...Object.values(updates), ...whereValues]);
     const [result] = await dbConn.execute(sql, [
       ...Object.values(updates),
       ...whereValues,
@@ -86,7 +86,7 @@ console.log("Executing Update:", sql, [...Object.values(updates), ...whereValues
  */
 export const queryDB = async (query, params, connection = null) => {
   const dbConn = connection ? connection : await db.getConnection();
-  console.log("Executing Query:", query);
+  // console.log("Executing Query:", query);
   const [[results]] = await dbConn.execute(query, params);
   if (!connection) {
     dbConn.release();

@@ -1,5 +1,6 @@
 import db from "../../config/database.js";
 import { createNotification, pushNotification, sendNotification } from "../../utils/utils.js";
+//  send alert on missing days via antigarviy https://p.ip.fi/8F2H
 
 export const processRewardRules = async () => {
 
@@ -148,3 +149,4 @@ await pushNotification(fcm_token, "hare krsna paramjeet","you are doing good",  
   }
 
 };
+

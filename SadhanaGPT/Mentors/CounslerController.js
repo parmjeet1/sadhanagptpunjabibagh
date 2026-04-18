@@ -376,7 +376,7 @@ export const addCenter = asyncHandler(async (req, resp) => {
   try {
     const request = req.body;
 
-    const { user_id, name, city, temple_id } = request;
+    const { user_id, name, city='', temple_id } = request;
 
     const { isValid, errors } = validateFields(request, {
       user_id: ["required"],
@@ -621,6 +621,7 @@ export const studentlist = asyncHandler(async (req, resp) => {
        label_id,
       search_text = "",
       rowSelected,
+      categroy
     } = mergeParam(req);
 
     const { isValid, errors } = validateFields(mergeParam(req), {
@@ -661,6 +662,9 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
       whereValue: [user_id],
       whereOperator: ["="],
     };
+    // if(categroy=='un-categorized'){
+
+    // }
     if (center_id) {
       
       params.whereField.push("us.center_id");
@@ -1408,6 +1412,78 @@ export const bulkAssignStudents = asyncHandler(async (req, resp) => {
   }
 
 });
+export const NOTReadybulkAssignStudents = asyncHandler(async (req, resp) => {
+  try {
+    const request = req.body;
+    console.log("bulk assign request", request);
+
+    // Note: `user_id` from the request is the Counsellor's ID
+    const { user_id, center_id, label_id, student_ids = [] } = request;
+
+    // validation
+    const { isValid, errors } = validateFields(request, {
+      user_id: ["required"],
+      center_id: ["required"],
+      student_ids: ["required"]
+    });
+
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+    
+    if (!Array.isArray(student_ids) || !student_ids.length) {
+      return resp.json({ status: 0, code: 400, message: ["student_ids must be an array"] });
+    }
+
+    // check center exists
+    const center = await queryDB(
+      `SELECT center_id AS id, counsller_id FROM center_list WHERE center_id = ?`,
+      [center_id]
+    );
+
+    if (!center || (Array.isArray(center) && center.length === 0)) {
+      return resp.json({ status: 0, code: 404, message: ["Center not found"] });
+    }
+
+    // ✅ Build dynamic Bulk Insert/Upsert query
+    let values = [];
+    let placeholders = [];
+    const _label_id = label_id || 0; // Fallback so SQL doesn't crash on NOT NULL
+
+    for (const student_id of student_ids) {
+      placeholders.push('(?, ?, ?, ?)');
+      // Table mapping: user_id (Student), counsellor_id (Request User), center_id, label_id
+      values.push(student_id, user_id, center_id, _label_id);
+    }
+
+    // 👉 Dynamically construct the duplicate update string (ignore label if not provided)
+    let duplicateUpdateStr = "center_id = VALUES(center_id)";
+    if (label_id) {
+       duplicateUpdateStr += ", label_id = VALUES(label_id)";
+    }
+
+    const query = `
+      INSERT INTO user_assignments (user_id, counsellor_id, center_id, label_id)
+      VALUES ${placeholders.join(',')}
+      ON DUPLICATE KEY UPDATE ${duplicateUpdateStr};
+    `;
+
+    // Assuming queryDB or db.execute operates identically:
+    const updateResult = await db.execute(query, values);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Students assigned successfully"],
+      data: {
+        affected_rows: updateResult?.affectedRows || student_ids.length,
+        label_updated: !!label_id
+      }
+    });
+
+  } catch (err) {
+    console.error("Bulk Assign Error:", err);
+    return resp.status(500).json({ status: 0, code: 500, message: ["Internal server error"] });
+  }
+});
 
 
 export const aiReport = asyncHandler(async (req, resp) => {
@@ -1437,16 +1513,18 @@ export const aiReport = asyncHandler(async (req, resp) => {
         dr.activity_date,
         dr.activity_id,
         fa.name as activity_name,
+        fa.own_by
         dr.count,
         dr.unit
       FROM daily_report dr
-      LEFT JOIN fix_activities fa 
-      ON fa.activity_id = dr.activity_id
+      INNER JOIN fix_activities fa 
+      ON fa.activity_id = dr.activity_id and fa.own_by = 0
       WHERE dr.user_id = ?
       AND dr.activity_date BETWEEN ? AND ?
       ORDER BY dr.activity_date`,
       [student_id, date_from, date_to]
     );
+
 
     /* --------------------------
        3️⃣ Convert to JSON format
@@ -1469,7 +1547,8 @@ export const aiReport = asyncHandler(async (req, resp) => {
         activity_id: r.activity_id,
         activity_name: r.activity_name,
         count: r.count,
-        unit: r.unit
+        unit: r.unit,
+        own_by: r.own_by
       });
 
     });
@@ -1561,23 +1640,43 @@ export const bulkaiReport = asyncHandler(async (req, resp) => {
     /* --------------------------
        3️⃣ Activity Records (Multiple)
     ---------------------------*/
+    // const [rows] = await db.execute(
+    //   `SELECT
+    //      dr.user_id,
+    //     dr.activity_date,
+    //     dr.activity_id,
+    //     fa.name as activity_name,
+    //     fa.target,
+    //     dr.count
+       
+    //   FROM daily_report dr
+    //   LEFT JOIN fix_activities fa 
+    //   ON fa.activity_id = dr.activity_id and fa.own_by = 0
+    //   WHERE dr.user_id IN (${placeholders})
+    //   AND dr.activity_date BETWEEN ? AND ?
+    //   ORDER BY dr.activity_date`,
+    //   [...parsedStudentIds, date_from, date_to]
+    // );
     const [rows] = await db.execute(
       `SELECT
          dr.user_id,
-        dr.activity_date,
-        dr.activity_id,
-        fa.name as activity_name,
-        dr.count
+         dr.activity_date,
+         dr.activity_id,
+         fa.name as activity_name,
+         fa.target,
+         dr.count
        
       FROM daily_report dr
-      LEFT JOIN fix_activities fa 
-      ON fa.activity_id = dr.activity_id
+      INNER JOIN fix_activities fa 
+        ON fa.activity_id = dr.activity_id 
+        AND fa.own_by = 0
       WHERE dr.user_id IN (${placeholders})
       AND dr.activity_date BETWEEN ? AND ?
       ORDER BY dr.activity_date`,
       [...parsedStudentIds, date_from, date_to]
-    );
+);
 
+    console.log("activity rows", rows);
     /* --------------------------
        4️⃣ Convert to nested JSON structure
     ---------------------------*/
@@ -1599,7 +1698,9 @@ export const bulkaiReport = asyncHandler(async (req, resp) => {
         activity_id: r.activity_id,
         activity_name: r.activity_name,
         count: r.count,
-        unit: r.unit
+        unit: r.unit,
+        target: r.target,
+        own_by: r.own_by
       });
     });
 
@@ -1741,6 +1842,7 @@ export const studentDetails = asyncHandler(async (req, res) => {
   /* ---------------------------
      FETCH ACTIVITY SUMMARY
   ----------------------------*/
+
   const [student_data] = await db.execute(
     `
     SELECT
@@ -1767,6 +1869,7 @@ export const studentDetails = asyncHandler(async (req, res) => {
       ON dr.activity_id = fa.activity_id 
       AND dr.user_id = ?
     WHERE fa.user_id = ?
+    and fa.own_by=0
     GROUP BY
       fa.activity_id,
       fa.name,

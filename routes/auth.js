@@ -36,7 +36,7 @@ async (req, res) => {
 
     // ✅ Check user in DB
     const user_check = await queryDB(
-      `SELECT u.user_id, u.name, u.email, u.user_type, 
+      `SELECT u.access_token, u.user_id, u.name, u.email, u.user_type, 
       uc.counsller_id as primary_counsller_id FROM users u
       LEFT JOIN user_counsellors uc on u.user_id = uc.user_id AND uc.counsllor_type='primary'
       WHERE u.email = ? `,
@@ -47,12 +47,12 @@ async (req, res) => {
    
     if (user_check) {
 
-      const access_token = crypto.randomBytes(12).toString("hex");
+      // const access_token = crypto.randomBytes(12).toString("hex");
 
-      await db.execute(
-        'UPDATE users SET access_token = ? WHERE email = ?',
-        [access_token, user.email]
-      );
+      // await db.execute(
+      //   'UPDATE users SET access_token = ? WHERE email = ?',
+      //   [access_token, user.email]
+      // );
 
       responseData = {
         status: "existing_user",
@@ -61,7 +61,7 @@ async (req, res) => {
         email: user_check.email,
         user_type: user_check.user_type,
         counsller_id: user_check.counsller_id,
-        access_token
+        access_token: user_check.access_token
       };
 
     } else {
