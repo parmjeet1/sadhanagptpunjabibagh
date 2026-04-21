@@ -684,13 +684,18 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
     const params = {
       tableName: "users us",
       columns: `
-
       (SELECT ll.name 
        FROM user_assignments ua 
        INNER JOIN labels_list ll ON ll.id = ua.label_id 
        WHERE ua.user_id = us.user_id AND ua.counsellor_id = uc.counsller_id 
-       LIMIT 1) as label_name,us.user_id, 
-      (SELECT name from center_list cl where us.center_id=cl.center_id) as center_name,
+       LIMIT 1) as label_name,us.user_id,
+       (SELECT cl.name
+   FROM user_assignments ua
+   INNER JOIN center_list cl ON cl.center_id = ua.center_id
+   WHERE ua.user_id = us.user_id
+     AND ua.counsellor_id = uc.counsller_id
+   LIMIT 1) as center_name 
+ ,
       us.name,us.user_type, us.email, us.mobile, us.fcm_token, us.created_at`,
       joinCondition: "us.user_id = uc.user_id",
       joinTable: "user_counsellors uc",
