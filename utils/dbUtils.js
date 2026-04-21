@@ -175,7 +175,7 @@ export const getPaginatedData = async ({
   // join state st on  msl.state_id = st.state_id
   //  const joinClause = joinTable && joinCondition ? ` JOIN ${joinTable} ON ${joinCondition}` : '';
     let joinClause = '';
-    console.log("Join Reference:", join_reference);
+
     if(join_reference=='for_stuent_list'){
        if (joinTable && joinCondition) {
     joinClause += ` ${typeOfJoin} ${joinTable} ON ${joinCondition}`;

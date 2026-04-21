@@ -18,6 +18,7 @@ import authRoutes from "./routes/auth.js";
 import "./config/passport.js";
 import logger from './logger.js';
 import { processRewardRules } from './SadhanaGPT/Controllers/CronJobController.js';
+import { processInactivityReminders,dispatchWeeklyCounsellorReports } from './SadhanaGPT/cronjobs/Email-notificatiion.js';
 
 
 process.on("unhandledRejection", (reason) => {
@@ -112,7 +113,10 @@ server.listen(PORT,'0.0.0.0', () => {
 
 
 // for 12 pm every day '0 12 * * *
-// cron.schedule('*/1  * * * *', async () => {
-// processRewardRules();
-// });
+cron.schedule('*/1  * * * *', async () => {
+
+// dispatchWeeklyCounsellorReports();  
+// processInactivityReminders();
+  // processRewardRules();
+});
 

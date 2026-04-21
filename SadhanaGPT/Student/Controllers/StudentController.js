@@ -1537,6 +1537,8 @@ export const olduserProfile = asyncHandler(async (req, resp) => {
   const [users] = await db.execute(
     `
     SELECT 
+    u.auto_report_status,
+    u.report_frequency_days,
       u.user_id,
       u.name,
       u.email,

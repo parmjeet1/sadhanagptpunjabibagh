@@ -5,13 +5,16 @@ import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
 import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor, contentListStudent, downloadErrorLog, verifyCounsellor, submitAppFeedback} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentsadhnalist, subCounslorCenterlist, suCounslorList } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
+import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 
 const router = Router();
 
 
 const authzAndAuthRoutes = [
+       {method: 'get',        path: '/send-bulk-email',    handler: sendBulknEmails ,role: "student"},
+
 
              {method: 'post', path: '/logs', handler: downloadErrorLog},
             
@@ -124,6 +127,8 @@ const authzAndAuthRoutes = [
         
         // {method: 'get', path: '/chart-details', handler: chartdetail},
         // {method: 'get', path: '/user-activity-details', handler: activitydetail},
+    {method: 'post',     path: '/toggle-email-report',handler: updateReportSettings,role: "counsellor"},
+
 
         
 

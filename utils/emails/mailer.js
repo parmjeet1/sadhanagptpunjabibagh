@@ -3,16 +3,13 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const transporter = nodemailer.createTransport({
-    host: process.env.MAIL_HOST,
-    port: process.env.MAIL_PORT,
-    secure: process.env.MAIL_PORT == 465,
+    // By using 'service', Nodemailer automatically binds to Gmail's correct
+    // ports and STARTTLS configurations safely behind the scenes!
+    service: 'gmail',  
     auth: {
       user: process.env.MAIL_USERNAME,
       pass: process.env.MAIL_PASSWORD
-    },
-    tls: {
-    rejectUnauthorized: false  // Hostinger sometimes needs this
-  }
+    }
 });
 
 export default transporter;

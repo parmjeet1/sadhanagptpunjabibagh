@@ -17,12 +17,11 @@ import { Parser } from "json2csv";
 import { uploadFiles } from "../../utils/fileUpload.js";
 
 
-export const LableList = asyncHandler(async (req, resp) => {
+export const oldLableList = asyncHandler(async (req, resp) => {
 
-  const request = req.query;
+  const request = mergeParam(req);
   const { user_id, center_id } = request;
 
-  // ✅ Validation
   if (!user_id || !center_id) {
     return resp.json({
       status: 0,
@@ -74,6 +73,66 @@ ORDER BY ll.id DESC;
   }
 
 });
+export const LableList = asyncHandler(async (req, resp) => {
+
+  const request = mergeParam(req);
+  const { user_id, center_id } = request; // NOTE: user_id is the logged-in counsellor
+
+  if (!user_id || !center_id) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: ["user_id and center_id are required"]
+    });
+  }
+
+  try {
+
+    // ✅ Fetch labels mapped to this center & user, but now count students from `user_assignments`
+      const [labels] = await db.execute(
+      `
+      SELECT 
+        ll.id AS label_id,
+        CONCAT(ll.name, ' ', COUNT(ua.user_id)) AS label_name
+      FROM labels_list ll 
+      
+      LEFT JOIN user_assignments ua 
+        ON ua.label_id = ll.id 
+        AND ua.center_id = ll.center_id 
+        AND ua.counsellor_id = ? 
+      WHERE 
+        ll.center_id = ? 
+        AND ll.counsellor_id = ?
+        
+      GROUP BY ll.id, ll.name
+      ORDER BY ll.id DESC;
+      `,
+      [user_id, center_id, user_id]
+    );
+
+
+
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Label list fetched successfully"],
+      data: labels
+    });
+
+  } catch (err) {
+
+    console.log("getLableList error:", err);
+
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"]
+    });
+  }
+
+});
+
 export const addLable = asyncHandler(async (req, resp) => {
 
   const request = req.body;
@@ -110,34 +169,14 @@ export const addLable = asyncHandler(async (req, resp) => {
       // ✅ Create new label
       const labelInsert = await insertRecord(
         "labels_list",
-        ["counsellor_id", "name"],
-        [user_id, lable_name]
+        ["counsellor_id","center_id", "name"],
+        [user_id,center_id, lable_name]
       );
 
       label_id = labelInsert.insertId;
     }
 
-    // ✅ 2. Check if mapping already exists
-    const [existingMapping] = await db.execute(
-      `SELECT id FROM label_centers WHERE label_id = ? AND center_id = ?`,
-      [label_id, center_id]
-    );
-
-    if (existingMapping.length > 0) {
-      return resp.json({
-        status: 0,
-        code: 409,
-        message: ["Label already assigned to this center"]
-      });
-    }
-
-    // ✅ 3. Insert mapping
-    await insertRecord(
-      "label_centers",
-      ["label_id", "center_id"],
-      [label_id, center_id]
-    );
-
+   
     return resp.json({
       status: 1,
       code: 200,
@@ -646,7 +685,11 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
       tableName: "users us",
       columns: `
 
-      (SELECT name from labels_list where id=us.label_id) as label_name,us.user_id, 
+      (SELECT ll.name 
+       FROM user_assignments ua 
+       INNER JOIN labels_list ll ON ll.id = ua.label_id 
+       WHERE ua.user_id = us.user_id AND ua.counsellor_id = uc.counsller_id 
+       LIMIT 1) as label_name,us.user_id, 
       (SELECT name from center_list cl where us.center_id=cl.center_id) as center_name,
       us.name,us.user_type, us.email, us.mobile, us.fcm_token, us.created_at`,
       joinCondition: "us.user_id = uc.user_id",
@@ -662,15 +705,22 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
       whereValue: [user_id],
       whereOperator: ["="],
     };
-    // if(categroy=='un-categorized'){
 
-    // }
-    if (center_id) {
-      
+    if (categroy === 'un-categorized') {
+      // Find students who have NO center assigned (Handles both NULL and 0 gracefully)
+      params.whereField.push("IFNULL(us.center_id, 0)"); 
+      params.whereValue.push(0);
+      params.whereOperator.push("=");
+    } 
+     if (center_id) {
+      // Find students strictly in the requested center
       params.whereField.push("us.center_id");
       params.whereValue.push(center_id);
       params.whereOperator.push("=");
     }
+
+
+    
     if(label_id){
       params.whereField.push("us.label_id");
       params.whereValue.push(label_id);
@@ -1320,7 +1370,7 @@ export const assignStudentToCenter = asyncHandler(async (req, resp) => {
 
 });
 
-export const bulkAssignStudents = asyncHandler(async (req, resp) => {
+export const oldbulkAssignStudents = asyncHandler(async (req, resp) => {
 
   try {
 
@@ -1412,7 +1462,7 @@ export const bulkAssignStudents = asyncHandler(async (req, resp) => {
   }
 
 });
-export const NOTReadybulkAssignStudents = asyncHandler(async (req, resp) => {
+export const bulkAssignStudents = asyncHandler(async (req, resp) => {
   try {
     const request = req.body;
     console.log("bulk assign request", request);
@@ -1465,7 +1515,7 @@ export const NOTReadybulkAssignStudents = asyncHandler(async (req, resp) => {
       VALUES ${placeholders.join(',')}
       ON DUPLICATE KEY UPDATE ${duplicateUpdateStr};
     `;
-
+console.log(query)
     // Assuming queryDB or db.execute operates identically:
     const updateResult = await db.execute(query, values);
 
@@ -1751,21 +1801,42 @@ export const studentDetails = asyncHandler(async (req, res) => {
   }
 
   // 2: Fix the SQL syntax error (added `=`)
+  // const [students] = await db.execute(
+  //     `SELECT 
+  //        u.user_id, 
+  //        u.birthday,
+  //        u.email,
+  //        u.name, 
+  //        DATE_FORMAT(u.created_at, '%Y-%m-%d') AS created_at,
+  //        c.name AS center_name,
+  //        l.name AS label_name
+  //      FROM users u
+  //      LEFT JOIN center_list c ON u.center_id = c.center_id
+  //      LEFT JOIN labels_list l ON u.label_id = l.id
+  //      WHERE u.user_id = ?`, 
+  //     [student_id]
+  // );
+
   const [students] = await db.execute(
-      `SELECT 
-         u.user_id, 
-         u.birthday,
-         u.email,
-         u.name, 
-         DATE_FORMAT(u.created_at, '%Y-%m-%d') AS created_at,
-         c.name AS center_name,
-         l.name AS label_name
-       FROM users u
-       LEFT JOIN center_list c ON u.center_id = c.center_id
-       LEFT JOIN labels_list l ON u.label_id = l.id
-       WHERE u.user_id = ?`, 
-      [student_id]
-  );
+  `SELECT 
+     u.user_id, 
+     u.birthday,
+     u.email,
+     u.name, 
+     DATE_FORMAT(u.created_at, '%Y-%m-%d') AS created_at,
+     c.name AS center_name,
+     l.name AS label_name
+   FROM users u
+
+   LEFT JOIN user_assignments ua ON u.user_id = ua.user_id AND ua.counsellor_id = ?
+   -- 2. Fetch the center and label names from the assignment!
+   LEFT JOIN center_list c ON ua.center_id = c.center_id
+   LEFT JOIN labels_list l ON ua.label_id = l.id
+   
+   WHERE u.user_id = ?`, 
+  [user_id, student_id] 
+);
+
 
   // Failsafe in case student doesn't exist
   if (!students || students.length === 0) {
@@ -2125,13 +2196,13 @@ export const editRewardRules = asyncHandler(async (req, resp) => {
 
 export const CustomNotification = asyncHandler(async (req, res) => {
 
-  const { student_id, heading, description,user_id  } = req.body;
+  const { student_id, heading='', description,user_id  } = req.body;
   // const created_by = req.user?.user_id 
   console.log(req.body)
 
   const { isValid, errors } = validateFields(mergeParam(req), {
     student_id: ["required"],
-    heading: ["required"],
+    // heading: ["required"],
     description: ["required"],
     user_id: ["required"]
   });
@@ -2723,3 +2794,43 @@ console.log("counsellor_id, content_type, content",counsellor_id, content_type, 
         data: { content_id, content }
     });
 });
+export const updateReportSettings = async (req, res) => {
+    try {
+        const { user_id, auto_report_status, report_frequency_days } = req.body;
+        if (!user_id) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "user_id is thoroughly required." 
+            });
+        }
+        // Sanitize inputs (Convert undefined to null so SQL IFNULL handles it elegantly)
+        const statusValue = auto_report_status !== undefined ? Number(auto_report_status) : null;
+        const frequencyValue = report_frequency_days !== undefined ? Number(report_frequency_days) : null;
+        // Perform a safe update using IFNULL. 
+        // If a parameter is skipped by the frontend, the DB keeps its current value intact.
+        const [result] = await db.execute(`
+            UPDATE users 
+            SET 
+                auto_report_status = IFNULL(?, auto_report_status), 
+                report_frequency_days = IFNULL(?, report_frequency_days) 
+            WHERE user_id = ?
+        `, [statusValue, frequencyValue, user_id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "Counsellor not found or no changes were made." 
+            });
+        }
+        return res.status(200).json({
+            status: 1, // Optional: Added to match your React frontend response patterns
+            success: true,
+            message: "Report settings updated successfully."
+        });
+    } catch (error) {
+        console.error("Error updating report settings:", error);
+        return res.status(500).json({ 
+            success: false, 
+            message: "Failed to update report settings." 
+        });
+    }
+};
