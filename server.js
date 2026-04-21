@@ -113,10 +113,17 @@ server.listen(PORT,'0.0.0.0', () => {
 
 
 // for 12 pm every day '0 12 * * *
-cron.schedule('*/1  * * * *', async () => {
+// cron.schedule('*/1  * * * *', async () => {
 
-// dispatchWeeklyCounsellorReports();  
-// processInactivityReminders();
+// // dispatchWeeklyCounsellorReports();  
+// // processInactivityReminders();
+//   // processRewardRules();
+// });
+
+cron.schedule('0 0 * * 6', async () => {
+
+  dispatchWeeklyCounsellorReports();
+  // processInactivityReminders();
   // processRewardRules();
-});
 
+});
