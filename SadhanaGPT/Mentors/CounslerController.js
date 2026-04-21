@@ -712,26 +712,32 @@ DATEDIFF(CURDATE(), DATE(us.created_at)) + 1 AS total_days,
     };
 
     if (categroy === 'un-categorized') {
-      // Find students who have NO center assigned (Handles both NULL and 0 gracefully)
-      params.whereField.push("IFNULL(us.center_id, 0)"); 
-      params.whereValue.push(0);
-      params.whereOperator.push("=");
-    } 
-     if (center_id) {
-      // Find students strictly in the requested center
-      params.whereField.push("us.center_id");
-      params.whereValue.push(center_id);
-      params.whereOperator.push("=");
-    }
+  // Students with NO center assigned in user_assignments for this counsellor
+  params.whereField.push(
+    `IFNULL((SELECT ua.center_id FROM user_assignments ua WHERE ua.user_id = us.user_id AND ua.counsellor_id = uc.counsller_id LIMIT 1), 0)`
+  );
+  params.whereValue.push(0);
+  params.whereOperator.push("=");
+}
+if (center_id) {
+  // Students assigned to a specific center in user_assignments
+  params.whereField.push(
+    `(SELECT ua.center_id FROM user_assignments ua WHERE ua.user_id = us.user_id AND ua.counsellor_id = uc.counsller_id LIMIT 1)`
+  );
+   params.whereValue.push(parseInt(center_id)); // ensure it's an int
 
+  params.whereOperator.push("=");
+}
+if (label_id) {
+  // Students assigned to a specific label in user_assignments
+  params.whereField.push(
+    `(SELECT ua.label_id FROM user_assignments ua WHERE ua.user_id = us.user_id AND ua.counsellor_id = uc.counsller_id LIMIT 1)`
+  );
 
-    
-    if(label_id){
-      params.whereField.push("us.label_id");
-      params.whereValue.push(label_id);
-      params.whereOperator.push("=");
+    params.whereValue.push(parseInt(label_id)); // ensure it's an int
 
-    }
+  params.whereOperator.push("=");
+}
 
     const result = await getPaginatedData(params);
 
