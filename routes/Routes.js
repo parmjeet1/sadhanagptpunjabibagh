@@ -5,7 +5,7 @@ import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
 import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor, contentListStudent, downloadErrorLog, verifyCounsellor, submitAppFeedback} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, bulkAssignLabel, bulkAssignStudents, centerlist, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
 import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 
@@ -128,6 +128,7 @@ const authzAndAuthRoutes = [
         // {method: 'get', path: '/chart-details', handler: chartdetail},
         // {method: 'get', path: '/user-activity-details', handler: activitydetail},
     {method: 'post',     path: '/toggle-email-report',handler: updateReportSettings,role: "counsellor"},
+    { method: 'get', path: '/counsellor-content-list', handler: contentListCounsellor, role: "counsellor" },
 
 
         
@@ -137,7 +138,7 @@ const authzAndAuthRoutes = [
 
     const uploadRules = {
     // 
-        '/add-new-content' : { folder: 'content',    fields: ['image'], maxCount: 2,condition: (req) => req.body?.content_type === 'image' },
+        '/add-new-content' : { folder: 'content',    fields: ['image'], maxCount:1,condition: (req) => req.body?.content_type === 'image' },
     }
     LoggedinRoute.forEach(({ method, path, handler,role }) => {
         const middlewares = [Authorization];  // rateLimit
@@ -145,6 +146,11 @@ const authzAndAuthRoutes = [
         if (role === "counsellor") {
         middlewares.push(checkCounsellor);
         }
+         const rule = uploadRules[path];
+if (rule) {
+    // Add the [] before rule.maxCount
+    middlewares.push(handleFileUpload(rule.folder, rule.fields, [], rule.maxCount));
+}
         
             router[method](path, ...middlewares, handler);
     });

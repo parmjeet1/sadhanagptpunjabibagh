@@ -2,7 +2,6 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-// import { S3Client } from "@aws-sdk/client-s3";
 import dotenv from 'dotenv';
 dotenv.config();
 export const uploadFiles = (req, res, dirName, fileFields, maxFiles = 10, allowedFileTypes = ['png', 'jpeg', 'jpg', 'webp']) => {
@@ -58,66 +57,7 @@ export const uploadFiles = (req, res, dirName, fileFields, maxFiles = 10, allowe
 };
 
 
-export const olduploadFiles = (req, res, dirName, fileFields, maxFiles = 10, allowedFileTypes = ['png', 'jpeg', 'jpg']) => {
-    return new Promise((resolve, reject) => {
 
-        const uploadPath = path.join(process.cwd(), "uploads", dirName);
-
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
-
-        const storage = multer.diskStorage({
-            destination: (req, file, cb) => cb(null, uploadPath),
-            filename: (req, file, cb) => {
-                const ext = path.extname(file.originalname);
-                const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-                cb(null, uniqueName);
-            }
-        });
-
-        const fileFilter = (req, file, cb) => {
-            const fileExtension = path.extname(file.originalname).slice(1).toLowerCase();
-            if (!allowedFileTypes.includes(fileExtension)) {
-                return cb(new Error(`Invalid File Type! Only ${allowedFileTypes.join(', ')}`), false);
-            }
-            cb(null, true);
-        };
-
-        const upload = multer({
-            storage,
-            limits: { fileSize: 10 * 1024 * 1024 },
-            fileFilter,
-        }).fields(fileFields.map(field => ({ name: field, maxCount: maxFiles })));
-
-        upload(req, res, (err) => {
-            if (err) {
-                if (err instanceof multer.MulterError) {
-                    return reject({
-                        field: 'limit',
-                        message: err.code === 'LIMIT_FILE_SIZE'
-                            ? 'File size should not exceed 10 MB.'
-                            : err.message
-                    });
-                }
-                return reject({ field: err.field || 'unknown', message: err.message });
-            }
-
-            // ✅ Attach file_url to each file
-            const result = {};
-            if (req.files) {
-                for (const field of Object.keys(req.files)) {
-                    result[field] = req.files[field].map(file => ({
-                        ...file,
-                        file_url: `/uploads/${dirName}/${file.filename}`
-                    }));
-                }
-            }
-
-            resolve(result);
-        });
-    });
-};
 export const handleFileUpload = (
   dirName,
   fileFields,

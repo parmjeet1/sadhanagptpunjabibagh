@@ -347,12 +347,6 @@ export const logout = asyncHandler(async (req, resp) => {
       message: ["Rider Id is required"],
     });
 
-  const rider = queryDB(
-    `SELECT EXISTS (SELECT 1 FROM users WHERE user_id = ?) AS rider_exists`,
-    [user_id],
-  );
-  if (!rider)
-    return resp.json({ status: 0, code: 400, message: "user ID Invalid!" });
 
   const update = await updateRecord(
     "users",
@@ -1569,6 +1563,8 @@ export const olduserProfile = asyncHandler(async (req, resp) => {
     SELECT 
       uc.counsller_id AS mentor_id,
       usr.name,
+      usr.auto_report_status,
+      usr.report_frequency_days,
      
       usr.profile AS avatar
     FROM user_counsellors uc
@@ -1592,6 +1588,8 @@ export const olduserProfile = asyncHandler(async (req, resp) => {
     code: 200,
     data: {
       user: {
+        auto_report_status:userData.auto_report_status,
+        report_frequency_days: userData.report_frequency_days ,
         name: userData.name,
         email: userData.email,
         mobile: userData.mobile,
@@ -2229,10 +2227,8 @@ export const acontentListStudent = asyncHandler(async (req, resp) => {
   }
 });
 
-
 export const contentListStudent = asyncHandler(async (req, resp) => {
   try {
-
     const {
       page_no = 1,
       user_id,
@@ -2240,9 +2236,7 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       content_type   // optional
     } = mergeParam(req);
 
-    console.log("content_type", content_type);
-
-    // ✅ Validation
+    // ✅ 1. Validation
     const { isValid, errors } = validateFields(mergeParam(req), {
       page_no: ["required"],
       user_id: ["required"]
@@ -2252,11 +2246,14 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       return resp.json({ status: 0, code: 422, message: errors });
     }
 
-    // ✅ Get student
+    // ✅ 2. Get student & their assignment details
+    // We now fetch counsellor_id, center_id (which acts as group_id), and label_id
     const student = await queryDB(
-      `SELECT user_id, name, center_id, label_id 
-       FROM users 
-       WHERE user_id = ?`,
+      `SELECT u.user_id, u.name, ua.counsellor_id, ua.center_id, ua.label_id
+       FROM users u
+       LEFT JOIN user_assignments ua ON u.user_id = ua.user_id
+       WHERE u.user_id = ?
+       LIMIT 1`,
       [user_id]
     );
 
@@ -2268,14 +2265,40 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       });
     }
 
-    // ✅ WHERE conditions
+    // ✅ 3. Build dynamic WHERE conditions
     let whereConditions = `1=1`;
     let paramsArr = [];
 
-    // 👉 Label filter (important logic)
+    // 👉 Filter by Counsellor: Content MUST belong to the student's assigned counsellor
+    if (student.counsellor_id) {
+      whereConditions += ` AND c.counsellor_id = ?`;
+      paramsArr.push(student.counsellor_id);
+    }
+
+    // 👉 Filter by Group/Center: 
+    // Content has NO groups targeted OR it specifically targets the student's center_id
+    if (student.center_id) {
+      whereConditions += ` AND (
+        NOT EXISTS (SELECT 1 FROM content_groups cg WHERE cg.content_id = c.id)
+        OR EXISTS (SELECT 1 FROM content_groups cg WHERE cg.content_id = c.id AND cg.group_id = ?)
+      )`;
+      paramsArr.push(student.center_id);
+    } else {
+      // If student has no center, they only see global content with no groups
+      whereConditions += ` AND NOT EXISTS (SELECT 1 FROM content_groups cg WHERE cg.content_id = c.id)`;
+    }
+
+    // 👉 Filter by Label: 
+    // Content has NO labels targeted OR it specifically targets the student's label_id
     if (student.label_id) {
-      whereConditions += ` AND (cl.label_id = ? OR cl.label_id IS NULL)`;
+      whereConditions += ` AND (
+        NOT EXISTS (SELECT 1 FROM content_labels cl WHERE cl.content_id = c.id)
+        OR EXISTS (SELECT 1 FROM content_labels cl WHERE cl.content_id = c.id AND cl.label_id = ?)
+      )`;
       paramsArr.push(student.label_id);
+    } else {
+      // If student has no label, they only see content with no labels
+      whereConditions += ` AND NOT EXISTS (SELECT 1 FROM content_labels cl WHERE cl.content_id = c.id)`;
     }
 
     // 👉 Content type filter
@@ -2290,19 +2313,18 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       paramsArr.push(`%${search_text}%`);
     }
 
-    // ✅ FIXED: 5 items per page
+    // ✅ 4. Pagination
     const limit = 5;
     const offset = (page_no - 1) * limit;
 
-    // ✅ Main Query
+    // ✅ 5. Main Query
     const query = `
-      SELECT DISTINCT
+      SELECT
         c.id,
         c.content_type,
         c.content,
         c.created_at
       FROM contents c
-      LEFT JOIN content_labels cl ON cl.content_id = c.id
       WHERE ${whereConditions}
       ORDER BY c.created_at DESC
       LIMIT ? OFFSET ?
@@ -2313,12 +2335,11 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       [...paramsArr, parseInt(limit), parseInt(offset)]
     );
 
-    // ✅ Count Query
+    // ✅ 6. Count Query
     const [countResult] = await db.query(
       `
-      SELECT COUNT(DISTINCT c.id) as total
+      SELECT COUNT(c.id) as total
       FROM contents c
-      LEFT JOIN content_labels cl ON cl.content_id = c.id
       WHERE ${whereConditions}
       `,
       paramsArr
@@ -2334,11 +2355,10 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       student,
       data,
       total_page,
-      total
-    });
+      total,
+         });
 
   } catch (error) {
-
     console.error("Error fetching content list:", error);
 
     return resp.status(500).json({
@@ -2346,9 +2366,10 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
       code: 500,
       message: "Error fetching content list"
     });
-
   }
 });
+
+
 export const downloadErrorLog = asyncHandler(async (req, resp) => {
   try {
     const logFile = path.join(process.cwd(), 'error.log');

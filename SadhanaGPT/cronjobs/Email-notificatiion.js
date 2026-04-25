@@ -92,7 +92,7 @@ export const processInactivityReminders = async () => {
 };
 
 
-export const dispatchWeeklyCounsellorReports = async () => {
+export const olddispatchWeeklyCounsellorReports = async () => {
     try {
         console.log("Starting generation of dynamic CSV reports...");
         // 1. Single massive fetch parsing every active counsellor's specific customized window
@@ -100,6 +100,8 @@ export const dispatchWeeklyCounsellorReports = async () => {
             SELECT 
                 uc.counsller_id, 
                 c.email AS counsellor_email,
+                cl.name as center_name,
+                l.name as label_name,
                 c.name AS counsellor_name,
                 c.report_frequency_days,
                 u.name AS student_name,
@@ -110,13 +112,13 @@ export const dispatchWeeklyCounsellorReports = async () => {
             FROM user_counsellors uc
             JOIN users c ON uc.counsller_id = c.user_id
             JOIN users u ON uc.user_id = u.user_id
-            
-            -- Keep as LEFT JOIN but inject custom counsellor window specifically
-            LEFT JOIN daily_report dr 
-                 ON u.user_id = dr.user_id 
-                 AND dr.activity_date >= DATE_SUB(CURDATE(), INTERVAL c.report_frequency_days DAY)
-                 
-            LEFT JOIN fix_activities a ON dr.activity_id = a.activity_id 
+            join user_assignments uas ON uas.user_id = u.user_id
+            JOIN center_list cl ON cl.center_id = uas.center_id
+            LEFT join labels_list l ON l.id = uas.label_id
+            LEFT JOIN daily_report dr ON u.user_id = dr.user_id 
+        AND dr.activity_date >= (CURDATE() - INTERVAL (c.report_frequency_days) DAY)
+         
+            LEFT JOIN fix_activities a ON dr.activity_id = a.activity_id and a.own_by=0 
             
             WHERE c.auto_report_status = 1 
             ORDER BY uc.counsller_id, u.name, dr.activity_date DESC
@@ -132,12 +134,15 @@ export const dispatchWeeklyCounsellorReports = async () => {
                 counsellorGroups[row.counsller_id] = {
                     email: row.counsellor_email,
                     name: row.counsellor_name,
+                    center_name:row.center_name,
+                    label_name:row.label_name,
                     report_days: row.report_frequency_days, // Save their custom frequency
                     data: []
                 };
             }
             counsellorGroups[row.counsller_id].data.push(row);
         });
+        console.log("counsellorGroups",counsellorGroups)
         const activeCounsellors = Object.keys(counsellorGroups);
         console.log(`Sending customized CSV reports to ${activeCounsellors.length} counsellors...`);
         // 3. Generate a Blocked CSV file for each Counsellor
@@ -211,6 +216,150 @@ export const dispatchWeeklyCounsellorReports = async () => {
             EmailQueue.addEmail(counsellor.email, subject, html, attachment);
         }
         console.log("✅ Reports parsed, CSVs created, and queued for email delivery successfully.");
+    } catch (error) {
+        console.error("Critical error in dispatchWeeklyCounsellorReports:", error);
+    }
+};
+export const dispatchWeeklyCounsellorReports = async () => {
+    try {
+        console.log("Starting generation of dynamic CSV reports...");
+        
+        // 1. Single massive fetch with updated ordering for consistency
+        const [rows] = await db.execute(`
+            SELECT 
+                uc.counsller_id, 
+                c.email AS counsellor_email,
+                cl.name as center_name,
+                l.name as label_name,
+                c.name AS counsellor_name,
+                c.report_frequency_days,
+                u.name AS student_name,
+                u.user_id,
+                a.name AS activity_name,
+                dr.count,
+                DATE_FORMAT(dr.activity_date, '%Y-%m-%d') as report_date
+            FROM user_counsellors uc
+            JOIN users c ON uc.counsller_id = c.user_id
+            JOIN users u ON uc.user_id = u.user_id
+            JOIN user_assignments uas ON uas.user_id = u.user_id
+            JOIN center_list cl ON cl.center_id = uas.center_id
+            LEFT JOIN labels_list l ON l.id = uas.label_id
+            LEFT JOIN daily_report dr ON u.user_id = dr.user_id 
+                AND dr.activity_date >= (CURDATE() - INTERVAL (c.report_frequency_days) DAY)
+            LEFT JOIN fix_activities a ON dr.activity_id = a.activity_id AND a.own_by = 0 
+            WHERE c.auto_report_status = 1 
+            ORDER BY uc.counsller_id, cl.name, l.name, u.name, dr.activity_date DESC
+        `);
+
+        if (rows.length === 0) {
+            console.log("No activities found in the given timeframe. Aborting report.");
+            return;
+        }
+
+        // 2. Group the SQL data by Counsellor ID
+        const counsellorGroups = {};
+        rows.forEach(row => {
+            if (!counsellorGroups[row.counsller_id]) {
+                counsellorGroups[row.counsller_id] = {
+                    email: row.counsellor_email,
+                    name: row.counsellor_name,
+                    report_days: row.report_frequency_days,
+                    data: []
+                };
+            }
+            counsellorGroups[row.counsller_id].data.push(row);
+        });
+
+        const activeCounsellors = Object.keys(counsellorGroups);
+        console.log(`Sending customized CSV reports to ${activeCounsellors.length} counsellors...`);
+
+        // 3. Generate a Nested CSV file for each Counsellor
+        for (const counsellorId of activeCounsellors) {
+            const counsellor = counsellorGroups[counsellorId];
+            
+            // Find all unique activities for the header columns
+            const activityColumns = [...new Set(counsellor.data.map(d => d.activity_name || "Unknown"))];
+            let csvContent = ""; 
+
+            // B. Group the data: Center -> Label -> Student -> Date
+            const nestedStructure = {};
+            counsellor.data.forEach(d => {
+                const center = d.center_name || "Unknown Center";
+                const label = d.label_name || "Uncategorized";
+                
+                if (!nestedStructure[center]) nestedStructure[center] = {};
+                if (!nestedStructure[center][label]) nestedStructure[center][label] = {};
+                if (!nestedStructure[center][label][d.user_id]) {
+                    nestedStructure[center][label][d.user_id] = {
+                        name: d.student_name,
+                        dates: {} 
+                    };
+                }
+                
+                if (d.report_date) {
+                    if (!nestedStructure[center][label][d.user_id].dates[d.report_date]) {
+                         nestedStructure[center][label][d.user_id].dates[d.report_date] = {};
+                    }
+                    const actName = d.activity_name || "Unknown";
+                    nestedStructure[center][label][d.user_id].dates[d.report_date][actName] = d.count !== null ? d.count : '';
+                }
+            });
+
+            // C. Build CSV Content with Center and Label headers
+            for (const centerName in nestedStructure) {
+                // Large Section Header for Center
+                csvContent += `\n"CENTER: ${centerName.toUpperCase()}"\n`;
+                
+                for (const labelName in nestedStructure[centerName]) {
+                    // Sub-header for Label
+                    csvContent += `"LABEL: ${labelName}"\n`;
+                    
+                    const students = nestedStructure[centerName][labelName];
+                    Object.values(students).forEach(student => {
+                        csvContent += `${student.name}\n`;
+                        csvContent += `dates,${activityColumns.join(',')}\n`;
+                        const sortedDates = Object.keys(student.dates).sort((a,b) => b.localeCompare(a));
+                        
+                        if (sortedDates.length === 0) {
+                             const emptyRow = activityColumns.map(() => '""').join(',');
+                             csvContent += `No Data Logged,${emptyRow}\n`;
+                        } else {
+                            sortedDates.forEach(date => {
+                                 const rowMap = student.dates[date];
+                                 const activityValues = activityColumns.map(col => {
+                                      const rowValue = rowMap[col];
+                                      return rowValue !== undefined && rowValue !== '' ? `"${rowValue}"` : `""`; 
+                                 });
+                                 csvContent += `${date},${activityValues.join(',')}\n`;
+                            });
+                        }
+                        csvContent += `\n`; // Spacer between students
+                    });
+                    csvContent += `\n`; // Spacer between labels
+                }
+            }
+
+            // 4. Write CSV temporarily to server memory and Dispatch
+            const fileName = `mentee_report_${counsellorId}_${Date.now()}.csv`;
+            const filePath = path.join(os.tmpdir(), fileName);
+            fs.writeFileSync(filePath, csvContent);
+
+            const subject = `Weekly Sadhana Report Document (${counsellor.report_days} Days)`;
+            const html = `
+                <div style="padding: 20px; font-family:sans-serif;">
+                    <h2>Hare Krsna ${counsellor.name || ''},</h2>
+                    <p>Attached is your customized structured CSV report organized by Center and Label, showing logs from the last ${counsellor.report_days} days.</p>
+                </div>
+            `;
+            
+            const attachment = {
+                filename: `Mentee_Report_Last_${counsellor.report_days}_Days.csv`,
+                path: filePath,
+                contentType: 'text/csv'
+            };
+            EmailQueue.addEmail(counsellor.email, subject, html, attachment);
+        }
+        console.log("✅ Reports parsed, grouped by Center/Label, and queued successfully.");
     } catch (error) {
         console.error("Critical error in dispatchWeeklyCounsellorReports:", error);
     }

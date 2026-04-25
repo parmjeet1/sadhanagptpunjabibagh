@@ -3,7 +3,7 @@ import cron from 'node-cron';
 
 import bodyParser from 'body-parser';
 import Routes from './routes/Routes.js';
-
+import db from './config/database.js';
 import path from 'path';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -19,6 +19,7 @@ import "./config/passport.js";
 import logger from './logger.js';
 import { processRewardRules } from './SadhanaGPT/Controllers/CronJobController.js';
 import { processInactivityReminders,dispatchWeeklyCounsellorReports } from './SadhanaGPT/cronjobs/Email-notificatiion.js';
+import { sendSadhanaWhatsappReminders } from './SadhanaGPT/cronjobs/WhatsAppMessage.js';
 
 
 process.on("unhandledRejection", (reason) => {
@@ -92,7 +93,6 @@ app.get('/google-call-back', (req, res) => {
 });
 
 
-
 app.use('/api', Routes);
 
 
@@ -120,10 +120,19 @@ server.listen(PORT,'0.0.0.0', () => {
 //   // processRewardRules();
 // });
 
-cron.schedule('0 0 * * 6', async () => {
+cron.schedule('0 0 * * 7', async () => {
 
   dispatchWeeklyCounsellorReports();
-  // processInactivityReminders();
-  // processRewardRules();
+
 
 });
+// Schedule: Every Saturday (6) at 10:00 AM
+// 
+cron.schedule('0 10 * * 6', async () => {
+    console.log("⏰ Saturday 10 AM: Dispatching Sadhana Reminders...");
+    await sendSadhanaWhatsappReminders();
+});
+
+
+//  // processInactivityReminders();
+  // processRewardRules();
