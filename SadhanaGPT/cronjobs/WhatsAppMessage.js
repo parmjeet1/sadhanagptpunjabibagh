@@ -34,8 +34,7 @@ export const sendSadhanaWhatsappReminders = async () => {
             const mentorName = student.mentor_name || "your Mentor";
             
             // Format the message as requested
-            const message = `Hare Krishna ${studentName}, kindly fill your sadhna for the last week in SadhnaGPT App because tomorrow the weekly report will be sent to your mentor 
-            ${mentorName}. Prabhuji
+            const message = `Hare Krishna ${studentName}, kindly fill your sadhna for the last week in SadhnaGPT App because tomorrow the weekly report will be sent to your mentor ${mentorName}. Prabhu JI
              Your Servants `;
 
             try {
