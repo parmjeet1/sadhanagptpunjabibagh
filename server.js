@@ -120,7 +120,9 @@ server.listen(PORT,'0.0.0.0', () => {
 //   // processRewardRules();
 // });
 
-cron.schedule('0 0 * * 7', async () => {
+// cron.schedule('0 0 * * 7', async () => {
+  cron.schedule('*/1  * * * *', async () => {
+
 
   dispatchWeeklyCounsellorReports();
 
