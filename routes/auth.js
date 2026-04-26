@@ -77,7 +77,7 @@ async (req, res) => {
 
     // ✅ Encode and send
     const encodedData = encodeURIComponent(JSON.stringify(responseData));
-console.log("Redirecting to:", `${frontendUrl}?data=${encodedData}`);
+
     res.redirect(`${frontendUrl}?data=${encodedData}`);
 
   } catch (err) {

@@ -617,3 +617,23 @@ function minutesToTime(mins) {
   const hour12 = hrs % 12 === 0 ? 12 : hrs % 12;
   return `${hour12}:${String(minsPart).padStart(2, '0')} ${period}`;
 }
+const otpStore = new Map();
+    export const saveOtp = (email, otp) => {
+        const expiresAt = Date.now() + 10 * 60 * 1000; // 5 minutes TTL
+        otpStore.set(email, { otp, expiresAt });
+    };
+    export const verifyOtp = (email, otp) => {
+        const data = otpStore.get(email);
+        if (!data) return false;
+        
+        if (Date.now() > data.expiresAt) {
+            otpStore.delete(email);
+            return false;
+        }
+        
+        const isValid = data.otp === otp;
+        if (isValid) {
+            otpStore.delete(email); // Use once and discard
+        }
+        return isValid;
+    };

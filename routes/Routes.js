@@ -1,7 +1,7 @@
 
 import { Router } from "express";
 
-import { Register } from "../SadhanaGPT/Controllers/CommonControllers.js";
+import { Register, sendEmailOtp, verifyEmailOtp } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
 import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP ,Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, addCounsellor, contentListStudent, downloadErrorLog, verifyCounsellor, submitAppFeedback} from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
@@ -13,6 +13,10 @@ const router = Router();
 
 
 const authzAndAuthRoutes = [
+    
+       {method: 'post',        path: '/send-email-otp',    handler: sendEmailOtp ,role: "student"},
+       {method: 'post',        path: '/verify-email-otp',    handler: verifyEmailOtp ,role: "student"},
+
        {method: 'get',        path: '/send-bulk-email',    handler: sendBulknEmails ,role: "student"},
 
 

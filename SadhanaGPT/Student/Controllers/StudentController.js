@@ -50,8 +50,7 @@ export const studentRegister = asyncHandler(async (req, resp) => {
 
   // const res = checkNumber("+91", mobile);
   // if(res.status == 0) return resp.json({ status:0, code:422, message: [res.msg] });
-  console.log("db.execute type:", typeof db.execute);
-
+  
   const [[isExist]] = await db.execute(
     `
         SELECT COUNT(*) AS check_email FROM users AS u WHERE u.email = ?
