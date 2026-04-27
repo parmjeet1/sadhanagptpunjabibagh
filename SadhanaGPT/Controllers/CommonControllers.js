@@ -1,8 +1,7 @@
 import db from "../../config/database.js";
 import EmailQueue from '../../utils/emails/emailQueue.js';
 
-import { mergeParam } from "../../utils/utils.js";
-import asyncHandler from 'express-async-handler';
+import { asyncHandler, mergeParam } from "../../utils/utils.js";
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import validateFields from '../../utils/validation.js';
@@ -202,7 +201,9 @@ export const verifyEmailOtp = asyncHandler(async (req, res) => {
   }
 });
 export const downloadErrorLog = asyncHandler(async (req, res) => {
-    // 1. Define the path to your log file (assuming it's in the backend root)
+  throw new Error("TEST ERROR: Seeing if logging works!");
+ 
+  // 1. Define the path to your log file (assuming it's in the backend root)
     const logFilePath = path.join(process.cwd(), '../../error.log');
     // 2. Check if the file actually exists
     if (!fs.existsSync(logFilePath)) {

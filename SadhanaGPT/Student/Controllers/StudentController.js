@@ -2369,7 +2369,7 @@ export const contentListStudent = asyncHandler(async (req, resp) => {
 });
 
 
-export const downloadErrorLog = asyncHandler(async (req, resp) => {
+export const NotinUsedownloadErrorLog = asyncHandler(async (req, resp) => {
   try {
     const logFile = path.join(process.cwd(), 'error.log');
 
