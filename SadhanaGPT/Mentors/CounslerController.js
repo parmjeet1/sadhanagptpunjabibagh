@@ -2963,7 +2963,8 @@ const query=`SELECT c.id, c.content_type, c.content, c.created_at
         WHERE ${whereConditions} 
         ORDER BY c.created_at DESC 
         LIMIT ? OFFSET ?`;
-
+      const [data] = await db.execute(query,[...paramsArr, limit, offset]);
+console.log(query, [...paramsArr, limit, offset]);
       const [data] = await db.execute(query,[...paramsArr, limit, offset]);
 
 
