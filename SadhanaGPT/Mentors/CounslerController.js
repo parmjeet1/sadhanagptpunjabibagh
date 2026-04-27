@@ -2925,7 +2925,7 @@ export const updateReportSettings = async (req, res) => {
     }
 };
 
-  export const contentListCounsellor = asyncHandler(async (req, resp) => {
+  export const oldcontentListCounsellor = asyncHandler(async (req, resp) => {
     try {
       const {
         page_no = 1,
@@ -2981,5 +2981,69 @@ console.log("query,[...paramsArr, limit, offset]",query,[...paramsArr, limit, of
       return resp.status(500).json({ status: 0, message: "Error fetching list",error: error.message });
     }
   });
+  export const contentListCounsellor = asyncHandler(async (req, resp) => {
+    try {
+      const {
+        page_no = 1,
+        user_id, // Make sure this is actually coming from the frontend/token!
+        center_id,
+        label_id,
+        content_type
+      } = mergeParam(req);
+
+      // 1. PREVENT UNDEFINED ERROR: Ensure user_id exists
+      if (!user_id) {
+        return resp.status(400).json({ status: 0, message: "user_id is missing or undefined." });
+      }
+
+      let whereConditions = `c.counsellor_id = ?`;
+      let paramsArr = [user_id]; // If user_id is undefined, mysql2 crashes here.
+
+      if (center_id && center_id !== 'All') {
+        whereConditions += ` AND EXISTS (SELECT 1 FROM content_groups cg WHERE cg.content_id = c.id AND cg.group_id = ?)`;
+        paramsArr.push(center_id);
+      }
+
+      if (label_id && label_id !== 'All') {
+        whereConditions += ` AND EXISTS (SELECT 1 FROM content_labels cl WHERE cl.content_id = c.id AND cl.label_id = ?)`;
+        paramsArr.push(label_id);
+      }
+
+      if (content_type && content_type !== 'All' && content_type !== '') {
+        whereConditions += ` AND c.content_type = ?`;
+        paramsArr.push(content_type);
+      }
+
+      // 2. PREVENT NaN ERROR: Force strict integers
+      const limit = 10;
+      const page = parseInt(page_no, 10) || 1; 
+      const offset = (page - 1) * limit;
+
+      const query = `
+        SELECT c.id, c.content_type, c.content, c.created_at 
+        FROM contents c 
+        WHERE ${whereConditions} 
+        ORDER BY c.created_at DESC 
+        LIMIT ? OFFSET ?
+      `;
+
+      // Pass parameters safely
+      const finalParams = [...paramsArr, Number(limit), Number(offset)];
+      
+      const [data] = await db.execute(query, finalParams);
+
+      return resp.json({
+        status: 1,
+        code: 200,
+        data
+      });
+
+    } catch (error) {
+      console.error("=== contentListCounsellor ERROR ===");
+      console.error(error);
+      return resp.status(500).json({ status: 0, message: "Error fetching list", error: error.message });
+    }
+});
+
 
 
