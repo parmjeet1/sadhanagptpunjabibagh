@@ -201,10 +201,9 @@ export const verifyEmailOtp = asyncHandler(async (req, res) => {
   }
 });
 export const downloadErrorLog = asyncHandler(async (req, res) => {
-  throw new Error("TEST ERROR: Seeing if logging works!");
- 
-  // 1. Define the path to your log file (assuming it's in the backend root)
-    const logFilePath = path.join(process.cwd(), '../../error.log');
+    // 1. Define the path to your log file (it is in the backend root)
+    const logFilePath = path.join(process.cwd(), 'error.log');
+
     // 2. Check if the file actually exists
     if (!fs.existsSync(logFilePath)) {
         return res.status(404).json({
@@ -213,9 +212,11 @@ export const downloadErrorLog = asyncHandler(async (req, res) => {
             message: ["The error.log file does not exist yet."]
         });
     }
+
     // 3. Set headers to force the browser to download the file
     res.setHeader('Content-Disposition', 'attachment; filename="server-error.log"');
     res.setHeader('Content-Type', 'text/plain');
+
     // 4. Create a read stream and pipe it to the response
     const fileStream = fs.createReadStream(logFilePath);
     
@@ -223,5 +224,6 @@ export const downloadErrorLog = asyncHandler(async (req, res) => {
         console.error("Error streaming log file:", err);
         res.status(500).send("Error downloading file.");
     });
+
     fileStream.pipe(res);
 });

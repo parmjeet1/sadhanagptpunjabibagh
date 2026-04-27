@@ -20,13 +20,13 @@
       import { processRewardRules } from './SadhanaGPT/Controllers/CronJobController.js';
       import { processInactivityReminders,dispatchWeeklyCounsellorReports } from './SadhanaGPT/cronjobs/Email-notificatiion.js';
       import { sendSadhanaWhatsappReminders } from './SadhanaGPT/cronjobs/WhatsAppMessage.js';
-      process.on("unhandledRejection", (reason) => {
-        logger.error(`Unhandled Rejection: ${reason}`);
-      });
+      // process.on("unhandledRejection", (reason) => {
+      //   logger.error(`Unhandled Rejection: ${reason}`);
+      // });
 
-      process.on("warning", (warning) => {
-        logger.warn(`Warning: ${warning.message}`);
-      });
+      // process.on("warning", (warning) => {
+      //   logger.warn(`Warning: ${warning.message}`);
+      // });
       const app = express();
       app.set('trust proxy', true);
       const PORT = process.env.PORT ||3000;
@@ -40,7 +40,6 @@
           "https://sadhanagpt.com",
           "http://sadhanagpt.com",
           "http://localhost:5173",
-          "http://98.93.17.203:3000",
           "https://www.sadhanagpt.com",
           
           
@@ -92,7 +91,7 @@
 
 
       app.use('/api', Routes);
-
+      app.use(errorHandler);
 
 
       // start react git
@@ -102,7 +101,7 @@
           res.sendFile(path.join(__dirname, 'dist', 'index.html'));
         });
       /// end react 
-      app.use(errorHandler);
+      
       const server = http.createServer(app);
       server.listen(PORT,'0.0.0.0', () => {
         console.log(`Server is running on http://localhost:${PORT}`);
