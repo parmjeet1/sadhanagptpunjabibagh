@@ -1,6 +1,6 @@
 import logger from "../logger.js";
 
-export const olderrorHandler = (err, req, res, next) => {
+export const errorHandler = (err, req, res, next) => {
 
     let arrE = err.stack.split(",")
     if (Array.isArray(arrE) && arrE.length ) { 
@@ -23,7 +23,7 @@ export const olderrorHandler = (err, req, res, next) => {
     });
 };
 
-export const errorHandler = (err, req, res, next) => {
+export const olderrorHandler = (err, req, res, next) => {
 
   logger.error(`
 ERROR: ${err.message}

@@ -20,13 +20,17 @@
       import { processRewardRules } from './SadhanaGPT/Controllers/CronJobController.js';
       import { processInactivityReminders,dispatchWeeklyCounsellorReports } from './SadhanaGPT/cronjobs/Email-notificatiion.js';
       import { sendSadhanaWhatsappReminders } from './SadhanaGPT/cronjobs/WhatsAppMessage.js';
-      // process.on("unhandledRejection", (reason) => {
-      //   logger.error(`Unhandled Rejection: ${reason}`);
-      // });
+     process.on("unhandledRejection", (reason) => {
+  logger.error(`Unhandled Rejection: ${reason}`);
+});
 
-      // process.on("warning", (warning) => {
-      //   logger.warn(`Warning: ${warning.message}`);
-      // });
+process.on("uncaughtException", (err) => {
+  logger.error(`Uncaught Exception: ${err.stack}`);
+});
+
+process.on("warning", (warning) => {
+  logger.warn(`Warning: ${warning.message}`);
+});
       const app = express();
       app.set('trust proxy', true);
       const PORT = process.env.PORT ||3000;
@@ -67,6 +71,8 @@
       app.use(cookieParser());
       app.get('/ping', (req, res) => {
         console.log("pong");
+           throw new Error("fail");
+
         return res.json({ status: 1, code: 200, message: "latest updated v1" })
         //   res.send('Server is alive');
 
@@ -91,7 +97,7 @@
 
 
       app.use('/api', Routes);
-      app.use(errorHandler);
+     ;
 
 
       // start react git
@@ -101,7 +107,7 @@
           res.sendFile(path.join(__dirname, 'dist', 'index.html'));
         });
       /// end react 
-      
+       app.use(errorHandler)
       const server = http.createServer(app);
       server.listen(PORT,'0.0.0.0', () => {
         console.log(`Server is running on http://localhost:${PORT}`);
