@@ -107,7 +107,7 @@ process.on("warning", (warning) => {
           res.sendFile(path.join(__dirname, 'dist', 'index.html'));
         });
       /// end react 
-       app.use(errorHandler)
+       
       const server = http.createServer(app);
       server.listen(PORT,'0.0.0.0', () => {
         console.log(`Server is running on http://localhost:${PORT}`);
@@ -138,6 +138,4 @@ process.on("warning", (warning) => {
           await sendSadhanaWhatsappReminders();
       });
 
-
-      //  // processInactivityReminders();
-        // processRewardRules();
+app.use(errorHandler)
