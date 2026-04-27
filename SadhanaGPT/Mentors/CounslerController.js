@@ -2974,7 +2974,11 @@ const query=`SELECT c.id, c.content_type, c.content, c.created_at
       });
 
     } catch (error) {
-      return resp.status(500).json({ status: 0, message: "Error fetching list" });
+      console.error("=== contentListCounsellor ERROR ===");
+      console.error("Message:", error.message);
+      console.error("SQL:", error.sql);
+      console.error("Stack:", error.stack);
+      return resp.status(500).json({ status: 0, message: "Error fetching list",error: error.message });
     }
   });
 

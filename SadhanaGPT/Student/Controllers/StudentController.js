@@ -743,17 +743,18 @@ function minutesToTime(mins) {
   return `${hour12}:${String(minsPart).padStart(2, '0')} ${period}`;
 }
 
-export const addSadhna = asyncHandler(async (req, resp) => {
+export const oldaddSadhna = asyncHandler(async (req, resp) => {
 
   const { activity_id, count, activity_date, note, user_id, unit } = req.body;
   
   const { isValid, errors } = validateFields(req.body, {
     activity_id: ["required"],
     activity_date: ["required"],
-    count: ["required"],
+    // count: ["required"],
     user_id: ["required"],
     // unit: ["required"],
   });
+  console.log("count",count);
   
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
   const today = moment().format("YYYY-MM-DD");
@@ -768,6 +769,7 @@ export const addSadhna = asyncHandler(async (req, resp) => {
   const isTime = check_today_sadhana?.activity_type === 'time';
 
 const storedCount = isTime ? minutesToTime(Number(count)) : count;
+
   if (check_today_sadhana) {
     
     await updateRecord(
@@ -802,6 +804,90 @@ const storedCount = isTime ? minutesToTime(Number(count)) : count;
     });
   }
 });
+export const addSadhna = asyncHandler(async (req, resp) => {
+
+  const { activity_id, count, activity_date, note, user_id, unit } = req.body;
+  
+  const { isValid, errors } = validateFields(req.body, {
+    activity_id: ["required"],
+    activity_date: ["required"],
+    // count: ["required"],
+    user_id: ["required"],
+    // unit: ["required"],
+  });
+  console.log("count", count);
+  
+  if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+  const today = moment().format("YYYY-MM-DD");
+  const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
+  
+  const check_today_sadhana = await queryDB(
+    `SELECT fa.activity_type, dr.activity_id,dr.note,dr.activity_date,dr.count from daily_report dr
+    JOIN fix_activities fa ON  fa.activity_id=dr.activity_id 
+    where
+         dr.activity_id=? and DATE(dr.activity_date)=? `,
+    [activity_id, final_activity_date],
+  );
+
+  // --- NEW LOGIC: DELETE IF COUNT IS 0 ---
+  // We use Number() to catch both 0 (number) and "0" (string)
+  if (Number(count) === 0) {
+    if (check_today_sadhana) {
+      await db.execute(
+        "DELETE FROM daily_report WHERE activity_id = ? AND user_id = ? AND DATE(activity_date) = ?",
+        [activity_id, user_id, final_activity_date]
+      );
+      console.log("deleted 0 count record");
+    }
+    
+    // Return success (status: 1) so the frontend card updates cleanly
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Activity reset successfully!"],
+      data: {},
+    });
+  }
+  // ---------------------------------------
+
+  const isTime = check_today_sadhana?.activity_type === 'time';
+  const storedCount = isTime ? minutesToTime(Number(count)) : count;
+  
+  if (check_today_sadhana) {
+    
+    await updateRecord(
+      "daily_report",
+      { count: storedCount },
+      ["activity_id","user_id","activity_date"],
+      [activity_id,user_id,final_activity_date],
+    );
+    console.log("updated")
+    return resp.json({
+      status: 1, // Changed this from 0 to 1 so the frontend shows the success toast!
+      code: 200,
+      message: ["updated activity!"],
+      data: {  },
+    });
+  }
+
+  const insert_data = await insertRecord(
+    "daily_report",
+    ["user_id", "activity_id", "count",  "activity_date"],
+    [user_id, activity_id,  storedCount,final_activity_date],
+  );
+
+  if (insert_data) {
+    console.log("inserted")
+    
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Report added successfully!"],
+      data: { },
+    });
+  }
+});
+
 
 export const editSadhna = asyncHandler(async (req, resp) => {
   const { activity_id, note, time } = req.body;
@@ -1070,7 +1156,7 @@ export const updateStudentDetails = asyncHandler(async (req, resp) => {
 });
 export const addCounsellor = asyncHandler(async (req, resp) => {
   const { user_id, counsller_id } = mergeParam(req);
-
+console.log(mergeParam(req));
   /* ---------------------------
      VALIDATION
   ----------------------------*/
@@ -1090,12 +1176,12 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
   /* ---------------------------
      CHECK USER EXISTS
   ----------------------------*/
-  const [user] = await db.execute(
-    `SELECT user_id FROM users WHERE user_id = ?`,
+  const [[user]] = await db.execute(
+    `SELECT name,email,mobile,user_id FROM users WHERE user_id = ?`,
     [user_id]
   );
-
-  if (!user.length) {
+ 
+  if (!user) {
     return resp.json({
       status: 0,
       code: 404,
@@ -1106,12 +1192,12 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
   /* ---------------------------
      CHECK COUNSELLOR EXISTS
   ----------------------------*/
-  const [counsellor] = await db.execute(
-    `SELECT user_id FROM users WHERE user_id = ?`,
+  const [[counsellor]] = await db.execute(
+    `SELECT email,name ,user_id FROM users WHERE user_id = ?`,
     [counsller_id]
   );
 
-  if (!counsellor.length) {
+  if (!counsellor) {
     return resp.json({
       status: 0,
       code: 404,
@@ -1142,12 +1228,40 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
   /* ---------------------------
      INSERT
   ----------------------------*/
-  await insertRecord(
+ 
+  const subject = "New Student Registration 🙏";
+          const htmlContent = `
+                    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; max-width: 600px;">
+                        <h2 style="color: #0f172a; border-bottom: 2px solid #1a73e8; padding-bottom: 10px;">Hare Krsna, ${counsellor.name}!</h2>
+                        <p style="font-size: 16px; color: #475569;">A new student has been added to your care on <strong>SadhanaGPT</strong>.</p>
+                        
+                        <div style="margin: 25px 0; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #edf2f7;">
+                            <p style="margin: 8px 0; color: #64748b;"><strong>Student Name:</strong> <span style="color: #0f172a;">${user.name}</span></p>
+                            <p style="margin: 8px 0; color: #64748b;"><strong>Email:</strong> <span style="color: #0f172a;">${user.email}</span></p>
+                            <p style="margin: 8px 0; color: #64748b;"><strong>Mobile:</strong> <span style="color: #0f172a;">${user.mobile}</span></p>
+                        </div>
+                        
+                        <p style="font-size: 15px; color: #475569; line-height: 1.6;">Please guide them in their spiritual journey and help them establish a consistent sadhana practice.</p>
+                        
+                        <div style="margin-top: 30px;">
+                            <a href="https://sadhanagpt.com/counsellor/dashboard" style="background:#1a73e8; color:white; padding:12px 24px; text-decoration:none; border-radius:8px; font-weight: bold; display:inline-block; box-shadow: 0 4px 6px -1px rgba(26, 115, 232, 0.2);">
+                               Open Counsellor Dashboard
+                            </a>
+                        </div>
+                        
+                        <p style="margin-top: 35px; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee; padding-top: 15px;">
+                            Srila Prabhupada Ki Jaya!<br/>
+                            SadhanaGPT Team
+                        </p>
+                    </div>
+                `;
+          emailQueue.addEmail(counsellor.email, subject, htmlContent);
+        
+ await insertRecord(
     "user_counsellors",
     ["user_id", "counsller_id"],
     [user_id, counsller_id]
   );
-
   return resp.json({
     status: 1,
     code: 200,
@@ -1264,7 +1378,7 @@ export const oldonBoarding = asyncHandler(async (req, resp) => {
 export const onBoarding = asyncHandler(async (req, resp) => {
   // here consler email will be ask form studnet ,
   const { name,email, mobile, temple_id,user_type, counsellor_id='U000000002', added_from = "",device_name = "",
-    google_id,
+    google_id='',
     profile,
     birthday,
     new_counsellor_email
@@ -1276,7 +1390,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     mobile: ["required"],
     temple_id: user_type === "counsellor" ? ["required"] : [],
     user_type: ["required"],
-    google_id: ["required"],
+    // google_id: ["required"],
     birthday: ["required"],
   });
   let final_temple_id, finally_counsller_id;
@@ -1463,6 +1577,46 @@ const registerUser = async (
    FROM activities a
    WHERE  a.status = 1 AND NOT EXISTS (SELECT 1 FROM fix_activities f  WHERE f.user_id = ? AND f.name = a.name)`,
    [user_id, user_id]);
+
+    if (user_type === "student" && counsller_id) {
+      try {
+        const [[counsellor]] = await db.execute(
+          "SELECT name, email FROM users WHERE user_id = ?",
+          [counsller_id]
+        );
+        if (counsellor) {
+          const subject = "New Student Registration 🙏";
+          const htmlContent = `
+                    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; max-width: 600px;">
+                        <h2 style="color: #0f172a; border-bottom: 2px solid #1a73e8; padding-bottom: 10px;">Hare Krsna, ${counsellor.name}!</h2>
+                        <p style="font-size: 16px; color: #475569;">A new student has been added to your care on <strong>SadhanaGPT</strong>.</p>
+                        
+                        <div style="margin: 25px 0; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #edf2f7;">
+                            <p style="margin: 8px 0; color: #64748b;"><strong>Student Name:</strong> <span style="color: #0f172a;">${name}</span></p>
+                            <p style="margin: 8px 0; color: #64748b;"><strong>Email:</strong> <span style="color: #0f172a;">${email}</span></p>
+                            <p style="margin: 8px 0; color: #64748b;"><strong>Mobile:</strong> <span style="color: #0f172a;">${mobile}</span></p>
+                        </div>
+                        
+                        <p style="font-size: 15px; color: #475569; line-height: 1.6;">Please guide them in their spiritual journey and help them establish a consistent sadhana practice.</p>
+                        
+                        <div style="margin-top: 30px;">
+                            <a href="https://sadhanagpt.com/counsellor/dashboard" style="background:#1a73e8; color:white; padding:12px 24px; text-decoration:none; border-radius:8px; font-weight: bold; display:inline-block; box-shadow: 0 4px 6px -1px rgba(26, 115, 232, 0.2);">
+                               Open Counsellor Dashboard
+                            </a>
+                        </div>
+                        
+                        <p style="margin-top: 35px; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee; padding-top: 15px;">
+                            Srila Prabhupada Ki Jaya!<br/>
+                            SadhanaGPT Team
+                        </p>
+                    </div>
+                `;
+          emailQueue.addEmail(counsellor.email, subject, htmlContent);
+        }
+      } catch (err) {
+        console.error("Counsellor notification failed:", err);
+      }
+    }
 
     return {
       message: ["successfully registered"],

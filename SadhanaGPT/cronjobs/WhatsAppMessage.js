@@ -36,7 +36,7 @@ export const sendSadhanaWhatsappReminders = async () => {
             // Format the message as requested
             const message = `Hare Krishna ${studentName}, kindly fill your sadhna for the last week in SadhnaGPT App because tomorrow the weekly report will be sent to your mentor ${mentorName}. Prabhu JI
              Your Servants `;
-
+// console.log(`Preparing to send WhatsApp reminder to ${studentName} (91${student.student_phone}) with mentor ${mentorName}`);
             try {
                 // Sending the POST request to the WhatsApp API
                 await axios.post(API_URL, {
@@ -49,7 +49,7 @@ export const sendSadhanaWhatsappReminders = async () => {
                     }
                 });
                 
-                console.log(`✅ Message sent to: ${studentName}`);
+                // console.log(`✅ Message sent to: ${studentName}`);
             } catch (err) {
                 console.error(`❌ Failed to send to ${studentName}:`, err.response?.data || err.message);
             }

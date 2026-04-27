@@ -25,26 +25,26 @@ const{name, }=mergeParam(req)
 export const sendEmailOtp = asyncHandler(async (req, res) => {
   const { email } = mergeParam(req);
   // Validation
-console.log("Received email for OTP:", email);
+
   const { isValid, errors } = validateFields({ email }, { email: ['required', 'email'] });
   if (!isValid) {
     return res.json({ status: 0, code: 422, message: errors });
   }
-    const [[user]] = await db.execute(`SELECT name 
-        FROM users WHERE email = ?
-        `, [email],);
+    // const [[user]] = await db.execute(`SELECT name 
+    //     FROM users WHERE email = ?
+    //     `, [email],);
 
-    if (!user) {
-        return resp.json({
-        status: 0,
-        code: 404,
-        message: ["User not found"],
-        });
-    }
+    // if (!user) {
+    //     return resp.json({
+    //     status: 0,
+    //     code: 404,
+    //     message: ["User not found"],
+    //     });
+    // }
 
 
   // Generate 6-digit OTP
-  const otp = generateOTP(6);
+  const otp = generateOTP(4);
   console.log(`Generated OTP for ${email}:`, otp); // Log OTP for debugging (remove in production)
   // Send via existing EmailQueue
   const subject = 'Hare Krishna - Your SadhanaGPT Login OTP';
@@ -89,62 +89,7 @@ console.log("Received email for OTP:", email);
   });
 });
 
-export const oldverifyEmailOtp = asyncHandler(async (req, res) => {
-  const { email, otp } = mergeParam(req);
-  // Validation
-  const { isValid, errors } = validateFields({ email, otp }, {
-    email: ['required', 'email'],
-    otp:   ['required'],
-  });
-  if (!isValid) {
-    return res.json({ status: 0, code: 422, message: errors });
-  }
-  // Verify
-  if (!verifyOtp(email, otp)) {
-    return res.json({
-      status: 0,
-      code: 401,
-      message: 'Invalid or expired OTP.',
-    });
-  }
-  // Check/Create User in DB
-  const [rows] = await db.execute(
-    `SELECT user_id, name, email, user_type FROM users WHERE email = ?`,
-    [email]
-  );
-  let user;
-  if (rows.length) {
-    user = rows[0];
-  } else {
-    // New user auto-registration
-    const [result] = await db.execute(
-      `INSERT INTO users (email, name, user_type) VALUES (?, ?, ?)`,
-      [email, email.split('@')[0], 'student']
-    );
-    user = {
-      user_id: result.insertId,
-      name:    email.split('@')[0],
-      email,
-      user_type: 'student',
-    };
-  }
-  // Format response details
-  const userDetails = {
-    user_id: user.user_id,
-    name:    user.name,
-    email:   user.email,
-    user_type: user.user_type,
-    access_token: crypto.randomBytes(24).toString('hex'), // Create a session token
-  };
-  // Optional: Update token in DB if your system tracks it
-  await db.execute('UPDATE users SET access_token = ? WHERE user_id = ?', [userDetails.access_token, user.user_id]);
-  return res.json({
-    status: 1,
-    code: 200,
-    message: 'Login successful.',
-    data: userDetails,
-  });
-});
+
 
 export const verifyEmailOtp = asyncHandler(async (req, res) => {
   const { email, otp } = mergeParam(req);
@@ -192,10 +137,20 @@ export const verifyEmailOtp = asyncHandler(async (req, res) => {
       data: responseData
     });
   } else {
+
+     responseData = {
+        status: "new_user",
+        name: "",
+        email: email,
+        google_id: "",
+        picture: ""
+      };
+
     // This case shouldn't hit due to sendEmailOtp check, but kept for safety
     return res.json({
-      status: 0,
-      code: 404,
+      status: 1,
+      code: 200,
+      data: responseData,
       message: ["User not found after verification."],
     });
   }
