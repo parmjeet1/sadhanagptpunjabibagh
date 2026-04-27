@@ -11,16 +11,13 @@ import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 
 const router = Router();
 
-
 const authzAndAuthRoutes = [
+       {method: 'get',        path: '/download-error-log',    handler: downloadErrorLog ,role: "student"},
     
        {method: 'post',        path: '/send-email-otp',    handler: sendEmailOtp ,role: "student"},
        {method: 'post',        path: '/verify-email-otp',    handler: verifyEmailOtp ,role: "student"},
 
        {method: 'get',        path: '/send-bulk-email',    handler: sendBulknEmails ,role: "student"},
-
-
-             {method: 'post', path: '/logs', handler: downloadErrorLog},
             
     {method: 'post', path: '/on-boarding', handler: onBoarding},
         //  {method: 'post', path: '/register',     handler: Registertest},

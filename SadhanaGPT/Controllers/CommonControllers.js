@@ -9,7 +9,8 @@ import validateFields from '../../utils/validation.js';
 import { generateOTP,saveOtp, verifyOtp } from '../../utils/utils.js';
 import emailQueue from '../../utils/emails/emailQueue.js';
 import { queryDB } from "../../utils/dbUtils.js";
-
+import path from 'path';
+import fs from 'fs';
 export const Register=(req,resp)=>{
 const{name, }=mergeParam(req)
    
@@ -199,4 +200,27 @@ export const verifyEmailOtp = asyncHandler(async (req, res) => {
       message: ["User not found after verification."],
     });
   }
+});
+export const downloadErrorLog = asyncHandler(async (req, res) => {
+    // 1. Define the path to your log file (assuming it's in the backend root)
+    const logFilePath = path.join(process.cwd(), '../../error.log');
+    // 2. Check if the file actually exists
+    if (!fs.existsSync(logFilePath)) {
+        return res.status(404).json({
+            status: 0,
+            code: 404,
+            message: ["The error.log file does not exist yet."]
+        });
+    }
+    // 3. Set headers to force the browser to download the file
+    res.setHeader('Content-Disposition', 'attachment; filename="server-error.log"');
+    res.setHeader('Content-Type', 'text/plain');
+    // 4. Create a read stream and pipe it to the response
+    const fileStream = fs.createReadStream(logFilePath);
+    
+    fileStream.on('error', (err) => {
+        console.error("Error streaming log file:", err);
+        res.status(500).send("Error downloading file.");
+    });
+    fileStream.pipe(res);
 });
