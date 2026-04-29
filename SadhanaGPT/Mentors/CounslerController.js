@@ -2333,7 +2333,7 @@ try {
 });
 
 
-export const editNote = asyncHandler(async (req, res) => {
+export const oldeditNote = asyncHandler(async (req, res) => {
 
   try {
 
@@ -2397,6 +2397,38 @@ export const editNote = asyncHandler(async (req, res) => {
   }
 
 });
+export const editNote = asyncHandler(async (req, res) => {
+  try {
+    const { note_id, user_id, note_text, meeting_date } = req.body;
+
+    const { isValid, errors } = validateFields(req.body, {
+      note_id: ["required"],
+      user_id: ["required"], // We use user_id to ensure a counsellor only edits THEIR notes
+    });
+
+    if (!isValid) return res.json({ status: 0, code: 422, message: errors });
+
+    const [result] = await db.execute(
+      `UPDATE notes SET note_text = ?, meeting_date = ? 
+       WHERE id = ? AND counsellor_id = ?`,
+      [note_text, meeting_date, note_id, user_id]
+    );
+
+    res.status(200).json({
+      status: 1, // Status 1 signals success to your frontend logic
+      success: true,
+      message: "Note updated successfully",
+    });
+  } catch (error) {
+    console.error("Error editing note:", error);
+    res.status(500).json({
+      status: 0,
+      success: false,
+      message: "Server error while editing note"
+    });
+  }
+});
+
 
 
 export const deleteNote = asyncHandler(async (req, res) => {
@@ -3048,3 +3080,51 @@ export const contentListCounsellor = asyncHandler(async (req, resp) => {
 });
 
 
+export const studentNotesList = asyncHandler(async (req, resp) => {
+  try {
+    const {
+      page_no = 1,
+      user_id,     // Counsellor ID
+      student_id,  // Mentee ID
+      rowSelected
+    } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+      user_id: ["required"],
+      student_id: ["required"],
+    });
+
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const params = {
+      tableName: "notes n",
+      columns: "n.id as note_id, n.counsellor_id as user_id, n.student_id, n.note_text, n.meeting_date, n.created_at",
+      // No join needed since we just need the notes directly
+      sortColumn: "n.meeting_date", 
+      sortOrder: "DESC",
+      page_no,
+      limit: rowSelected || 100, // Keep limit high if you aren't doing strict UI pagination
+      whereField: ["n.counsellor_id", "n.student_id"],
+      whereValue: [user_id, student_id],
+      whereOperator: ["=", "="],
+    };
+
+    const result = await getPaginatedData(params);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Notes list fetched successfully!"],
+      data: result.data,
+      total_page: result.totalPage,
+      total: result.total,
+    }); 
+  } catch (error) {
+    console.error("Error fetching notes List:", error);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: "Error fetching notes List",
+    });
+  }
+});
