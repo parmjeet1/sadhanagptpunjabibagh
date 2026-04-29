@@ -3016,9 +3016,13 @@ console.log("query,[...paramsArr, limit, offset]",query,[...paramsArr, limit, of
 
       // 2. PREVENT NaN ERROR: Force strict integers
       const limit = 10;
-      const page = parseInt(page_no, 10) || 1; 
-      const offset = (page - 1) * limit;
+    const page = Number.isInteger(Number(page_no)) && Number(page_no) > 0 ? Number(page_no): 1;
 
+      const offset = (page - 1) * limit;
+const counsellorId = String(user_id).trim();
+if (!counsellorId) {
+  return resp.status(400).json({ status: 0, message: "Invalid user_id" });
+}
       const query = `
         SELECT c.id, c.content_type, c.content, c.created_at 
         FROM contents c 
@@ -3028,8 +3032,10 @@ console.log("query,[...paramsArr, limit, offset]",query,[...paramsArr, limit, of
       `;
 
       // Pass parameters safely
-      const finalParams = [...paramsArr, Number(limit), Number(offset)];
-      
+     const finalParams = [counsellorId, limit, offset];
+      console.log("QUERY:", query);
+console.log("PARAMS:", finalParams);
+console.log(finalParams.map(v => typeof v));
       const [data] = await db.execute(query, finalParams);
 
       return resp.json({
