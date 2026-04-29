@@ -2981,23 +2981,23 @@ console.log("query,[...paramsArr, limit, offset]",query,[...paramsArr, limit, of
       return resp.status(500).json({ status: 0, message: "Error fetching list",error: error.message });
     }
   });
-  export const contentListCounsellor = asyncHandler(async (req, resp) => {
+export const contentListCounsellor = asyncHandler(async (req, resp) => {
     try {
       const {
         page_no = 1,
-        user_id, // Make sure this is actually coming from the frontend/token!
+        user_id, 
         center_id,
         label_id,
         content_type
       } = mergeParam(req);
 
-      // 1. PREVENT UNDEFINED ERROR: Ensure user_id exists
-      if (!user_id) {
-        return resp.status(400).json({ status: 0, message: "user_id is missing or undefined." });
+      const counsellorId = String(user_id || '').trim();
+      if (!counsellorId) {
+        return resp.status(400).json({ status: 0, message: "Invalid user_id" });
       }
 
       let whereConditions = `c.counsellor_id = ?`;
-      let paramsArr = [user_id]; // If user_id is undefined, mysql2 crashes here.
+      let paramsArr = [counsellorId]; // Start with the counsellor ID
 
       if (center_id && center_id !== 'All') {
         whereConditions += ` AND EXISTS (SELECT 1 FROM content_groups cg WHERE cg.content_id = c.id AND cg.group_id = ?)`;
@@ -3014,29 +3014,25 @@ console.log("query,[...paramsArr, limit, offset]",query,[...paramsArr, limit, of
         paramsArr.push(content_type);
       }
 
-      // 2. PREVENT NaN ERROR: Force strict integers
       const limit = 10;
-    const page = Number.isInteger(Number(page_no)) && Number(page_no) > 0 ? Number(page_no): 1;
-
+      const page = Number.isInteger(Number(page_no)) && Number(page_no) > 0 ? Number(page_no) : 1;
       const offset = (page - 1) * limit;
-const counsellorId = String(user_id).trim();
-if (!counsellorId) {
-  return resp.status(400).json({ status: 0, message: "Invalid user_id" });
-}
+
+      // 🚨 FIX 1: Inject LIMIT and OFFSET directly into the string as numbers.
+      // Do NOT use ? for LIMIT and OFFSET, this fixes the server error!
       const query = `
         SELECT c.id, c.content_type, c.content, c.created_at 
         FROM contents c 
         WHERE ${whereConditions} 
         ORDER BY c.created_at DESC 
-        LIMIT ? OFFSET ?
+        LIMIT ${limit} OFFSET ${offset}
       `;
 
-      // Pass parameters safely
-     const finalParams = [counsellorId, limit, offset];
+      // 🚨 FIX 2: Only pass paramsArr (which holds user_id, center_id, etc.)
       console.log("QUERY:", query);
-console.log("PARAMS:", finalParams);
-console.log(finalParams.map(v => typeof v));
-      const [data] = await db.execute(query, finalParams);
+      console.log("PARAMS:", paramsArr);
+
+      const [data] = await db.execute(query, paramsArr);
 
       return resp.json({
         status: 1,
@@ -3050,6 +3046,5 @@ console.log(finalParams.map(v => typeof v));
       return resp.status(500).json({ status: 0, message: "Error fetching list", error: error.message });
     }
 });
-
 
 
