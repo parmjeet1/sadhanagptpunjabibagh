@@ -9,6 +9,9 @@ import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 export const getStudentRank = asyncHandler(async (req, res) => {
     try {
         const { center_id, user_id } = mergeParam(req);
+        const limit = parseInt(req.query.limit) || null;
+        const page = parseInt(req.query.page) || 1;
+        const sort = req.query.sort || 'desc';
         
         // Date range: last Monday → last Sunday (matching weeklySummaryUpdate)
         const lastSunday = moment().day(0).startOf('day'); // Most recent Sunday
@@ -67,16 +70,16 @@ export const getStudentRank = asyncHandler(async (req, res) => {
                 total_marks: numericMarks,
                 percentage: percentage
             };
-        }).filter(student => student.percentage >= 50);
+        });
 
-        // Sort by percentage descending
+        // Sort by percentage descending to compute ALL ranks first
         studentsList.sort((a, b) => b.percentage - a.percentage);
 
         let currentRank = 1;
         let previousPercentage = null;
 
         // Assign rank numbers based on percentage
-        const rankedStudents = studentsList.map((student, index) => {
+        let rankedStudents = studentsList.map((student, index) => {
             if (previousPercentage !== null && student.percentage < previousPercentage) {
                 currentRank = index + 1;
             }
@@ -88,10 +91,27 @@ export const getStudentRank = asyncHandler(async (req, res) => {
             };
         });
 
+        // Now apply sorting based on query (if 'asc' we show bottom first)
+        if (sort === 'asc') {
+            rankedStudents.sort((a, b) => a.percentage - b.percentage);
+        }
+
+        const total = rankedStudents.length;
+        let total_page = 1;
+        
+        if (limit) {
+            total_page = Math.ceil(total / limit);
+            const startIndex = (page - 1) * limit;
+            rankedStudents = rankedStudents.slice(startIndex, startIndex + limit);
+        }
+
         return res.json({
             status: 1,
             code: 200,
             message: ["Student ranks fetched successfully"],
+            total: total,
+            page: page,
+            total_page: total_page,
             data: {
                 period: `${fromDate} to ${toDate}`,
                 ranks: rankedStudents

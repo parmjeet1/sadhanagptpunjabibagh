@@ -7,7 +7,7 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
   try {
     const {
       master_activity_id,
-      center_id,
+      center_id, // Still coming from frontend as center_id (legacy naming in frontend param)
       remark,
       frequency,
       condition_operator,
@@ -43,7 +43,7 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
     ];
 
     const values = [
-      center_id,
+      center_id, // maps to scheme_id logically but DB uses center_id
       master_activity_id,
       remark || "",
       frequency,
@@ -83,16 +83,13 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
 
 export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
   try {
-    const { center_id, counsellor_id, activities, name, assign_center_id, assign_label_id } = mergeParam(req);
+    const { center_id, counsellor_id, activities, name } = mergeParam(req);
 
     if (!counsellor_id || !Array.isArray(activities)) {
       return resp.json({ status: 0, code: 422, message: ["Missing required fields or activities must be an array"] });
     }
 
     let schemeIdToUse = center_id;
-
-    // Check if the scheme exists in the marking_schemes table
-    // Custom schemes created from frontend will initially have high IDs (Date.now()) or null
     let needsInsert = true;
     if (center_id && center_id < 1000000000) {
       const [existing] = await db.query("SELECT id FROM marking_schemes WHERE id = ?", [center_id]);
@@ -131,7 +128,6 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
     let insertedCount = 0;
 
     for (const activity of activities) {
-      // Clean activity id if it's a string like 'def1', mock id, or has unique client-side suffixes
       let master_activity_id = activity.id;
       if (typeof master_activity_id === 'string') {
         if (master_activity_id.includes('_')) {
@@ -149,7 +145,6 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
         if (!rows) return;
         for (const row of rows) {
           const conditionStr = row.condition || "";
-          
           let operator = "=";
           let value = conditionStr;
           
@@ -167,9 +162,7 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
             if (conditionStr.toLowerCase().startsWith(rule.toLowerCase())) {
               operator = op;
               value = conditionStr.substring(rule.length).trim();
-              if (rule === "Yes" || rule === "No") {
-                value = rule;
-              }
+              if (rule === "Yes" || rule === "No") value = rule;
               break;
             }
           }
@@ -198,16 +191,6 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
       } else if (activity.rows) {
         await processRows(activity.rows);
       }
-    }
-
-    // Map marking_scheme_id to the selected center/group
-    if (assign_center_id) {
-      await db.query("UPDATE center_list SET marking_scheme_id = ? WHERE center_id = ?", [schemeIdToUse, assign_center_id]);
-    }
-
-    // Map marking_scheme_id to the selected subgroup/label
-    if (assign_label_id) {
-      await db.query("UPDATE labels_list SET marking_scheme_id = ? WHERE id = ?", [schemeIdToUse, assign_label_id]);
     }
 
     return resp.json({
@@ -276,21 +259,21 @@ export const getSchemesList = asyncHandler(async (req, resp) => {
         ms.name,
         ms.counsellor_id,
         ms.is_enabled as isEnabled,
-        (ms.id = 1) as isSystemDefault,
-        (ms.id = 1) as isLocked,
+        (ms.counsellor_id = 'system') as isSystemDefault,
+        (ms.counsellor_id = 'system') as isLocked,
         (SELECT COUNT(*) FROM center_list cl 
          WHERE cl.counsller_id = ? 
            AND (
-             (ms.id = 1 AND (
+             (ms.counsellor_id = 'system' AND (
                 NOT EXISTS (SELECT 1 FROM labels_list WHERE center_id = cl.center_id)
                 OR EXISTS (
                   SELECT 1 FROM labels_list ll 
                   WHERE ll.center_id = cl.center_id 
-                    AND (ll.marking_scheme_id = 1 OR (ll.marking_scheme_id IS NULL AND (cl.marking_scheme_id IS NULL OR cl.marking_scheme_id = 1)))
+                    AND (ll.marking_scheme_id IN (SELECT id FROM marking_schemes WHERE counsellor_id = 'system') OR (ll.marking_scheme_id IS NULL AND (cl.marking_scheme_id IS NULL OR cl.marking_scheme_id IN (SELECT id FROM marking_schemes WHERE counsellor_id = 'system'))))
                 )
              ))
              OR
-             (ms.id != 1 AND (
+             (ms.counsellor_id != 'system' AND (
                 cl.marking_scheme_id = ms.id 
                 OR EXISTS (
                   SELECT 1 FROM labels_list ll 
@@ -303,14 +286,14 @@ export const getSchemesList = asyncHandler(async (req, resp) => {
         (SELECT COUNT(*) FROM labels_list ll
          WHERE ll.counsellor_id = ?
            AND (
-             (ms.id = 1 AND (
-                ll.marking_scheme_id = 1 
+             (ms.counsellor_id = 'system' AND (
+                ll.marking_scheme_id IN (SELECT id FROM marking_schemes WHERE counsellor_id = 'system')
                 OR (ll.marking_scheme_id IS NULL AND EXISTS (
-                   SELECT 1 FROM center_list cl WHERE cl.center_id = ll.center_id AND (cl.marking_scheme_id IS NULL OR cl.marking_scheme_id = 1)
+                   SELECT 1 FROM center_list cl WHERE cl.center_id = ll.center_id AND (cl.marking_scheme_id IS NULL OR cl.marking_scheme_id IN (SELECT id FROM marking_schemes WHERE counsellor_id = 'system'))
                 ))
              ))
              OR
-             (ms.id != 1 AND (
+             (ms.counsellor_id != 'system' AND (
                 ll.marking_scheme_id = ms.id 
                 OR (ll.marking_scheme_id IS NULL AND EXISTS (
                    SELECT 1 FROM center_list cl WHERE cl.center_id = ll.center_id AND cl.marking_scheme_id = ms.id
@@ -319,7 +302,7 @@ export const getSchemesList = asyncHandler(async (req, resp) => {
            )
         ) as appliedSubgroupCount
       FROM marking_schemes ms
-      WHERE ms.counsellor_id = ? OR ms.id = 1
+      WHERE ms.counsellor_id = ? OR ms.counsellor_id = 'system'
       ORDER BY ms.id ASC
     `;
 
@@ -354,34 +337,15 @@ export const getSchemesList = asyncHandler(async (req, resp) => {
 
 export const createMarkingScheme = asyncHandler(async (req, resp) => {
   try {
-    // Validate required fields
     const { isValid, errors } = validateFields(mergeParam(req), {
       name: ["required"],
-      counsellor_id: ["required"],
-      group_id: ["required"],
-      subgroup_id: ["required"],
+      counsellor_id: ["required"]
     });
 
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const { name, counsellor_id, group_id, subgroup_id } = mergeParam(req);
-
-    // Check if subgroup already has a custom marking scheme assigned (other than default ID 1)
-    const [existing] = await db.query(
-      `SELECT ms.id, ms.name 
-       FROM labels_list ll 
-       JOIN marking_schemes ms ON ll.marking_scheme_id = ms.id 
-       WHERE ll.id = ? AND ms.id != 1`,
-      [subgroup_id]
-    );
-
-    if (existing && existing.length > 0) {
-      return resp.json({
-        status: 0,
-        code: 400,
-        message: [`A custom marking scheme ('${existing[0].name}') is already assigned to this subgroup.`]
-      });
-    }
+    const { name, counsellor_id, assignments } = mergeParam(req);
+    const assignList = assignments || [];
 
     // 1. Insert the scheme record
     const [insertRes] = await db.query(
@@ -390,44 +354,45 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
     );
     const schemeId = insertRes.insertId;
 
-    // 2. Clone/copy rules of system default scheme (id = 1) to the new scheme in marking_rules table
-    /*const [defaultRules] = await db.query("SELECT * FROM marking_rules WHERE center_id = 1 AND status = 1");
+    // 2. Clone/copy rules of system default scheme to the new scheme in marking_rules table
+    const [defaultRules] = await db.query("SELECT * FROM marking_rules WHERE counsellor_id = 'system' AND status = 1");
     
-    const columns = [
-      "center_id",
-      "master_activity_id",
-      "remark",
-      "frequency",
-      "condition_operator",
-      "condition_value",
-      "marks",
-      "counsellor_id",
-      "status"
-    ];
-
-    for (const rule of defaultRules) {
-      const values = [
-        schemeId,
-        rule.master_activity_id,
-        rule.remark || "",
-        rule.frequency || "Daily",
-        rule.condition_operator,
-        rule.condition_value,
-        rule.marks,
-        counsellor_id,
-        1
+    if (defaultRules && defaultRules.length > 0) {
+      const columns = [
+        "center_id",
+        "master_activity_id",
+        "remark",
+        "frequency",
+        "condition_operator",
+        "condition_value",
+        "marks",
+        "counsellor_id",
+        "status"
       ];
-      await insertRecord("marking_rules", columns, values);
-    } */
 
-    // 3. Assign Group (Center) if selected (only if NO subgroup is specified)
-    if (group_id && !subgroup_id) {
-      await db.query("UPDATE center_list SET marking_scheme_id = ? WHERE center_id = ?", [schemeId, group_id]);
+      for (const rule of defaultRules) {
+        const values = [
+          schemeId,
+          rule.master_activity_id,
+          rule.remark || "",
+          rule.frequency || "Daily",
+          rule.condition_operator,
+          rule.condition_value,
+          rule.marks,
+          counsellor_id,
+          1
+        ];
+        await insertRecord("marking_rules", columns, values);
+      }
     }
 
-    // 4. Assign Sub Group (Label) if selected
-    if (subgroup_id) {
-      await db.query("UPDATE labels_list SET marking_scheme_id = ? WHERE id = ?", [schemeId, subgroup_id]);
+    // 3. Process assignments (overwrite any existing assignment)
+    for (const a of assignList) {
+      if (a.type === 'group') {
+        await db.query("UPDATE center_list SET marking_scheme_id = ? WHERE center_id = ?", [schemeId, a.id]);
+      } else if (a.type === 'subgroup') {
+        await db.query("UPDATE labels_list SET marking_scheme_id = ? WHERE id = ?", [schemeId, a.id]);
+      }
     }
 
     return resp.json({
@@ -453,22 +418,6 @@ export const getSchemeActivitiesList = asyncHandler(async (req, resp) => {
 
     if (!counsellor_id) {
       return resp.json({ status: 0, code: 422, message: ["counsellor_id is required"] });
-    }
-
-    // 1. Find group (center_id) and subgroup (label_id) assigned to this scheme
-    let centerId = 0;
-    let labelId = 0;
-
-    if (scheme_id && scheme_id !== 'new') {
-      const [centerRows] = await db.query("SELECT center_id FROM center_list WHERE marking_scheme_id = ?", [scheme_id]);
-      if (centerRows && centerRows.length > 0) {
-        centerId = centerRows[0].center_id;
-      }
-
-      const [labelRows] = await db.query("SELECT id FROM labels_list WHERE marking_scheme_id = ?", [scheme_id]);
-      if (labelRows && labelRows.length > 0) {
-        labelId = labelRows[0].id;
-      }
     }
 
     const query = `
@@ -519,9 +468,9 @@ export const getSchemeActivitiesList = asyncHandler(async (req, resp) => {
     });
   }
 });
+
 export const updateMarkingScheme = asyncHandler(async (req, resp) => {
   try {
-    // Validate required fields
     const { isValid, errors } = validateFields(mergeParam(req), {
       scheme_id: ["required"],
       counsellor_id: ["required"],
@@ -529,13 +478,14 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
 
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     
-    const { scheme_id, counsellor_id, name, center_id, label_id } = mergeParam(req);
+    const { scheme_id, counsellor_id, name, assignments } = mergeParam(req);
+    const assignList = assignments || [];
 
-    if (Number(scheme_id) === 1) {
+    const [sysCheck] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [scheme_id]);
+    if (sysCheck && sysCheck.length > 0 && sysCheck[0].counsellor_id === 'system') {
       return resp.json({ status: 0, code: 403, message: ["Cannot edit the system default scheme."] });
     }
 
-    // Ownership check
     const [ownerRows] = await db.query(
       "SELECT id, name FROM marking_schemes WHERE id = ? AND counsellor_id = ?",
       [scheme_id, counsellor_id]
@@ -544,40 +494,21 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
       return resp.json({ status: 0, code: 403, message: ["Scheme not found or access denied."] });
     }
 
-    // Check if the subgroup (label_id) is already assigned to a different custom scheme
-    if (label_id) {
-      const [existing] = await db.query(
-        `SELECT ms.id, ms.name 
-         FROM labels_list ll 
-         JOIN marking_schemes ms ON ll.marking_scheme_id = ms.id 
-         WHERE ll.id = ? AND ms.id != 1 AND ms.id != ?`,
-        [label_id, scheme_id]
-      );
-
-      if (existing && existing.length > 0) {
-        return resp.json({
-          status: 0,
-          code: 400,
-          message: [`A custom marking scheme ('${existing[0].name}') is already assigned to this subgroup.`]
-        });
-      }
-    }
-
-    // 1. Update name if provided
     if (name && name.trim()) {
       await db.query("UPDATE marking_schemes SET name = ? WHERE id = ?", [name.trim(), scheme_id]);
     }
 
-    // 2. Unlink old group assignment for this scheme, then re-assign if center_id provided and no label_id is specified
-    await db.query("UPDATE center_list SET marking_scheme_id = NULL WHERE marking_scheme_id = ?", [scheme_id]);
-    if (center_id && Number(center_id) > 0 && (!label_id || Number(label_id) <= 0)) {
-      await db.query("UPDATE center_list SET marking_scheme_id = ? WHERE center_id = ?", [scheme_id, center_id]);
-    }
+    // Unlink old assignments
+    await db.query(`UPDATE center_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
+    await db.query(`UPDATE labels_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
 
-    // 3. Unlink old label assignment for this scheme, then re-assign if label_id provided
-    await db.query("UPDATE labels_list SET marking_scheme_id = NULL WHERE marking_scheme_id = ?", [scheme_id]);
-    if (label_id && Number(label_id) > 0) {
-      await db.query("UPDATE labels_list SET marking_scheme_id = ? WHERE id = ?", [scheme_id, label_id]);
+    // Apply new assignments (overwrite any existing)
+    for (const a of assignList) {
+      if (a.type === 'group') {
+        await db.query("UPDATE center_list SET marking_scheme_id = ? WHERE center_id = ?", [scheme_id, a.id]);
+      } else if (a.type === 'subgroup') {
+        await db.query("UPDATE labels_list SET marking_scheme_id = ? WHERE id = ?", [scheme_id, a.id]);
+      }
     }
 
     return resp.json({
@@ -591,7 +522,6 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
   }
 });
 
-
 export const deleteMarkingScheme = asyncHandler(async (req, resp) => {
   try {
     const { scheme_id, counsellor_id } = mergeParam(req);
@@ -600,12 +530,11 @@ export const deleteMarkingScheme = asyncHandler(async (req, resp) => {
       return resp.json({ status: 0, code: 422, message: ["scheme_id and counsellor_id are required"] });
     }
 
-    // Safety: never allow deleting the system default scheme (id = 1)
-    if (Number(scheme_id) === 1) {
+    const [sysCheck] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [scheme_id]);
+    if (sysCheck && sysCheck.length > 0 && sysCheck[0].counsellor_id === 'system') {
       return resp.json({ status: 0, code: 403, message: ["Cannot delete the system default scheme."] });
     }
 
-    // Verify ownership — scheme must belong to this counsellor
     const [ownerRows] = await db.query(
       "SELECT id FROM marking_schemes WHERE id = ? AND counsellor_id = ?",
       [scheme_id, counsellor_id]
@@ -614,14 +543,11 @@ export const deleteMarkingScheme = asyncHandler(async (req, resp) => {
       return resp.json({ status: 0, code: 403, message: ["Scheme not found or access denied."] });
     }
 
-    // 1. Delete all marking_rules for this scheme (center_id = scheme_id)
     await db.query("DELETE FROM marking_rules WHERE center_id = ?", [scheme_id]);
 
-    // 2. Unlink any groups/labels pointing to this scheme
-    await db.query("UPDATE center_list SET marking_scheme_id = NULL WHERE marking_scheme_id = ?", [scheme_id]);
-    await db.query("UPDATE labels_list SET marking_scheme_id = NULL WHERE marking_scheme_id = ?", [scheme_id]);
+    await db.query(`UPDATE center_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
+    await db.query(`UPDATE labels_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
 
-    // 3. Delete the scheme record itself
     await db.query("DELETE FROM marking_schemes WHERE id = ?", [scheme_id]);
 
     return resp.json({
