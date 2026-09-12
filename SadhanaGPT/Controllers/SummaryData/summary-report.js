@@ -1,6 +1,7 @@
 import db from '../../../config/database.js';
 import cron from 'node-cron';
 import moment from 'moment';
+import { createNotification } from '../../../utils/utils.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -251,7 +252,7 @@ const weeklySummaryUpdate = async () => {
                     // ── Step 7: Compare aggregated value against rules ─────────
                     let bestMarks = 0;
                     for (const rule of rules) {
-                        let ruleVal  = Number(rule.condition_value);
+                        let ruleVal  = parseFloat(rule.condition_value);
                         let cCount   = aggregatedValue;
                         let matched  = false;
 
@@ -300,6 +301,18 @@ const weeklySummaryUpdate = async () => {
                 ]);
 
                 console.log(`[WeeklyJob] ✅ User ${user_id} → marks: ${totalMarks}/${maxPossibleMarks} saved on ${summaryDate}`);
+
+                // Send notification to check ranking
+                await createNotification(
+                    "Weekly Ranking Available!",
+                    "Your weekly ranking has been calculated. Check out how you performed last week on the Inspiration board!",
+                    "weekly_ranking",
+                    "student",
+                    "system",
+                    0,
+                    user_id,
+                    "/student/inspiration"
+                );
 
             } catch (userErr) {
                 console.error(`[WeeklyJob] ❌ Error processing user ${user_id}:`, userErr.message);

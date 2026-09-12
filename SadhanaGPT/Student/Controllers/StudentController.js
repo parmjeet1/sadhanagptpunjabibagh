@@ -1008,7 +1008,7 @@ export const oldaddSadhna = asyncHandler(async (req, resp) => {
 
       if (rule) {
         const rawCount = Number(count);
-        const ruleValue = Number(rule.condition_value);
+        const ruleValue = parseFloat(rule.condition_value);
         let isMatched = false;
 
         switch (rule.condition_operator) {
@@ -1141,13 +1141,13 @@ export const addSadhna = asyncHandler(async (req, resp) => {
         // 5. QUERY: Get all the scoring rules for this specific activity. 
         // It looks for rules assigned to the student's resolved scheme ID first, and falls back to system default rules (Center 1) if none exist.
         const [fetchedRules] = await db.execute(
-          `SELECT condition_operator, condition_value, marks, center_id, frequency
+          `SELECT condition_operator, condition_value, marks, scheme_id, frequency
            FROM marking_rules 
-           WHERE center_id IN (?, 1)
+           WHERE scheme_id IN (?, 1)
              AND master_activity_id = ? 
              AND status = 1 
              AND frequency = 'daily'
-           ORDER BY center_id = ? DESC`,
+           ORDER BY scheme_id = ? DESC`,
           [schemeId, masterId, schemeId]
         );
 
@@ -2990,8 +2990,8 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
       FROM (
         SELECT f.master_activity_id, 
                COALESCE(
-                 (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND center_id = ?),
-                 (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND center_id = 1)
+                 (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND scheme_id = ?),
+                 (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND scheme_id = 1)
                ) as max_marks
         FROM fix_activities f
         WHERE f.user_id = ? AND f.master_activity_id IS NOT NULL AND f.master_activity_id > 0
@@ -3051,5 +3051,150 @@ export const getDailyScore = asyncHandler(async (req, resp) => {
       code: 500,
       message: ["Failed to calculate daily score"]
     });
+  }
+});
+
+export const getWeeklyRanking = asyncHandler(async (req, resp) => {
+  const { user_id, page_no = 1, limit = 10, center_filter = false } = mergeParam(req);
+  
+  if (!user_id) {
+    return resp.json({ status: 0, code: 422, message: ["user_id is required"] });
+  }
+
+  const offset = (Number(page_no) - 1) * Number(limit);
+  
+  // Daily ranking
+  const today = moment().format('YYYY-MM-DD');
+
+  try {
+    let centerCondition = "";
+    const params = [today];
+
+    if (String(center_filter) === 'true') {
+      const [centerRows] = await db.execute(
+        `SELECT center_id FROM user_assignments WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
+        [user_id]
+      );
+      if (centerRows.length > 0 && centerRows[0].center_id) {
+        centerCondition = "AND ua.center_id = ?";
+        params.push(centerRows[0].center_id);
+      }
+    }
+
+    // Add pagination params
+    params.push(String(limit), String(offset));
+
+    const query = `
+      SELECT 
+        u.user_id, 
+        u.name, 
+        u.profile,
+        SUM(dr.marks) as total_marks
+      FROM users u
+      JOIN daily_report dr ON u.user_id = dr.user_id
+      LEFT JOIN user_assignments ua ON u.user_id = ua.user_id
+      WHERE u.status = 1 
+        AND dr.activity_date = ?
+        ${centerCondition}
+      GROUP BY u.user_id
+      ORDER BY total_marks DESC, u.name ASC
+      LIMIT ? OFFSET ?
+    `;
+
+    const [rankingList] = await db.execute(query, params);
+
+    // Get current user's specific rank
+    let currentUserRank = null;
+    if (rankingList.some(r => String(r.user_id) === String(user_id))) {
+      currentUserRank = rankingList.findIndex(r => String(r.user_id) === String(user_id)) + 1 + offset;
+    } else {
+      // If not in this page, find their absolute rank
+      const rankQuery = `
+        SELECT rank FROM (
+          SELECT dr2.user_id, RANK() OVER (ORDER BY SUM(dr2.marks) DESC) as rank
+          FROM daily_report dr2
+          LEFT JOIN user_assignments ua2 ON dr2.user_id = ua2.user_id
+          WHERE dr2.activity_date = ?
+          ${centerCondition ? "AND ua2.center_id = ?" : ""}
+          GROUP BY dr2.user_id
+        ) sub
+        WHERE user_id = ?
+      `;
+      const rankParams = centerCondition ? [today, params[1], user_id] : [today, user_id];
+      const [rankRes] = await db.execute(rankQuery, rankParams);
+      if (rankRes.length > 0) currentUserRank = rankRes[0].rank;
+    }
+
+    // If user is #1 today, upsert top_ranker_from / top_ranker_to
+    let topRankerDates = null;
+    if (currentUserRank === 1) {
+      const [existingRows] = await db.execute(
+        `SELECT top_ranker_from, top_ranker_to FROM users WHERE user_id = ? LIMIT 1`,
+        [user_id]
+      );
+      const existing = existingRows[0];
+      if (!existing?.top_ranker_from) {
+        // First time ever — set both from and to
+        await db.execute(
+          `UPDATE users SET top_ranker_from = ?, top_ranker_to = ? WHERE user_id = ?`,
+          [today, today, user_id]
+        );
+        topRankerDates = { from: today, to: today };
+      } else {
+        // Already has a from date — just update to
+        await db.execute(
+          `UPDATE users SET top_ranker_to = ? WHERE user_id = ?`,
+          [today, user_id]
+        );
+        topRankerDates = { from: existing.top_ranker_from, to: today };
+      }
+    }
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Daily ranking fetched successfully"],
+      data: {
+        ranking: rankingList,
+        currentUserRank: currentUserRank,
+        isTopRanker: currentUserRank === 1,
+        topRankerDates: topRankerDates
+      }
+    });
+  } catch (err) {
+    console.error("Error fetching daily ranking:", err);
+    return resp.json({ status: 0, code: 500, message: ["Failed to fetch ranking"] });
+  }
+});
+
+export const getTopRankerBadge = asyncHandler(async (req, resp) => {
+  const { user_id } = mergeParam(req);
+
+  if (!user_id) {
+    return resp.json({ status: 0, code: 422, message: ["user_id is required"] });
+  }
+
+  try {
+    const [rows] = await db.execute(
+      `SELECT top_ranker_from, top_ranker_to FROM users WHERE user_id = ? LIMIT 1`,
+      [user_id]
+    );
+
+    if (!rows.length || !rows[0].top_ranker_from) {
+      return resp.json({ status: 1, code: 200, data: { hasBadge: false } });
+    }
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      data: {
+        hasBadge: true,
+        from: rows[0].top_ranker_from,
+        to: rows[0].top_ranker_to
+      }
+    });
+  } catch (err) {
+    console.error("Error fetching top ranker badge:", err);
+    return resp.json({ status: 0, code: 500, message: ["Failed to fetch badge"] });
   }
 });

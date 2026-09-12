@@ -624,7 +624,7 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
       [center_id]
     );
 
-    if (!center) {
+    if (!center || center.length === 0) {
       return resp.json({
         status: 0,
         code: 404,
@@ -633,7 +633,7 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
     }
 
     // ✅ Security check
-    if (center.counsller_id != user_id) {
+    if (center[0].counsller_id != user_id) {
       return resp.json({
         status: 0,
         code: 403,
@@ -641,7 +641,25 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
       });
     }
 
-    // ✅ Delete center
+    // ✅ 1. Unassign students from this group's sub-groups
+    await db.execute(
+      `DELETE FROM user_assignments WHERE center_id = ? AND counsellor_id = ?`,
+      [center_id, user_id]
+    );
+
+    // ✅ 2. Unassign students from this group (set center_id to NULL)
+    await db.execute(
+      `UPDATE users SET center_id = NULL WHERE center_id = ?`,
+      [center_id]
+    );
+
+    // ✅ 3. Delete this group's sub-groups
+    await db.execute(
+      `DELETE FROM labels_list WHERE center_id = ? AND counsellor_id = ?`,
+      [center_id, user_id]
+    );
+
+    // ✅ 4. Delete center
     await db.execute(
       `DELETE FROM center_list
        WHERE center_id = ?`,

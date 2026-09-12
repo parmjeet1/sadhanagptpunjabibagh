@@ -7,7 +7,7 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
   try {
     const {
       master_activity_id,
-      center_id, // Still coming from frontend as center_id (legacy naming in frontend param)
+      scheme_id,
       remark,
       frequency,
       condition_operator,
@@ -20,7 +20,7 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
     // Validate required fields
     const { isValid, errors } = validateFields(mergeParam(req), {
       master_activity_id: ["required"],
-      center_id: ["required"],
+      scheme_id: ["required"],
       frequency: ["required"],
       condition_operator: ["required"],
       condition_value: ["required"],
@@ -31,7 +31,7 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     const columns = [
-      "center_id",
+      "scheme_id",
       "master_activity_id",
       "remark",
       "frequency",
@@ -39,11 +39,12 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
       "condition_value",
       "marks",
       "counsellor_id",
-      "status"
+      "status",
+      "is_max_marks"
     ];
 
     const values = [
-      center_id, // maps to scheme_id logically but DB uses center_id
+      scheme_id,
       master_activity_id,
       remark || "",
       frequency,
@@ -51,7 +52,8 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
       condition_value,
       marks,
       counsellor_id,
-      status
+      status,
+      0
     ];
 
     // Insert into marking_rules table
@@ -83,16 +85,16 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
 
 export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
   try {
-    const { center_id, counsellor_id, activities, name } = mergeParam(req);
+    const { scheme_id, counsellor_id, activities, name } = mergeParam(req);
 
     if (!counsellor_id || !Array.isArray(activities)) {
       return resp.json({ status: 0, code: 422, message: ["Missing required fields or activities must be an array"] });
     }
 
-    let schemeIdToUse = center_id;
+    let schemeIdToUse = scheme_id;
     let needsInsert = true;
-    if (center_id && center_id < 1000000000) {
-      const [existing] = await db.query("SELECT id FROM marking_schemes WHERE id = ?", [center_id]);
+    if (scheme_id && scheme_id < 1000000000) {
+      const [existing] = await db.query("SELECT id FROM marking_schemes WHERE id = ?", [scheme_id]);
       if (existing && existing.length > 0) {
         needsInsert = false;
       }
@@ -106,15 +108,14 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
       schemeIdToUse = insertRes.insertId;
     } else {
       if (name) {
-        await db.query("UPDATE marking_schemes SET name = ? WHERE id = ?", [name, center_id]);
+        await db.query("UPDATE marking_schemes SET name = ? WHERE id = ?", [name, scheme_id]);
       }
     }
 
-    // Delete existing rules for this scheme id
-    await deleteRecord("marking_rules", "center_id", schemeIdToUse);
+    // Mass delete removed to support UPSERT (Preserve IDs)
 
     const columns = [
-      "center_id",
+      "scheme_id",
       "master_activity_id",
       "remark",
       "frequency",
@@ -122,7 +123,8 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
       "condition_value",
       "marks",
       "counsellor_id",
-      "status"
+      "status",
+      "is_max_marks"
     ];
 
     let insertedCount = 0;
@@ -141,12 +143,37 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
 
       const frequency = activity.badge || "Daily";
 
-      const processRows = async (rows) => {
-        if (!rows) return;
-        for (const row of rows) {
-          const conditionStr = row.condition || "";
-          let operator = "=";
-          let value = conditionStr;
+      let allRows = [];
+      if (activity.subTables) {
+        for (const sub of activity.subTables) {
+          if (sub.rows) allRows.push(...sub.rows.map(r => ({ ...r, _subFreq: frequency })));
+        }
+      } else if (activity.rows) {
+        allRows.push(...activity.rows.map(r => ({ ...r, _subFreq: frequency })));
+      }
+
+      if (allRows.length === 0) continue;
+
+      let maxMarksVal = -1;
+      let maxMarksIdx = -1;
+      allRows.forEach((r, idx) => {
+        const m = parseInt(r.marks) || 0;
+        if (m > maxMarksVal) {
+          maxMarksVal = m;
+          maxMarksIdx = idx;
+        }
+      });
+
+      for (let i = 0; i < allRows.length; i++) {
+        const row = allRows[i];
+        const is_max_marks = (i === maxMarksIdx) ? 1 : 0;
+        const conditionStr = row.condition || "";
+        let operator = row.operator;
+        let value = row.value;
+
+        if (!operator || value === undefined || value === null || value === '') {
+          operator = "=";
+          value = conditionStr;
           
           const rulesMap = {
             "Before": "<=",
@@ -166,30 +193,38 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
               break;
             }
           }
+        }
+        
+        // Clean value to remove non-numeric chars like "min", "rounds" unless it's a time or boolean
+        if (value && typeof value === 'string' && !value.includes(':') && !['yes', 'no', 'true', 'false', 'completed'].includes(value.toLowerCase())) {
+            const match = value.match(/[\d.]+/);
+            if (match) value = match[0];
+        }
 
+        if (row.id) {
+          const updateQuery = `
+            UPDATE marking_rules
+            SET condition_operator = ?, condition_value = ?, marks = ?, is_max_marks = ?
+            WHERE id = ? AND scheme_id = ?
+          `;
+          await db.query(updateQuery, [operator, value, row.marks || 0, is_max_marks, row.id, schemeIdToUse]);
+          insertedCount++;
+        } else {
           const values = [
             schemeIdToUse,
             master_activity_id,
             "", // remark
-            frequency,
+            row._subFreq,
             operator,
             value,
             row.marks || 0,
             counsellor_id,
-            1 // status
+            1, // status
+            is_max_marks
           ];
-
           await insertRecord("marking_rules", columns, values);
           insertedCount++;
         }
-      };
-
-      if (activity.subTables) {
-        for (const sub of activity.subTables) {
-          await processRows(sub.rows);
-        }
-      } else if (activity.rows) {
-        await processRows(activity.rows);
       }
     }
 
@@ -212,8 +247,8 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
 
 export const getMarkingRules = asyncHandler(async (req, resp) => {
   try {
-    const { center_id = 0, label_id = "" } = mergeParam(req);
-    const safeCenterId = db.escape(center_id);
+    const { scheme_id = 0, label_id = "" } = mergeParam(req);
+    const safeSchemeId = db.escape(scheme_id);
 
     const query = `
       SELECT 
@@ -223,7 +258,7 @@ export const getMarkingRules = asyncHandler(async (req, resp) => {
         a.activity_type 
       FROM marking_rules mr
       JOIN activities a ON mr.master_activity_id = a.id
-      WHERE mr.center_id = ${safeCenterId} AND mr.status = 1
+      WHERE mr.scheme_id = ${safeSchemeId} AND mr.status = 1
       ORDER BY mr.master_activity_id ASC, mr.marks DESC
     `;
 
@@ -359,7 +394,7 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
     
     if (defaultRules && defaultRules.length > 0) {
       const columns = [
-        "center_id",
+        "scheme_id",
         "master_activity_id",
         "remark",
         "frequency",
@@ -367,7 +402,8 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
         "condition_value",
         "marks",
         "counsellor_id",
-        "status"
+        "status",
+        "is_max_marks"
       ];
 
       for (const rule of defaultRules) {
@@ -380,7 +416,8 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
           rule.condition_value,
           rule.marks,
           counsellor_id,
-          1
+          1,
+          rule.is_max_marks || 0
         ];
         await insertRecord("marking_rules", columns, values);
       }
@@ -423,7 +460,7 @@ export const getSchemeActivitiesList = asyncHandler(async (req, resp) => {
     const query = `
       SELECT id, name, description, unit, target, activity_type, counsellor_id, status
       FROM activities
-      WHERE (counsellor_id = ? OR counsellor_id IS NULL)
+      WHERE (counsellor_id = ? OR counsellor_id IS NULL OR counsellor_id = 'null')
       AND status IN (1, 2, 3)
       ORDER BY id ASC
     `;
@@ -543,7 +580,7 @@ export const deleteMarkingScheme = asyncHandler(async (req, resp) => {
       return resp.json({ status: 0, code: 403, message: ["Scheme not found or access denied."] });
     }
 
-    await db.query("DELETE FROM marking_rules WHERE center_id = ?", [scheme_id]);
+    await db.query("DELETE FROM marking_rules WHERE scheme_id = ?", [scheme_id]);
 
     await db.query(`UPDATE center_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
     await db.query(`UPDATE labels_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
@@ -560,3 +597,54 @@ export const deleteMarkingScheme = asyncHandler(async (req, resp) => {
     return resp.json({ status: 0, code: 500, message: ["Error deleting marking scheme."] });
   }
 });
+
+export const deleteMarkingRule = asyncHandler(async (req, resp) => {
+  try {
+    const { rule_id, counsellor_id } = mergeParam(req);
+
+    if (!rule_id || !counsellor_id) {
+      return resp.json({ status: 0, code: 422, message: ["rule_id and counsellor_id are required"] });
+    }
+
+    // Optional: add a check to verify scheme ownership before deleting
+    // For now we trust the counsellor_id matching what we expect
+
+    await db.query("DELETE FROM marking_rules WHERE id = ?", [rule_id]);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Marking rule deleted successfully."],
+    });
+  } catch (error) {
+    console.error("Error deleting marking rule:", error);
+    return resp.json({ status: 0, code: 500, message: ["Error deleting marking rule."] });
+  }
+});
+
+export const deleteActivityRules = asyncHandler(async (req, resp) => {
+  try {
+    const { scheme_id, master_activity_id, counsellor_id } = mergeParam(req);
+
+    if (!scheme_id || !master_activity_id || !counsellor_id) {
+      return resp.json({ status: 0, code: 422, message: ["scheme_id, master_activity_id, and counsellor_id are required"] });
+    }
+
+    const [sysCheck] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [scheme_id]);
+    if (sysCheck && sysCheck.length > 0 && sysCheck[0].counsellor_id === 'system') {
+      return resp.json({ status: 0, code: 403, message: ["Cannot edit the system default scheme."] });
+    }
+
+    await db.query("DELETE FROM marking_rules WHERE scheme_id = ? AND master_activity_id = ?", [scheme_id, master_activity_id]);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Activity rules deleted successfully."],
+    });
+  } catch (error) {
+    console.error("Error deleting activity rules:", error);
+    return resp.json({ status: 0, code: 500, message: ["Error deleting activity rules."] });
+  }
+});
+

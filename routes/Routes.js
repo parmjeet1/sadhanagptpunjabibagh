@@ -1,16 +1,15 @@
-
 import { Router } from "express";
 
 import { checkPushNotificationStatus, downloadErrorLog, Register, removeSubscription, saveSubscription, sendEmailOtp, updateReminderPreferences, verifyEmailOtp } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors } from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge } from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
 import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, studentAnalysisPreview, generateAIAnalysis, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentNotesList, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings, getStudentAiAnalysisHistory, getSingleAiAnalysisReport, aiChatHandler, aiHealthHandler, aiTestHandler, aiDebugAuthHandler } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
 import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 import { irregularMenteesList, toggleMenteeNotification } from "../SadhanaGPT/Mentors/NotificationController.js";
 import { assignActivitiesToStudents, getMentorSelectableActivities, createCustomActivity, assignActivitiesToGroup, deassignActivitiesFromGroup, deleteCustomActivity, deleteAssignedCustomActivity, getGroupSubgroupList } from "../SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js";
-import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
+import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
 import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
 import { getFollowUpStudents } from '../SadhanaGPT/Controllers/SummaryData/followUpStudents.js';
 
@@ -77,6 +76,8 @@ const LoggedinRoute = [
     { method: 'post', path: '/report-as-per-date', handler: todayReportlist, role: "student" },
     { method: 'post', path: '/report-colors-range', handler: rangeReportColors, role: "student" },
     { method: 'get', path: '/daily-score', handler: getDailyScore, role: "student" },
+    { method: 'get', path: '/weekly-ranking', handler: getWeeklyRanking, role: "student" },
+    { method: 'get', path: '/top-ranker-badge', handler: getTopRankerBadge, role: "student" },
     { method: 'get', path: '/student-activities-analytics', handler: StudentActivitiesAnalytics, role: "student" },
 
     { method: 'get', path: '/detail-report', handler: detailReport, role: "student" },
@@ -177,6 +178,8 @@ const LoggedinRoute = [
     { method: 'post', path: '/scheme-activities-list', handler: getSchemeActivitiesList, role: "counsellor" },
     { method: 'post', path: '/delete-marking-scheme', handler: deleteMarkingScheme, role: "counsellor" },
     { method: 'post', path: '/update-marking-scheme', handler: updateMarkingScheme, role: "counsellor" },
+    { method: 'post', path: '/delete-marking-rule', handler: deleteMarkingRule, role: "counsellor" },
+    { method: 'post', path: '/delete-activity-rules', handler: deleteActivityRules, role: "counsellor" },
     { method: 'get', path: '/student-rank', handler: getStudentRank, role: "counsellor" },
     { method: 'get', path: '/student-followup', handler: getFollowUpStudents, role: "counsellor" },
     { method: 'post', path: '/create-custom-activity', handler: createCustomActivity }
