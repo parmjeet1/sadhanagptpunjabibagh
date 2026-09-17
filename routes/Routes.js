@@ -1,8 +1,8 @@
 import { Router } from "express";
 
-import { checkPushNotificationStatus, downloadErrorLog, Register, removeSubscription, saveSubscription, sendEmailOtp, updateReminderPreferences, verifyEmailOtp } from "../SadhanaGPT/Controllers/CommonControllers.js";
+import { checkPushNotificationStatus, downloadErrorLog, Register, removeSubscription, saveSubscription, sendEmailOtp, updateReminderPreferences, updateFcmToken, verifyEmailOtp } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge } from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, removeCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge, getStudentAppliedMarkingScheme } from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
 import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, studentAnalysisPreview, generateAIAnalysis, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentNotesList, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings, getStudentAiAnalysisHistory, getSingleAiAnalysisReport, aiChatHandler, aiHealthHandler, aiTestHandler, aiDebugAuthHandler } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
@@ -48,6 +48,7 @@ const LoggedinRoute = [
     { method: 'get', path: '/check-push-status', handler: checkPushNotificationStatus, role: "student" },
 
     { method: 'post', path: '/update-reminder-preferences', handler: updateReminderPreferences, role: "student" },
+    { method: 'post', path: '/update-fcm-token', handler: updateFcmToken, role: "student" },
 
     { method: 'post', path: '/notifications-subscribe', handler: saveSubscription, role: "student" },
     { method: 'post', path: '/notifications-unsubscribe', handler: removeSubscription, role: "student" },
@@ -58,6 +59,8 @@ const LoggedinRoute = [
 
     { method: 'post', path: '/update-student-profile', handler: updateStudentDetails, role: "student" },
     { method: 'post', path: '/add-counsllor', handler: addCounsellor, role: "student" },
+    { method: 'post', path: '/remove-counsllor', handler: removeCounsellor, role: "student" },
+    { method: 'post', path: '/remove-counsellor', handler: removeCounsellor, role: "student" },
     { method: 'get', path: '/student-notification-list', handler: UsernotificationList, role: "student" },
 
     { method: 'get', path: '/user-profile', handler: userProfile, role: "student" },
@@ -75,9 +78,11 @@ const LoggedinRoute = [
 
     { method: 'post', path: '/report-as-per-date', handler: todayReportlist, role: "student" },
     { method: 'post', path: '/report-colors-range', handler: rangeReportColors, role: "student" },
+    { method: 'post', path: '/range-report-colors', handler: rangeReportColors, role: "student" },
     { method: 'get', path: '/daily-score', handler: getDailyScore, role: "student" },
     { method: 'get', path: '/weekly-ranking', handler: getWeeklyRanking, role: "student" },
     { method: 'get', path: '/top-ranker-badge', handler: getTopRankerBadge, role: "student" },
+    { method: 'get', path: '/applied-marking-scheme', handler: getStudentAppliedMarkingScheme, role: "student" },
     { method: 'get', path: '/student-activities-analytics', handler: StudentActivitiesAnalytics, role: "student" },
 
     { method: 'get', path: '/detail-report', handler: detailReport, role: "student" },
@@ -193,7 +198,7 @@ const LoggedinRoute = [
 const uploadRules = {
     // 
     '/add-new-content': { folder: 'content', fields: ['image'], maxCount: 1, condition: (req) => req.body?.content_type === 'image' },
-    '/upload-profile-image': { folder: 'profiles', fields: ['profile'], maxCount: 1 },
+    '/upload-profile-image': { folder: 'profile', fields: ['profile'], maxCount: 1 },
 }
 LoggedinRoute.forEach(({ method, path, handler, role }) => {
     const middlewares = [Authorization];  // rateLimit

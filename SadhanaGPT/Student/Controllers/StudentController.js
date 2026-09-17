@@ -295,8 +295,10 @@ const googleLogin = async (
   }
 
   const [update] = await db.execute(
-    `UPDATE users SET access_token = ? WHERE email = ?`,
-    [access_token, email],
+    fcm_token 
+      ? `UPDATE users SET access_token = ?, fcm_token = ? WHERE email = ?`
+      : `UPDATE users SET access_token = ? WHERE email = ?`,
+    fcm_token ? [access_token, fcm_token, email] : [access_token, email],
   );
   if (update.affectedRows > 0) {
     result = {
@@ -365,8 +367,10 @@ export const login = asyncHandler(async (req, resp) => {
   const token = crypto.randomBytes(12).toString("hex");
   console.log("token", token);
   const [update] = await db.execute(
-    `UPDATE users SET access_token = ?, status = ? WHERE email = ?`,
-    [token, 1, email],
+    fcm_token
+      ? `UPDATE users SET access_token = ?, status = ?, fcm_token = ? WHERE email = ?`
+      : `UPDATE users SET access_token = ?, status = ? WHERE email = ?`,
+    fcm_token ? [token, 1, fcm_token, email] : [token, 1, email],
   );
   if (update.affectedRows > 0) {
     const result = {
@@ -573,32 +577,50 @@ export const editActivity = asyncHandler(async (req, resp) => {
   }
 });
 export const deleteActivity = asyncHandler(async (req, resp) => {
-  const { activity_id, user_id } = req.body;
-  console.log("deleteActivity req.body", req.body);
+  const { activity_id, user_id } = mergeParam(req);
 
   const { isValid, errors } = validateFields(mergeParam(req), {
     activity_id: ["required"],
+    user_id: ["required"]
   });
 
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-  const delete_data = await db.execute(
-    `DELETE FROM fix_activities 
-   WHERE activity_id = ? AND user_id = ?`,
-    [activity_id, user_id]
-  );
-  if (delete_data) {
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 1. Delete associated daily report logs for this user activity
+    await connection.execute(
+      `DELETE FROM daily_report WHERE activity_id = ? AND user_id = ?`,
+      [activity_id, user_id]
+    );
+
+    // 2. Delete activity configuration from fix_activities
+    const [result] = await connection.execute(
+      `DELETE FROM fix_activities WHERE activity_id = ? AND user_id = ?`,
+      [activity_id, user_id]
+    );
+
+    await connection.commit();
+
     return resp.json({
       status: 1,
       code: 200,
-      message: ["Activity deleted successfully!"],
+      message: ["Activity and all associated records deleted successfully!"],
+      data: { affectedRows: result.affectedRows }
     });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error deleting activity:", error);
+    return resp.json({
+      status: 0,
+      code: 500,
+      message: ["Failed to delete activity"],
+    });
+  } finally {
+    connection.release();
   }
-
-  return resp.json({
-    status: 0,
-    code: 500,
-    message: ["Failed to delete activity"],
-  });
 });
 
 export const listActivities = asyncHandler(async (req, resp) => {
@@ -671,41 +693,22 @@ const calculateColorForActivities = (activitiesList) => {
   }
 
   let total_assigned = activitiesList.length;
-  let completed_count = 0;
   let logged_count = 0;
 
   activitiesList.forEach(row => {
-    const hasLog = row.count !== null && row.count !== undefined && row.count !== '' && row.count !== 0 && row.count !== '0';
+    // Check if activity is added in daily_report (non-null and non-empty)
+    const hasLog = row.count !== null && row.count !== undefined && row.count !== '';
     if (hasLog) {
       logged_count++;
     }
-
-    // Check completion condition
-    let isCompleted = false;
-    const type = (row.activity_type || '').toLowerCase();
-    const countVal = row.count;
-    const targetVal = row.target;
-
-    if (type === 'yes_no' || type === 'boolean') {
-      isCompleted = hasLog && Number(countVal) > 0;
-    } else if (type === 'time') {
-      isCompleted = hasLog;
-    } else {
-      // count/duration
-      isCompleted = hasLog && Number(countVal) >= Number(targetVal);
-    }
-
-    if (isCompleted) {
-      completed_count++;
-    }
   });
 
-  if (completed_count === total_assigned && total_assigned > 0) {
-    return '#10B981'; // Green
+  if (logged_count === total_assigned && total_assigned > 0) {
+    return '#10B981'; // Green (All assigned activities logged for this date)
   } else if (logged_count > 0) {
-    return '#F59E0B'; // Yellow
+    return '#F59E0B'; // Yellow (Some activities logged for this date)
   } else {
-    return '#EF4444'; // Red
+    return '#EF4444'; // Red (No activities logged for this date)
   }
 };
 
@@ -792,7 +795,7 @@ export const rangeReportColors = asyncHandler(async (req, resp) => {
     const [logs] = await db.execute(
       `SELECT DATE_FORMAT(activity_date, '%Y-%m-%d') as log_date, activity_id, count 
        FROM daily_report 
-       WHERE user_id = ? AND activity_date BETWEEN ? AND ?`,
+       WHERE user_id = ? AND DATE(activity_date) BETWEEN ? AND ?`,
       [user_id, start_date, end_date]
     );
 
@@ -1073,7 +1076,6 @@ export const oldaddSadhna = asyncHandler(async (req, resp) => {
 });
 
 export const addSadhna = asyncHandler(async (req, resp) => {
-
   const { activity_id, count, activity_date, note, user_id, unit } = req.body;
 
   const { isValid, errors } = validateFields(req.body, {
@@ -1081,65 +1083,56 @@ export const addSadhna = asyncHandler(async (req, resp) => {
     activity_date: ["required"],
     user_id: ["required"],
   });
-  
+
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-  const today = moment().format("YYYY-MM-DD");
+
   const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
-
-  // 1. QUERY: Check if the student has already submitted this specific activity today.
-  // We need to know this so we can decide whether to UPDATE their existing row, or INSERT a new row later.
-  const check_today_sadhana = await queryDB(
-    `SELECT fa.activity_type, dr.activity_id,dr.note,dr.activity_date,dr.count from daily_report dr
-    JOIN fix_activities fa ON  fa.activity_id=dr.activity_id 
-    where
-         dr.activity_id=? and DATE(dr.activity_date)=? AND dr.user_id=? `,
-    [activity_id, final_activity_date, user_id],
-  );
-
-  let achievedMarks = null;
   let storedCount = count;
 
   try {
-    // 2. QUERY: Get the master ID of the activity from the student's assigned activities list.
-    // We need the master_activity_id to figure out which scoring rules apply to it.
-    const [[activityInfo]] = await db.execute(
-      `SELECT name, activity_type, master_activity_id FROM fix_activities WHERE activity_id = ? AND user_id = ? LIMIT 1`,
-      [activity_id, user_id]
-    );
+    // 1. PARALLEL EXECUTION: Run initial checks & scheme assignment lookup concurrently
+    const [
+      checkResult,
+      [[activityInfo]],
+      [[studentAssignment]]
+    ] = await Promise.all([
+      db.execute(
+        `SELECT dr.activity_id, dr.count, dr.note, dr.activity_date 
+         FROM daily_report dr
+         WHERE dr.activity_id = ? AND DATE(dr.activity_date) = ? AND dr.user_id = ? LIMIT 1`,
+        [activity_id, final_activity_date, user_id]
+      ),
+      db.execute(
+        `SELECT name, activity_type, master_activity_id FROM fix_activities WHERE activity_id = ? AND user_id = ? LIMIT 1`,
+        [activity_id, user_id]
+      ),
+      db.execute(
+        `SELECT ua.center_id, ua.label_id, ll.marking_scheme_id AS label_scheme_id, cl.marking_scheme_id AS center_scheme_id
+         FROM user_assignments ua
+         LEFT JOIN labels_list ll ON ua.label_id = ll.id
+         LEFT JOIN center_list cl ON ua.center_id = cl.center_id
+         WHERE ua.user_id = ? 
+         ORDER BY ua.id DESC LIMIT 1`,
+        [user_id]
+      )
+    ]);
+
+    const check_today_sadhana = checkResult[0] && checkResult[0].length > 0 ? checkResult[0][0] : null;
+    let achievedMarks = null;
 
     if (activityInfo) {
       if (activityInfo.activity_type === 'time') {
-         storedCount = minutesToTime(Number(count));
+        storedCount = minutesToTime(Number(count));
       }
-      let masterId = activityInfo.master_activity_id;
+      const masterId = activityInfo.master_activity_id;
 
       if (masterId && Number(masterId) > 0) {
-        // 4. QUERY: Find out which Center (Group) and Subgroup (Label) this student belongs to.
-        const [[studentAssignment]] = await db.execute(
-          `SELECT center_id, label_id FROM user_assignments WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
-          [user_id]
-        );
-        
-        let schemeId = 1;
-        if (studentAssignment) {
-          const center_id = studentAssignment.center_id;
-          const label_id = studentAssignment.label_id;
-          if (label_id > 0) {
-            const [labelDetail] = await db.query("SELECT marking_scheme_id FROM labels_list WHERE id = ?", [label_id]);
-            if (labelDetail && labelDetail[0]?.marking_scheme_id) {
-              schemeId = labelDetail[0].marking_scheme_id;
-            }
-          }
-          if (schemeId === 1 && center_id > 0) {
-            const [centerDetail] = await db.query("SELECT marking_scheme_id FROM center_list WHERE center_id = ?", [center_id]);
-            if (centerDetail && centerDetail[0]?.marking_scheme_id) {
-              schemeId = centerDetail[0].marking_scheme_id;
-            }
-          }
-        }
+        // Resolve Scheme ID instantly from parallel joined result
+        const schemeId = studentAssignment?.label_scheme_id 
+          || studentAssignment?.center_scheme_id 
+          || 1;
 
-        // 5. QUERY: Get all the scoring rules for this specific activity. 
-        // It looks for rules assigned to the student's resolved scheme ID first, and falls back to system default rules (Center 1) if none exist.
+        // Fetch scoring rules for resolved scheme ID (with system default fallback)
         const [fetchedRules] = await db.execute(
           `SELECT condition_operator, condition_value, marks, scheme_id, frequency
            FROM marking_rules 
@@ -1151,62 +1144,64 @@ export const addSadhna = asyncHandler(async (req, resp) => {
           [schemeId, masterId, schemeId]
         );
 
-        let rules = fetchedRules;
-
-        // Only calculate marks if it's NOT a weekly activity
         if (fetchedRules.length > 0) {
-          achievedMarks = calculateBestMarks(storedCount, rules, activityInfo.activity_type, unit);
+          achievedMarks = calculateBestMarks(storedCount, fetchedRules, activityInfo.activity_type, unit);
         } else {
-          console.log("No marks calculated -> weekly activity.");
           achievedMarks = 0;
         }
       }
     }
-  } catch (err) {
-    console.error("Error during marks calculation:", err);
-  }
 
-  const currentDateIST = moment().utcOffset('+05:30').format("YYYY-MM-DD HH:mm:ss");
+    const currentDateIST = moment().utcOffset('+05:30').format("YYYY-MM-DD HH:mm:ss");
 
-  if (check_today_sadhana) {
-    // 6. QUERY: If the student already submitted this activity today, 
-    // we just UPDATE their existing record with the new count and new marks.
-    await updateRecord(
+    if (check_today_sadhana) {
+      // UPDATE existing entry
+      await updateRecord(
+        "daily_report",
+        { count: storedCount, marks: achievedMarks, updated_at: currentDateIST },
+        ["activity_id", "user_id", "activity_date"],
+        [activity_id, user_id, final_activity_date],
+      );
+
+      // Async background summary update (non-blocking)
+      dailyStudentSummary(user_id, final_activity_date).catch(err =>
+        console.error("Error updating daily student summary:", err)
+      );
+
+      return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Activity reset successfully!"],
+        data: { marks: achievedMarks },
+      });
+    }
+
+    // INSERT new entry
+    const insert_data = await insertRecord(
       "daily_report",
-      { count: storedCount, marks: achievedMarks, updated_at: currentDateIST },
-      ["activity_id", "user_id", "activity_date"],
-      [activity_id, user_id, final_activity_date],
+      ["user_id", "activity_id", "count", "activity_date", "marks", "created_at", "updated_at"],
+      [user_id, activity_id, storedCount, final_activity_date, achievedMarks, currentDateIST, currentDateIST],
     );
-    await dailyStudentSummary(user_id, final_activity_date);
-    console.log("updated");
 
-    return resp.json({
-      status: 1,
-      code: 200,
-      message: ["Activity reset successfully!"],
-      data: { marks: achievedMarks },
-    });
-  }
+    if (insert_data) {
+      // Async background summary update (non-blocking)
+      dailyStudentSummary(user_id, final_activity_date).catch(err =>
+        console.error("Error updating daily student summary:", err)
+      );
 
+      return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Report added successfully!"],
+        data: { marks: achievedMarks },
+      });
+    }
 
-  // 7. QUERY: If this is their first time submitting this activity today, 
-  // we CREATE a brand new record for it in the database.
-  const insert_data = await insertRecord(
-    "daily_report",
-    ["user_id", "activity_id", "count", "activity_date", "marks", "created_at", "updated_at"],
-    [user_id, activity_id, storedCount, final_activity_date, achievedMarks, currentDateIST, currentDateIST],
-  );
+    return resp.json({ status: 0, code: 500, message: ["Failed to save report"] });
 
-  if (insert_data) {
-    await dailyStudentSummary(user_id, final_activity_date);
-    console.log("inserted")
-
-    return resp.json({
-      status: 1,
-      code: 200,
-      message: ["Report added successfully!"],
-      data: { marks: achievedMarks },
-    });
+  } catch (err) {
+    console.error("Error during addSadhna execution:", err);
+    return resp.json({ status: 0, code: 500, message: ["Error saving sadhana report"] });
   }
 });
 
@@ -1590,6 +1585,33 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
   });
 });
 
+export const removeCounsellor = asyncHandler(async (req, resp) => {
+  const { user_id, counsller_id } = mergeParam(req);
+
+  const { isValid, errors } = validateFields(
+    { user_id, counsller_id },
+    {
+      user_id: ["required"],
+      counsller_id: ["required"],
+    }
+  );
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  await db.execute(
+    `DELETE FROM user_counsellors WHERE user_id = ? AND counsller_id = ?`,
+    [user_id, counsller_id]
+  );
+
+  return resp.json({
+    status: 1,
+    code: 200,
+    message: ["Mentor removed successfully"],
+  });
+});
+
 
 export const onBoarding = asyncHandler(async (req, resp) => {
   // here consler email will be ask form studnet ,
@@ -1906,9 +1928,12 @@ export const userProfile = asyncHandler(async (req, resp) => {
     `
     SELECT
     
-    u.reminder_enabled as reminder_status, 
+    u.reminder_enabled, 
+    u.reminder_days,
     u.auto_report_status,
     u.report_frequency_days,
+    u.top_ranker_from,
+    u.top_ranker_to,
       u.user_id,
       u.name,
       u.email,
@@ -1975,9 +2000,13 @@ export const userProfile = asyncHandler(async (req, resp) => {
     code: 200,
     data: {
       user: {
-        reminder_status: userData.reminder_status,
+        reminder_status: userData.reminder_enabled === 1 || userData.reminder_enabled === true ? 1 : 0,
+        reminder_enabled: userData.reminder_enabled === 1 || userData.reminder_enabled === true ? 1 : 0,
+        reminder_days: userData.reminder_days || 3,
+        report_frequency_days: userData.report_frequency_days || 7,
         auto_report_status: userData.auto_report_status,
-        report_frequency_days: userData.report_frequency_days,
+        top_ranker_from: userData.top_ranker_from,
+        top_ranker_to: userData.top_ranker_to,
         name: userData.name,
         email: userData.email,
         mobile: userData.mobile,
@@ -2008,17 +2037,16 @@ export const userProfile = asyncHandler(async (req, resp) => {
   return resp.json(response);
 });
 export const editProfile = asyncHandler(async (req, resp) => {
-  const { user_id, name, mobile } = mergeParam(req);
+  const { user_id, name, mobile, email } = mergeParam(req);
 
   /* ---------------------------
      VALIDATION
   ----------------------------*/
   const { isValid, errors } = validateFields(
-    { user_id, name, mobile },
+    { user_id, name },
     {
       user_id: ["required"],
       name: ["required"],
-      mobile: ["required"],
     }
   );
 
@@ -2043,43 +2071,42 @@ export const editProfile = asyncHandler(async (req, resp) => {
   }
 
   /* ---------------------------
-     OPTIONAL: CHECK DUPLICATE MOBILE
+     CHECK DUPLICATE EMAIL IF PROVIDED
   ----------------------------*/
-  const [mobileCheck] = await db.execute(
-    `SELECT user_id FROM users WHERE mobile = ? AND user_id != ?`,
-    [mobile, user_id]
-  );
+  if (email) {
+    const [emailCheck] = await db.execute(
+      `SELECT user_id FROM users WHERE email = ? AND user_id != ?`,
+      [email, user_id]
+    );
 
-  if (mobileCheck.length) {
-    return resp.json({
-      status: 0,
-      code: 409,
-      message: ["Mobile number already in use"],
-    });
+    if (emailCheck.length) {
+      return resp.json({
+        status: 0,
+        code: 409,
+        message: ["Email address already in use"],
+      });
+    }
   }
 
   /* ---------------------------
      UPDATE PROFILE
   ----------------------------*/
-  await db.execute(
-    `
-    UPDATE users 
-    SET name = ?, mobile = ?
-    WHERE user_id = ?
-    `,
-    [name, mobile, user_id]
-  );
-
-  /* ---------------------------
-     FETCH UPDATED USER
-  ----------------------------*/
-
+  if (email) {
+    await db.execute(
+      `UPDATE users SET name = ?, mobile = ?, email = ? WHERE user_id = ?`,
+      [name, mobile || null, email, user_id]
+    );
+  } else {
+    await db.execute(
+      `UPDATE users SET name = ?, mobile = ? WHERE user_id = ?`,
+      [name, mobile || null, user_id]
+    );
+  }
 
   return resp.json({
     status: 1,
     code: 200,
     message: ["Profile updated successfully"],
-
   });
 });
 const getUserRewards = async (user_id) => {
@@ -3110,8 +3137,8 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
     } else {
       // If not in this page, find their absolute rank
       const rankQuery = `
-        SELECT rank FROM (
-          SELECT dr2.user_id, RANK() OVER (ORDER BY SUM(dr2.marks) DESC) as rank
+        SELECT user_rank FROM (
+          SELECT dr2.user_id, RANK() OVER (ORDER BY SUM(dr2.marks) DESC) as user_rank
           FROM daily_report dr2
           LEFT JOIN user_assignments ua2 ON dr2.user_id = ua2.user_id
           WHERE dr2.activity_date = ?
@@ -3122,7 +3149,7 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
       `;
       const rankParams = centerCondition ? [today, params[1], user_id] : [today, user_id];
       const [rankRes] = await db.execute(rankQuery, rankParams);
-      if (rankRes.length > 0) currentUserRank = rankRes[0].rank;
+      if (rankRes.length > 0) currentUserRank = rankRes[0].user_rank;
     }
 
     // If user is #1 today, upsert top_ranker_from / top_ranker_to
@@ -3196,5 +3223,107 @@ export const getTopRankerBadge = asyncHandler(async (req, resp) => {
   } catch (err) {
     console.error("Error fetching top ranker badge:", err);
     return resp.json({ status: 0, code: 500, message: ["Failed to fetch badge"] });
+  }
+});
+
+export const getStudentAppliedMarkingScheme = asyncHandler(async (req, resp) => {
+  const { user_id } = mergeParam(req);
+
+  if (!user_id) {
+    return resp.json({ status: 0, code: 422, message: ["user_id is required"] });
+  }
+
+  try {
+    // 1. Get student's assigned group (center_id) and subgroup (label_id)
+    const [userAssigned] = await db.execute(
+      `SELECT center_id, label_id FROM user_assignments WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
+      [user_id]
+    );
+    const center_id = userAssigned[0]?.center_id || 0;
+    const label_id = userAssigned[0]?.label_id || 0;
+
+    // 2. Resolve active marking scheme ID (subgroup -> group -> default)
+    let scheme_id = 1;
+    let applied_level = 'System Default';
+
+    if (label_id > 0) {
+      const [labelRow] = await db.query(
+        `SELECT marking_scheme_id, name FROM labels_list WHERE id = ?`,
+        [label_id]
+      );
+      if (labelRow[0]?.marking_scheme_id) {
+        scheme_id = labelRow[0].marking_scheme_id;
+        applied_level = 'Subgroup Custom';
+      }
+    }
+
+    if (scheme_id === 1 && center_id > 0) {
+      const [centerRow] = await db.query(
+        `SELECT marking_scheme_id, name FROM center_list WHERE center_id = ?`,
+        [center_id]
+      );
+      if (centerRow[0]?.marking_scheme_id) {
+        scheme_id = centerRow[0].marking_scheme_id;
+        applied_level = 'Group Custom';
+      }
+    }
+
+    // 3. Fetch Metadata (Scheme Name, Group Name, Subgroup Name)
+    const [schemeInfo] = await db.query(`SELECT id, name FROM marking_schemes WHERE id = ?`, [scheme_id]);
+    const [groupInfo] = await db.query(`SELECT name FROM center_list WHERE center_id = ?`, [center_id]);
+    const [subgroupInfo] = await db.query(`SELECT name FROM labels_list WHERE id = ?`, [label_id]);
+
+    // 4. Fetch Marking Rules for student's assigned activities with fallback to system rules (scheme_id = 1)
+    const query = `
+      SELECT 
+        mr.id AS rule_id,
+        mr.scheme_id,
+        mr.master_activity_id,
+        a.name AS activity_name,
+        a.unit AS activity_unit,
+        a.activity_type,
+        mr.frequency,
+        mr.condition_operator,
+        mr.condition_value,
+        mr.marks,
+        mr.is_max_marks
+      FROM fix_activities fa
+      JOIN activities a ON fa.master_activity_id = a.id
+      JOIN marking_rules mr ON fa.master_activity_id = mr.master_activity_id
+      WHERE fa.user_id = ? 
+        AND fa.master_activity_id IS NOT NULL
+        AND mr.status = 1
+        AND (
+          mr.scheme_id = ? 
+          OR (
+            mr.scheme_id = 1 
+            AND NOT EXISTS (
+              SELECT 1 FROM marking_rules mr2 
+              WHERE mr2.master_activity_id = fa.master_activity_id 
+                AND mr2.scheme_id = ? 
+                AND mr2.status = 1
+            )
+          )
+        )
+      ORDER BY fa.master_activity_id ASC, mr.marks DESC
+    `;
+
+    const [rules] = await db.execute(query, [user_id, scheme_id, scheme_id]);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      data: {
+        scheme_id,
+        scheme_name: schemeInfo[0]?.name || "System Default Rules",
+        applied_level,
+        group_name: groupInfo[0]?.name || null,
+        subgroup_name: subgroupInfo[0]?.name || null,
+        rules
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching student applied marking scheme:", error);
+    return resp.json({ status: 0, code: 500, message: ["Error fetching applied marking scheme"] });
   }
 });

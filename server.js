@@ -141,23 +141,7 @@ process.on("warning", (warning) => {
           localIPs.forEach(ip => console.log(`   Network: http://${ip}:${PORT}  \u2190 use this on mobile`));
 
          
-          app._router.stack.forEach((layer) => {
-            if (layer.route) {
-              const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase()).join(',');
-              console.log(`   ${methods.padEnd(8)} ${layer.route.path}`);
-            } else if (layer.name === 'router' && layer.handle.stack) {
-              const prefix = layer.regexp.source
-                .replace('^\\\/','/')
-                .replace('\\/?(?=\\\/|$)','');
-              layer.handle.stack.forEach((r) => {
-                if (r.route) {
-                  const methods = Object.keys(r.route.methods).map(m => m.toUpperCase()).join(',');
-                  console.log(`   ${methods.padEnd(8)} ${prefix}${r.route.path}`);
-                }
-              });
-            }
-          });
-          console.log('');
+         
           // ────────────────────────────────────────────────────────────────
         }); // end import('os').then()
       }); // end server.listen
