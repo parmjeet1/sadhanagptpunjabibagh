@@ -2037,7 +2037,8 @@ export const userProfile = asyncHandler(async (req, resp) => {
   return resp.json(response);
 });
 export const editProfile = asyncHandler(async (req, resp) => {
-  const { user_id, name, mobile, email } = mergeParam(req);
+  const { user_id, name, mobile, email, dob, birthday } = mergeParam(req);
+  const dobVal = dob || birthday || null;
 
   /* ---------------------------
      VALIDATION
@@ -2093,13 +2094,13 @@ export const editProfile = asyncHandler(async (req, resp) => {
   ----------------------------*/
   if (email) {
     await db.execute(
-      `UPDATE users SET name = ?, mobile = ?, email = ? WHERE user_id = ?`,
-      [name, mobile || null, email, user_id]
+      `UPDATE users SET name = ?, mobile = ?, email = ?, birthday = ? WHERE user_id = ?`,
+      [name, mobile || null, email, dobVal, user_id]
     );
   } else {
     await db.execute(
-      `UPDATE users SET name = ?, mobile = ? WHERE user_id = ?`,
-      [name, mobile || null, user_id]
+      `UPDATE users SET name = ?, mobile = ?, birthday = ? WHERE user_id = ?`,
+      [name, mobile || null, dobVal, user_id]
     );
   }
 
@@ -2916,6 +2917,43 @@ export const submitAppFeedback = asyncHandler(async (req, resp) => {
     const insertResult = await db.execute(query, [user_id, name || 'Unknown User', message.trim()]);
 
     if (insertResult) {
+      // Fetch user details for email notification
+      let userName = name || 'Unknown User';
+      let userEmail = 'N/A';
+      try {
+        const [users] = await db.execute(`SELECT name, email FROM users WHERE user_id = ?`, [user_id]);
+        if (users && users.length > 0) {
+          if (users[0].name) userName = users[0].name;
+          if (users[0].email) userEmail = users[0].email;
+        }
+      } catch (userErr) {
+        console.error("Failed to fetch user details for feedback notification email:", userErr);
+      }
+
+      // Send Email Notification to paramjeetsinghwork7@gmail.com
+      try {
+        const emailSubject = `🔔 New App Feedback from ${userName}`;
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 12px; background-color: #ffffff;">
+            <div style="background-color: #f97316; padding: 16px; border-radius: 8px; text-align: center;">
+              <h2 style="color: #ffffff; margin: 0; font-size: 20px;">New App Feedback Received</h2>
+            </div>
+            <div style="padding: 20px 0; color: #1e293b;">
+              <p style="margin: 6px 0;"><strong>Sender Name:</strong> ${userName}</p>
+              <p style="margin: 6px 0;"><strong>Sender Email:</strong> ${userEmail}</p>
+              <p style="margin: 6px 0;"><strong>User ID:</strong> ${user_id}</p>
+              <p style="margin: 16px 0 6px 0;"><strong>Feedback Message:</strong></p>
+              <div style="background-color: #f8fafc; border-left: 4px solid #f97316; padding: 14px; margin-top: 6px; border-radius: 4px; font-size: 15px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${message.trim()}</div>
+            </div>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">Sent automatically from SadhanaGPT App</p>
+          </div>
+        `;
+        emailQueue.addEmail('paramjeetsinghwork7@gmail.com', emailSubject, emailHtml);
+      } catch (mailErr) {
+        console.error("Error enqueuing app feedback email:", mailErr);
+      }
+
       return resp.json({
         status: 1,
         code: 200,

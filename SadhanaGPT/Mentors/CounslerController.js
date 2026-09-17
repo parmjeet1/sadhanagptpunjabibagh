@@ -3354,3 +3354,78 @@ Provide concise, conversational, and actionable insights. Use markdown. Do not o
 export const aiHealthHandler = asyncHandler(async (req, res) => { res.json({ status: 1 }); });
 export const aiTestHandler = asyncHandler(async (req, res) => { res.json({ status: 1 }); });
 export const aiDebugAuthHandler = asyncHandler(async (req, res) => { res.json({ status: 1 }); });
+
+export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
+  try {
+    const { center_id, label_id, filter = '7', start_date, end_date, student_ids } = mergeParam(req);
+
+    let dateCondition = "";
+    const params = [];
+
+    if (filter === 'custom' && start_date && end_date) {
+      dateCondition = "AND dr.activity_date >= ? AND dr.activity_date <= ?";
+      params.push(start_date, end_date);
+    } else {
+      const days = parseInt(filter) || 7;
+      dateCondition = "AND dr.activity_date >= (CURDATE() - INTERVAL ? DAY)";
+      params.push(days);
+    }
+
+    let centerCondition = "";
+    if (center_id) {
+      centerCondition = "AND uas.center_id = ?";
+      params.push(center_id);
+    }
+
+    let labelCondition = "";
+    if (label_id && label_id !== '0' && label_id !== 'All') {
+      labelCondition = "AND uas.label_id = ?";
+      params.push(label_id);
+    }
+
+    let studentCondition = "";
+    if (Array.isArray(student_ids) && student_ids.length > 0) {
+      studentCondition = `AND u.user_id IN (${student_ids.map(() => '?').join(',')})`;
+      params.push(...student_ids);
+    }
+
+    const query = `
+      SELECT 
+        u.user_id AS student_id,
+        u.name AS student_name,
+        u.mobile,
+        COALESCE(cl.name, 'Unassigned Center') AS center_name,
+        COALESCE(l.name, 'Unassigned Label') AS label_name,
+        fa.name AS activity_name,
+        COALESCE(dr.count, dr.value, 0) AS activity_value,
+        COALESCE(dr.marks, 0) AS activity_marks,
+        DATE_FORMAT(dr.activity_date, '%Y-%m-%d') AS activity_date
+      FROM users u
+      LEFT JOIN user_assignments uas ON uas.user_id = u.user_id
+      LEFT JOIN center_list cl ON cl.center_id = uas.center_id
+      LEFT JOIN labels_list l ON l.id = uas.label_id
+      JOIN daily_report dr ON dr.user_id = u.user_id ${dateCondition}
+      JOIN fix_activities fa ON fa.activity_id = dr.activity_id
+      WHERE 1=1 ${centerCondition} ${labelCondition} ${studentCondition}
+      ORDER BY cl.name, l.name, u.name, dr.activity_date DESC
+    `;
+
+    const [rows] = await db.execute(query, params);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Export data fetched successfully"],
+      data: rows
+    });
+  } catch (error) {
+    console.error("Error in exportBulkStudentReports:", error);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: "Failed to fetch export report data",
+      data: []
+    });
+  }
+});
+

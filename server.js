@@ -126,24 +126,7 @@ process.on("warning", (warning) => {
        
       const server = http.createServer(app);
       server.listen(PORT, '0.0.0.0', () => {
-        // ── Startup info ────────────────────────────────────────────────────
-        import('os').then((osModule) => {
-          const os = osModule.default;
-          const nets = os.networkInterfaces();
-          const localIPs = [];
-          for (const iface of Object.values(nets)) {
-            for (const net of iface) {
-              if (net.family === 'IPv4' && !net.internal) localIPs.push(net.address);
-            }
-          }
-          console.log(`\n✅ Server is running on port ${PORT}`);
-          console.log(`   Local:   http://localhost:${PORT}`);
-          localIPs.forEach(ip => console.log(`   Network: http://${ip}:${PORT}  \u2190 use this on mobile`));
-
-         
-         
-          // ────────────────────────────────────────────────────────────────
-        }); // end import('os').then()
+        // ── Startup info ───────────────
       }); // end server.listen
 
 

@@ -23,7 +23,7 @@ export const getMentorSelectableActivities = asyncHandler(async (req, resp) => {
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     const safeCenterId = db.escape(center_id);
-    const safeLabelId = db.escape(label_id);
+    const safeLabelId = (label_id && label_id !== "0" && label_id !== 0) ? db.escape(label_id) : null;
     const safeUserId = db.escape(user_id);
 
     const params = {
@@ -31,7 +31,7 @@ export const getMentorSelectableActivities = asyncHandler(async (req, resp) => {
         SELECT *, id AS master_activity_id,
         CASE
           WHEN activities.status = 1 THEN 1
-          WHEN (SELECT COUNT(*) FROM counselor_added_activities caa WHERE caa.master_activity_id = activities.id AND caa.center_id = ${safeCenterId} ${label_id ? `AND caa.label_id = ${safeLabelId}` : ""}) > 0 THEN 1
+          WHEN (SELECT COUNT(*) FROM counselor_added_activities caa WHERE caa.master_activity_id = activities.id AND caa.center_id = ${safeCenterId} ${safeLabelId ? `AND (caa.label_id = ${safeLabelId} OR caa.label_id IS NULL)` : ""}) > 0 THEN 1
           ELSE 0
         END AS assignment_status
         FROM activities 
@@ -284,8 +284,8 @@ export const assignActivitiesToGroup = asyncHandler(async (req, resp) => {
     const caaValues = [];
     const caaParams = [];
     
-    // Convert label_id to null if empty
-    const safeLabelId = label_id ? label_id : null;
+    // Convert label_id to null if empty or "0"
+    const safeLabelId = (label_id && label_id !== "0" && label_id !== 0) ? label_id : null;
 
     activities.forEach((activity) => {
       caaValues.push("(?, ?, ?, ?)");
@@ -471,9 +471,10 @@ export const deleteCustomActivity = asyncHandler(async (req, resp) => {
 
       if (fixRecords.length > 0) {
         const fixIds = fixRecords.map(r => r.activity_id);
+        const placeholders = fixIds.map(() => "?").join(",");
         
         // 3. Delete student score histories from daily_report first
-        await db.query(`DELETE FROM daily_report WHERE activity_id IN (?)`, [fixIds]);
+        await db.query(`DELETE FROM daily_report WHERE activity_id IN (${placeholders})`, fixIds);
         
         // 4. Delete student assignments from fix_activities
         await db.query(`DELETE FROM fix_activities WHERE master_activity_id = ?`, [master_activity_id]);
@@ -515,7 +516,7 @@ export const deleteAssignedCustomActivity = asyncHandler(async (req, resp) => {
 
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const safeLabelId = label_id ? label_id : null;
+    const safeLabelId = (label_id && label_id !== "0" && label_id !== 0) ? label_id : null;
 
     // 1. Delete from counselor_added_activities
     let deleteCaaQuery = `DELETE FROM counselor_added_activities WHERE center_id = ? AND master_activity_id = ?`;
