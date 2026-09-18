@@ -212,14 +212,27 @@ const weeklySummaryUpdate = async () => {
                     let aggregatedValue = 0;
 
                     if (activity_type === 'time') {
-                        // duration-based: sum all minutes (stored as "HH:MM" or numeric)
+                        // duration-based: sum all minutes (stored as "HH:MM", "8:20 AM", or numeric)
                         for (const r of rows) {
                             const raw = r.count;
-                            if (typeof raw === 'string' && raw.includes(':')) {
-                                const [h, m] = raw.split(':').map(Number);
-                                aggregatedValue += (h * 60) + m;
+                            if (raw === null || raw === undefined || raw === '') continue;
+                            if (typeof raw === 'number') {
+                                aggregatedValue += raw;
                             } else {
-                                aggregatedValue += Number(raw) || 0;
+                                const str = String(raw).trim();
+                                if (!isNaN(Number(str))) {
+                                    aggregatedValue += Number(str);
+                                } else {
+                                    const match = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+                                    if (match) {
+                                        let hours = parseInt(match[1], 10);
+                                        const mins = parseInt(match[2], 10);
+                                        const ampm = match[3] ? match[3].toUpperCase() : null;
+                                        if (ampm === 'PM' && hours < 12) hours += 12;
+                                        if (ampm === 'AM' && hours === 12) hours = 0;
+                                        aggregatedValue += (hours * 60) + mins;
+                                    }
+                                }
                             }
                         }
                     } else if (activity_type === 'yes_no' || activity_type === 'boolean') {

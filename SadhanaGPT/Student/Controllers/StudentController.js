@@ -26,63 +26,88 @@ import { Console } from "console";
 import { dailyStudentSummary } from '../../Controllers/SummaryData/summary-report.js';
 
 
-const calculateBestMarks = (rawCount, rules, activityType, unit, activityName) => {
-  if (!rules || rules.length === 0) return null;
+const parseTimeToMinutes = (val) => {
+  if (val === null || val === undefined || val === '') return NaN;
+  if (typeof val === 'number') return val;
+  const str = String(val).trim();
 
-  let bestMarks = null;
-  let rawCountNum = Number(rawCount);
-  let isTime = activityType === 'time';
+  if (!isNaN(Number(str))) return Number(str);
 
-  // If the frontend explicitly sends the count in hours, convert it to minutes for the DB rule check
-  if (unit && (unit.toLowerCase() === 'hrs' || unit.toLowerCase() === 'hours' || unit.toLowerCase() === 'hr' || unit.toLowerCase() === 'hour')) {
-    rawCountNum = rawCountNum * 60;
+  const match = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const mins = parseInt(match[2], 10);
+    const ampm = match[3] ? match[3].toUpperCase() : null;
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + mins;
   }
 
-  // Format to HH:MM if it's a time activity
-  let timeStr = null;
-  if (isTime && !isNaN(rawCountNum)) {
-    let h = Math.floor(rawCountNum / 60);
-    let m = rawCountNum % 60;
-    h = h < 10 ? '0' + h : h;
-    m = m < 10 ? '0' + m : m;
-    timeStr = `${h}:${m}`;
+  return NaN;
+};
+
+const parseValToNumber = (val, isTime = false, isYesNo = false) => {
+  if (val === null || val === undefined || val === '') return NaN;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'boolean') return val ? 1 : 0;
+
+  const str = String(val).trim();
+  const lower = str.toLowerCase();
+
+  if (isYesNo || lower === 'yes' || lower === 'no' || lower === 'true' || lower === 'false') {
+    if (lower === 'yes' || lower === 'true' || lower === 'y' || lower === '1') return 1;
+    if (lower === 'no' || lower === 'false' || lower === 'n' || lower === '0') return 0;
+    if (!isNaN(Number(str))) return Number(str);
+  }
+
+  if (isTime) {
+    return parseTimeToMinutes(val);
+  }
+
+  if (!isNaN(Number(str))) return Number(str);
+  return parseFloat(str);
+};
+
+const calculateBestMarks = (rawCount, rules, activityType, unit, activityName) => {
+  if (!rules || rules.length === 0) return null;
+  console.log("calculation best marks", rawCount, rules, activityType, unit, activityName);
+  
+  let bestMarks = null;
+  const isTime = activityType === 'time';
+  const isYesNo = activityType === 'yes_no' || activityType === 'boolean';
+
+  let userValNum = parseValToNumber(rawCount, isTime, isYesNo);
+
+  if (unit && (unit.toLowerCase() === 'hrs' || unit.toLowerCase() === 'hours' || unit.toLowerCase() === 'hr' || unit.toLowerCase() === 'hour')) {
+    if (typeof rawCount === 'number' || !isNaN(Number(rawCount))) {
+      userValNum = userValNum * 60;
+    }
   }
 
   for (const rule of rules) {
-    let ruleVal = rule.condition_value;
-    let cCount;
+    let ruleValNum = parseValToNumber(rule.condition_value, isTime, isYesNo);
 
-    // Determine how to compare based on whether ruleVal has a colon (HH:MM format)
-    if (isTime && String(ruleVal).includes(':')) {
-      cCount = timeStr; // Compare as HH:MM strings
-      ruleVal = String(ruleVal);
-      // Ensure ruleVal has a leading zero if it's like "7:15"
-      if (ruleVal.length === 4) ruleVal = '0' + ruleVal;
-    } else {
-      // Compare as pure numbers (handles both normal counts AND time rules stored as raw minutes like '135')
-      cCount = rawCountNum;
-      ruleVal = parseFloat(ruleVal);
-    }
+    if (isNaN(userValNum) || isNaN(ruleValNum)) continue;
 
     let isMatched = false;
     switch (rule.condition_operator) {
-      case '>': isMatched = cCount > ruleVal; break;
-      case '<': isMatched = cCount < ruleVal; break;
-      case '>=': isMatched = cCount >= ruleVal; break;
-      case '<=': isMatched = cCount <= ruleVal; break;
+      case '>': isMatched = userValNum > ruleValNum; break;
+      case '<': isMatched = userValNum < ruleValNum; break;
+      case '>=': isMatched = userValNum >= ruleValNum; break;
+      case '<=': isMatched = userValNum <= ruleValNum; break;
       case '=':
-      case '==': isMatched = cCount == ruleVal; break;
-      case '!=': isMatched = cCount != ruleVal; break;
+      case '==': isMatched = userValNum == ruleValNum; break;
+      case '!=': isMatched = userValNum != ruleValNum; break;
     }
 
     if (isMatched) {
-      // ALWAYS cast marks to Number to prevent JS string comparison bugs (e.g. "5" > "25")
       const ruleMarksNum = Number(rule.marks);
       if (bestMarks === null || ruleMarksNum > bestMarks) {
         bestMarks = ruleMarksNum;
       }
     }
   }
+  console.log("marks is", bestMarks);
 
   return bestMarks;
 };
@@ -1164,7 +1189,7 @@ export const addSadhna = asyncHandler(async (req, resp) => {
       );
 
       // Async background summary update (non-blocking)
-      dailyStudentSummary(user_id, final_activity_date).catch(err =>
+      await dailyStudentSummary(user_id, final_activity_date).catch(err =>
         console.error("Error updating daily student summary:", err)
       );
 
@@ -3364,4 +3389,247 @@ export const getStudentAppliedMarkingScheme = asyncHandler(async (req, resp) => 
     console.error("Error fetching student applied marking scheme:", error);
     return resp.json({ status: 0, code: 500, message: ["Error fetching applied marking scheme"] });
   }
+});
+
+// --- WHATSAPP WEBHOOK MULTI-ACTIVITY LOGGING API ---
+export const parseActivitiesString = (inputStr) => {
+  if (!inputStr || typeof inputStr !== 'string') return [];
+  const results = [];
+  
+  const lines = inputStr.split(/[\r\n;]+/).map(l => l.trim()).filter(Boolean);
+
+  lines.forEach(line => {
+    const parts = line.includes(':') || line.includes('=') || line.includes('-')
+      ? line.split(/,(?=\s*[A-Za-z])/).map(p => p.trim()).filter(Boolean)
+      : [line];
+
+    parts.forEach(part => {
+      const match = part.match(/^([^:=HTML_TAG_DELIMITER\-\s][^:=HTML_TAG_DELIMITER\-]*)\s*[:=\-]\s*(.+)$/i);
+      if (match) {
+        let key = match[1].trim();
+        let val = match[2].trim();
+        results.push({ key, val });
+      } else {
+        const spaceMatch = part.match(/^([A-Za-z\s]+)\s+([0-9:\sAMPMampm]+.*)$/);
+        if (spaceMatch) {
+          results.push({ key: spaceMatch[1].trim(), val: spaceMatch[2].trim() });
+        }
+      }
+    });
+  });
+
+  return results;
+};
+
+export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
+  const body = req.body || {};
+  const query = req.query || {};
+
+  // GET verification for WhatsApp/Meta Webhooks
+  if (req.method === 'GET') {
+    const hubMode = query['hub.mode'];
+    const hubChallenge = query['hub.challenge'];
+    if (hubMode === 'subscribe' && hubChallenge) {
+      return resp.send(hubChallenge);
+    }
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["WhatsApp Webhook API active and ready."]
+    });
+  }
+
+  // Extract mobile & activities string
+  const mobile = body.mobile || body.mobile_number || body.phone || body.phone_number || body.from || body.sender || query.mobile || query.phone;
+  const activitiesStr = body.activities || body.activities_string || body.message || body.text || body.body || body.content || body.data || query.activities || query.message;
+  const rawDate = body.activity_date || body.date || query.activity_date || query.date;
+
+  if (!mobile) {
+    return resp.status(400).json({
+      status: 0,
+      code: 400,
+      message: ["Mobile number (mobile/phone) is required."]
+    });
+  }
+
+  if (!activitiesStr) {
+    return resp.status(400).json({
+      status: 0,
+      code: 400,
+      message: ["Activities string (activities/message/text) is required."]
+    });
+  }
+
+  // Clean mobile & find student
+  const cleanedDigits = String(mobile).replace(/[^0-9]/g, '');
+  const last10Digits = cleanedDigits.slice(-10);
+
+  const [[student]] = await db.execute(
+    `SELECT user_id, name, mobile 
+     FROM users 
+     WHERE user_type != 'counsellor' 
+       AND (mobile LIKE ? OR mobile LIKE ? OR REPLACE(REPLACE(mobile, ' ', ''), '+', '') LIKE ?) 
+     LIMIT 1`,
+    [`%${last10Digits}`, `%${cleanedDigits}`, `%${last10Digits}`]
+  );
+
+  if (!student) {
+    return resp.status(404).json({
+      status: 0,
+      code: 404,
+      message: [`Student not found for mobile number: ${mobile}`]
+    });
+  }
+
+  const final_activity_date = rawDate ? moment(rawDate).format("YYYY-MM-DD") : moment().utcOffset('+05:30').format("YYYY-MM-DD");
+
+  // Fetch student assignment for scheme resolution
+  const [[studentAssignment]] = await db.execute(
+    `SELECT ua.center_id, ua.label_id, ll.marking_scheme_id AS label_scheme_id, cl.marking_scheme_id AS center_scheme_id
+     FROM user_assignments ua
+     LEFT JOIN labels_list ll ON ua.label_id = ll.id
+     LEFT JOIN center_list cl ON ua.center_id = cl.center_id
+     WHERE ua.user_id = ? 
+     ORDER BY ua.id DESC LIMIT 1`,
+    [student.user_id]
+  );
+
+  const schemeId = studentAssignment?.label_scheme_id || studentAssignment?.center_scheme_id || 1;
+
+  // Fetch available activities for student
+  const [studentActivities] = await db.execute(
+    `SELECT activity_id, name, activity_type, master_activity_id, unit, target 
+     FROM fix_activities 
+     WHERE user_id = ? OR own_by = 1 OR own_by = 0`,
+    [student.user_id]
+  );
+
+  // Parse activities string into key-value pairs
+  const parsedItems = parseActivitiesString(String(activitiesStr));
+
+  if (parsedItems.length === 0) {
+    return resp.status(400).json({
+      status: 0,
+      code: 400,
+      message: ["Could not parse any activity key-value pairs from the string provided."]
+    });
+  }
+
+  const loggedActivities = [];
+  const ignoredActivities = [];
+  const currentDateIST = moment().utcOffset('+05:30').format("YYYY-MM-DD HH:mm:ss");
+
+  for (const item of parsedItems) {
+    const rawKey = item.key.toLowerCase().trim();
+    const rawVal = item.val.trim();
+
+    // Match activity name
+    let matchedAct = studentActivities.find(a => a.name.toLowerCase().trim() === rawKey);
+
+    if (!matchedAct) {
+      // Fuzzy/Partial match
+      matchedAct = studentActivities.find(a => {
+        const actName = a.name.toLowerCase().trim();
+        return rawKey.includes(actName) || actName.includes(rawKey);
+      });
+    }
+
+    if (!matchedAct) {
+      ignoredActivities.push({ activity_name: item.key, raw_value: item.val, reason: "Activity not found" });
+      continue;
+    }
+
+    // Process value
+    let countVal = rawVal;
+    const isTime = matchedAct.activity_type === 'time';
+    const isYesNo = matchedAct.activity_type === 'yes_no' || matchedAct.activity_type === 'boolean';
+
+    if (isYesNo) {
+      const lower = rawVal.toLowerCase();
+      if (lower === 'yes' || lower === 'true' || lower === 'y' || lower === 'attended' || lower === 'done' || lower === '1') {
+        countVal = 1;
+      } else if (lower === 'no' || lower === 'false' || lower === 'n' || lower === 'absent' || lower === '0') {
+        countVal = 0;
+      }
+    } else if (isTime) {
+      const mins = parseTimeToMinutes(rawVal);
+      if (!isNaN(mins)) {
+        countVal = minutesToTime(mins);
+      }
+    } else {
+      const numMatch = rawVal.match(/(\d+(?:\.\d+)?)/);
+      if (numMatch) {
+        countVal = Number(numMatch[1]);
+      }
+    }
+
+    // Evaluate marks
+    let achievedMarks = null;
+    if (matchedAct.master_activity_id && Number(matchedAct.master_activity_id) > 0) {
+      const [fetchedRules] = await db.execute(
+        `SELECT condition_operator, condition_value, marks, scheme_id, frequency
+         FROM marking_rules 
+         WHERE scheme_id IN (?, 1)
+           AND master_activity_id = ? 
+           AND status = 1 
+           AND frequency = 'daily'
+         ORDER BY scheme_id = ? DESC`,
+        [schemeId, matchedAct.master_activity_id, schemeId]
+      );
+
+      if (fetchedRules.length > 0) {
+        achievedMarks = calculateBestMarks(countVal, fetchedRules, matchedAct.activity_type, matchedAct.unit, matchedAct.name);
+      } else {
+        achievedMarks = 0;
+      }
+    }
+
+    // Check if record exists for today
+    const [[existingLog]] = await db.execute(
+      `SELECT activity_id FROM daily_report WHERE activity_id = ? AND user_id = ? AND DATE(activity_date) = ? LIMIT 1`,
+      [matchedAct.activity_id, student.user_id, final_activity_date]
+    );
+
+    if (existingLog) {
+      await updateRecord(
+        "daily_report",
+        { count: countVal, marks: achievedMarks, updated_at: currentDateIST },
+        ["activity_id", "user_id", "activity_date"],
+        [matchedAct.activity_id, student.user_id, final_activity_date]
+      );
+    } else {
+      await insertRecord(
+        "daily_report",
+        ["user_id", "activity_id", "count", "activity_date", "marks", "created_at", "updated_at"],
+        [student.user_id, matchedAct.activity_id, countVal, final_activity_date, achievedMarks, currentDateIST, currentDateIST]
+      );
+    }
+
+    loggedActivities.push({
+      activity_id: matchedAct.activity_id,
+      activity_name: matchedAct.name,
+      value: countVal,
+      marks: achievedMarks
+    });
+  }
+
+  if (loggedActivities.length > 0) {
+    dailyStudentSummary(student.user_id, final_activity_date).catch(err =>
+      console.error("Error updating daily student summary from whatsapp webhook:", err)
+    );
+  }
+
+  return resp.json({
+    status: 1,
+    code: 200,
+    message: ["Activities logged successfully via WhatsApp webhook"],
+    data: {
+      student_id: student.user_id,
+      student_name: student.name,
+      mobile: student.mobile,
+      activity_date: final_activity_date,
+      logged_activities: loggedActivities,
+      ignored_activities: ignoredActivities
+    }
+  });
 });

@@ -3362,24 +3362,24 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
     let dateCondition = "";
     const params = [];
 
-    if (filter === 'custom' && start_date && end_date) {
-      dateCondition = "AND dr.activity_date >= ? AND dr.activity_date <= ?";
+    if (start_date && end_date && filter !== 'all') {
+      dateCondition = "AND DATE(dr.activity_date) >= ? AND DATE(dr.activity_date) <= ?";
       params.push(start_date, end_date);
-    } else {
+    } else if (filter !== 'all') {
       const days = parseInt(filter) || 7;
-      dateCondition = "AND dr.activity_date >= (CURDATE() - INTERVAL ? DAY)";
+      dateCondition = "AND DATE(dr.activity_date) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)";
       params.push(days);
     }
 
     let centerCondition = "";
-    if (center_id) {
-      centerCondition = "AND uas.center_id = ?";
+    if (center_id && center_id !== 'all' && center_id !== '0' && center_id !== '') {
+      centerCondition = "AND u.center_id = ?";
       params.push(center_id);
     }
 
     let labelCondition = "";
-    if (label_id && label_id !== '0' && label_id !== 'All') {
-      labelCondition = "AND uas.label_id = ?";
+    if (label_id && label_id !== '0' && label_id !== 'All' && label_id !== '') {
+      labelCondition = "AND u.label_id = ?";
       params.push(label_id);
     }
 
@@ -3394,19 +3394,18 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
         u.user_id AS student_id,
         u.name AS student_name,
         u.mobile,
-        COALESCE(cl.name, 'Unassigned Center') AS center_name,
-        COALESCE(l.name, 'Unassigned Label') AS label_name,
-        fa.name AS activity_name,
-        COALESCE(dr.count, dr.value, 0) AS activity_value,
+        COALESCE(cl.name, 'Unassigned Group') AS center_name,
+        COALESCE(l.name, 'Uncategorized') AS label_name,
+        COALESCE(fa.name, dr.activity_name, CASE WHEN dr.id IS NOT NULL THEN 'Activity' ELSE 'No Logged Activity' END) AS activity_name,
+        COALESCE(dr.count, dr.value, '-') AS activity_value,
         COALESCE(dr.marks, 0) AS activity_marks,
-        DATE_FORMAT(dr.activity_date, '%Y-%m-%d') AS activity_date
+        COALESCE(DATE_FORMAT(dr.activity_date, '%Y-%m-%d'), '-') AS activity_date
       FROM users u
-      LEFT JOIN user_assignments uas ON uas.user_id = u.user_id
-      LEFT JOIN center_list cl ON cl.center_id = uas.center_id
-      LEFT JOIN labels_list l ON l.id = uas.label_id
-      JOIN daily_report dr ON dr.user_id = u.user_id ${dateCondition}
-      JOIN fix_activities fa ON fa.activity_id = dr.activity_id
-      WHERE 1=1 ${centerCondition} ${labelCondition} ${studentCondition}
+      LEFT JOIN center_list cl ON cl.center_id = u.center_id
+      LEFT JOIN labels_list l ON l.id = u.label_id
+      LEFT JOIN daily_report dr ON dr.user_id = u.user_id ${dateCondition}
+      LEFT JOIN fix_activities fa ON fa.activity_id = dr.activity_id
+      WHERE u.user_type != 'counsellor' ${centerCondition} ${labelCondition} ${studentCondition}
       ORDER BY cl.name, l.name, u.name, dr.activity_date DESC
     `;
 
@@ -3423,7 +3422,7 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
     return resp.status(500).json({
       status: 0,
       code: 500,
-      message: "Failed to fetch export report data",
+      message: ["Failed to fetch export report data"],
       data: []
     });
   }
