@@ -160,6 +160,7 @@ const LoggedinRoute = [
     { method: 'get', path: '/group-list-sub-counslor', handler: subCounslorCenterlist, role: "counsellor" },
 
     { method: 'post', path: '/assign-student-center-label', handler: bulkAssignStudents, role: "counsellor" },
+    { method: 'post', path: '/export-bulk-student-reports', handler: exportBulkStudentReports, role: "counsellor" },
 
     // {method: 'get', path: '/chart-details', handler: chartdetail},
     // {method: 'get', path: '/user-activity-details', handler: activitydetail},

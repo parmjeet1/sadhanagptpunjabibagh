@@ -3243,6 +3243,59 @@ export const generateAIAnalysis = asyncHandler(async (req, res) => {
   });
 });
 
+export const oldgetStudentAiAnalysisHistory = asyncHandler(async (req, res) => {
+  const { studentId } = req.params;
+  const requestedBy = req.user?.user_id;
+
+  if (!studentId) return res.status(400).json({ status: 0, message: "studentId is required" });
+
+  try {
+    const [rows] = await db.execute(
+      `SELECT id, range_type, date_from, date_to, overall_status, created_at
+       FROM student_ai_reports
+       WHERE student_id = ? AND requested_by = ?
+       ORDER BY created_at DESC LIMIT 20`,
+      [studentId, requestedBy]
+    );
+    return res.json({ status: 1, data: rows });
+  } catch (err) {
+    console.warn("[AI History] Table may not exist:", err.message);
+    return res.json({ status: 1, data: [] });
+  }
+});
+
+export const oldgetSingleAiAnalysisReport = asyncHandler(async (req, res) => {
+  const { reportId } = req.params;
+  const requestedBy = req.user?.user_id;
+
+  if (!reportId) return res.status(400).json({ status: 0, message: "reportId is required" });
+
+  try {
+    const [[row]] = await db.execute(
+      `SELECT * FROM student_ai_reports WHERE id = ? AND requested_by = ?`,
+      [reportId, requestedBy]
+    );
+    if (!row) return res.status(404).json({ status: 0, message: "Report not found" });
+
+    return res.json({
+      status: 1,
+      data: {
+        kpis: JSON.parse(row.kpis_json || '[]'),
+        aiAnalysis: {
+          overallStatus: row.overall_status,
+          strengths: JSON.parse(row.strengths_json || '[]'),
+          laggings: JSON.parse(row.laggings_json || '[]'),
+          recommendations: JSON.parse(row.recommendations_json || '[]')
+        }
+      }
+    });
+  } catch (err) {
+    console.warn("[AI Report] Error fetching report:", err.message);
+    return res.status(500).json({ status: 0, message: "Failed to fetch report" });
+  }
+});
+
+
 export const getStudentAiAnalysisHistory = asyncHandler(async (req, res) => {
   const { studentId } = req.params;
   const requestedBy = req.user?.user_id;
@@ -3332,11 +3385,6 @@ Provide concise, conversational, and actionable insights. Use markdown. Do not o
     console.log("4. Groq Request Started");
     const aiResponse = await chatWithAI({ systemPrompt, messages });
     console.log("5. Groq Response Received");
-    console.log("6. JSON Parse Started");
-    console.log("7. JSON Parse Success");
-    console.log("8. Validation Success");
-    console.log("9. Response Returned");
-
     res.status(200).json({ status: 1, success: true, reply: aiResponse });
   } catch (error) {
     console.error("=== AI ERROR ===");
@@ -3351,6 +3399,7 @@ Provide concise, conversational, and actionable insights. Use markdown. Do not o
     });
   }
 });
+
 export const aiHealthHandler = asyncHandler(async (req, res) => { res.json({ status: 1 }); });
 export const aiTestHandler = asyncHandler(async (req, res) => { res.json({ status: 1 }); });
 export const aiDebugAuthHandler = asyncHandler(async (req, res) => { res.json({ status: 1 }); });
@@ -3373,13 +3422,13 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
 
     let centerCondition = "";
     if (center_id && center_id !== 'all' && center_id !== '0' && center_id !== '') {
-      centerCondition = "AND u.center_id = ?";
+      centerCondition = "AND ua.center_id = ?";
       params.push(center_id);
     }
 
     let labelCondition = "";
     if (label_id && label_id !== '0' && label_id !== 'All' && label_id !== '') {
-      labelCondition = "AND u.label_id = ?";
+      labelCondition = "AND ua.label_id = ?";
       params.push(label_id);
     }
 
@@ -3396,20 +3445,23 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
         u.mobile,
         COALESCE(cl.name, 'Unassigned Group') AS center_name,
         COALESCE(l.name, 'Uncategorized') AS label_name,
-        COALESCE(fa.name, dr.activity_name, CASE WHEN dr.id IS NOT NULL THEN 'Activity' ELSE 'No Logged Activity' END) AS activity_name,
-        COALESCE(dr.count, dr.value, '-') AS activity_value,
+        COALESCE(fa.name, CASE WHEN dr.id IS NOT NULL THEN 'Activity' ELSE 'No Logged Activity' END) AS activity_name,
+        COALESCE(dr.count, '-') AS activity_value,
         COALESCE(dr.marks, 0) AS activity_marks,
         COALESCE(DATE_FORMAT(dr.activity_date, '%Y-%m-%d'), '-') AS activity_date
       FROM users u
-      LEFT JOIN center_list cl ON cl.center_id = u.center_id
-      LEFT JOIN labels_list l ON l.id = u.label_id
+      LEFT JOIN user_assignments ua ON ua.user_id = u.user_id
+      LEFT JOIN center_list cl ON cl.center_id = ua.center_id
+      LEFT JOIN labels_list l ON l.id = ua.label_id
       LEFT JOIN daily_report dr ON dr.user_id = u.user_id ${dateCondition}
       LEFT JOIN fix_activities fa ON fa.activity_id = dr.activity_id
       WHERE u.user_type != 'counsellor' ${centerCondition} ${labelCondition} ${studentCondition}
       ORDER BY cl.name, l.name, u.name, dr.activity_date DESC
     `;
 
+    console.log("exportBulkStudentReports params:", params);
     const [rows] = await db.execute(query, params);
+    console.log("exportBulkStudentReports rows count:", rows?.length);
 
     return resp.json({
       status: 1,
@@ -3427,4 +3479,3 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
     });
   }
 });
-
