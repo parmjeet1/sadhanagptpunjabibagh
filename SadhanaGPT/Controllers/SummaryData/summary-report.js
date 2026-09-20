@@ -236,9 +236,10 @@ const weeklySummaryUpdate = async () => {
                             }
                         }
                     } else if (activity_type === 'yes_no' || activity_type === 'boolean') {
-                        // yes/no: count entries where count == 1
+                        // yes/no: count entries where count is 1, 'yes', or 'true'
                         for (const r of rows) {
-                            if (Number(r.count) === 1 || String(r.count).toLowerCase() === 'yes') {
+                            const valStr = String(r.count).toLowerCase().trim();
+                            if (Number(r.count) === 1 || valStr === 'yes' || valStr === 'true' || r.count === true) {
                                 aggregatedValue += 1;
                             }
                         }
@@ -265,7 +266,15 @@ const weeklySummaryUpdate = async () => {
                     // ── Step 7: Compare aggregated value against rules ─────────
                     let bestMarks = 0;
                     for (const rule of rules) {
-                        let ruleVal  = parseFloat(rule.condition_value);
+                        let ruleVal;
+                        const condLower = String(rule.condition_value).toLowerCase().trim();
+                        if (condLower === 'yes' || condLower === 'true') {
+                            ruleVal = 1;
+                        } else if (condLower === 'no' || condLower === 'false') {
+                            ruleVal = 0;
+                        } else {
+                            ruleVal = parseFloat(rule.condition_value);
+                        }
                         let cCount   = aggregatedValue;
                         let matched  = false;
 

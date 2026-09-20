@@ -43,13 +43,20 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
       "is_max_marks"
     ];
 
+    let finalCondVal = condition_value;
+    if (finalCondVal !== undefined && finalCondVal !== null) {
+      const valStr = String(finalCondVal).trim().toLowerCase();
+      if (valStr === 'true' || valStr === 'yes') finalCondVal = 'Yes';
+      if (valStr === 'false' || valStr === 'no') finalCondVal = 'No';
+    }
+
     const values = [
       scheme_id,
       master_activity_id,
       remark || "",
       frequency,
       condition_operator,
-      condition_value,
+      finalCondVal,
       marks,
       counsellor_id,
       status,
@@ -199,6 +206,13 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
         if (value && typeof value === 'string' && !value.includes(':') && !['yes', 'no', 'true', 'false', 'completed'].includes(value.toLowerCase())) {
             const match = value.match(/[\d.]+/);
             if (match) value = match[0];
+        }
+
+        // Normalize boolean / yes_no condition values to standard 'Yes' and 'No'
+        if (value !== undefined && value !== null) {
+            const valStr = String(value).trim().toLowerCase();
+            if (valStr === 'true' || valStr === 'yes') value = 'Yes';
+            if (valStr === 'false' || valStr === 'no') value = 'No';
         }
 
         if (row.id) {

@@ -84,8 +84,25 @@ const calculateBestMarks = (rawCount, rules, activityType, unit, activityName) =
     }
   }
 
+  // Check if this time rule set involves late night / evening times (e.g. > 12:00 PM / 720 mins)
+  const hasEveningRules = isTime && rules.some(r => {
+    const val = parseValToNumber(r.condition_value, true, false);
+    return !isNaN(val) && val > 720;
+  });
+
+  if (isTime && hasEveningRules) {
+    // If user entered time in early morning (00:00 to 05:59 AM, i.e., < 360 mins), adjust by +1440 mins (24h)
+    if (!isNaN(userValNum) && userValNum < 360) {
+      userValNum += 1440;
+    }
+  }
+
   for (const rule of rules) {
     let ruleValNum = parseValToNumber(rule.condition_value, isTime, isYesNo);
+
+    if (isTime && hasEveningRules && !isNaN(ruleValNum) && ruleValNum < 360) {
+      ruleValNum += 1440;
+    }
 
     if (isNaN(userValNum) || isNaN(ruleValNum)) continue;
 
