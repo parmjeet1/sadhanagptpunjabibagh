@@ -3145,7 +3145,7 @@ export const getDailyScore = asyncHandler(async (req, resp) => {
 });
 
 export const getWeeklyRanking = asyncHandler(async (req, resp) => {
-  const { user_id, page_no = 1, limit = 10, center_filter = false } = mergeParam(req);
+  const { user_id, page_no = 1, limit = 10, center_filter = false, time_filter = 'today' } = mergeParam(req);
   
   if (!user_id) {
     return resp.json({ status: 0, code: 422, message: ["user_id is required"] });
@@ -3153,12 +3153,24 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
 
   const offset = (Number(page_no) - 1) * Number(limit);
   
-  // Daily ranking
   const today = moment().format('YYYY-MM-DD');
+  const yesterday = moment().subtract(1, 'days').format('YYYY-MM-DD');
+  const sevenDaysAgo = moment().subtract(6, 'days').format('YYYY-MM-DD');
 
   try {
+    let dateCondition = "dr.activity_date = ?";
+    let dateParams = [today];
+
+    if (time_filter === 'yesterday') {
+      dateCondition = "dr.activity_date = ?";
+      dateParams = [yesterday];
+    } else if (time_filter === 'weekly') {
+      dateCondition = "dr.activity_date BETWEEN ? AND ?";
+      dateParams = [sevenDaysAgo, today];
+    }
+
     let centerCondition = "";
-    const params = [today];
+    let centerId = null;
 
     if (String(center_filter) === 'true') {
       const [centerRows] = await db.execute(
@@ -3167,12 +3179,13 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
       );
       if (centerRows.length > 0 && centerRows[0].center_id) {
         centerCondition = "AND ua.center_id = ?";
-        params.push(centerRows[0].center_id);
+        centerId = centerRows[0].center_id;
       }
     }
 
-    // Add pagination params
-    params.push(String(limit), String(offset));
+    const mainParams = [...dateParams];
+    if (centerId) mainParams.push(centerId);
+    mainParams.push(String(limit), String(offset));
 
     const query = `
       SELECT 
@@ -3184,14 +3197,15 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
       JOIN daily_report dr ON u.user_id = dr.user_id
       LEFT JOIN user_assignments ua ON u.user_id = ua.user_id
       WHERE u.status = 1 
-        AND dr.activity_date = ?
+        AND ${dateCondition}
         ${centerCondition}
       GROUP BY u.user_id
       ORDER BY total_marks DESC, u.name ASC
       LIMIT ? OFFSET ?
     `;
 
-    const [rankingList] = await db.execute(query, params);
+
+    const [rankingList] = await db.execute(query, mainParams);
 
     // Get current user's specific rank
     let currentUserRank = null;
@@ -3199,25 +3213,29 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
       currentUserRank = rankingList.findIndex(r => String(r.user_id) === String(user_id)) + 1 + offset;
     } else {
       // If not in this page, find their absolute rank
+      const rankDateCondition = dateCondition.replace(/dr\./g, 'dr2.');
       const rankQuery = `
         SELECT user_rank FROM (
           SELECT dr2.user_id, RANK() OVER (ORDER BY SUM(dr2.marks) DESC) as user_rank
           FROM daily_report dr2
           LEFT JOIN user_assignments ua2 ON dr2.user_id = ua2.user_id
-          WHERE dr2.activity_date = ?
+          WHERE ${rankDateCondition}
           ${centerCondition ? "AND ua2.center_id = ?" : ""}
           GROUP BY dr2.user_id
         ) sub
         WHERE user_id = ?
       `;
-      const rankParams = centerCondition ? [today, params[1], user_id] : [today, user_id];
+      const rankParams = [...dateParams];
+      if (centerId) rankParams.push(centerId);
+      rankParams.push(user_id);
+
       const [rankRes] = await db.execute(rankQuery, rankParams);
       if (rankRes.length > 0) currentUserRank = rankRes[0].user_rank;
     }
 
     // If user is #1 today, upsert top_ranker_from / top_ranker_to
     let topRankerDates = null;
-    if (currentUserRank === 1) {
+    if (currentUserRank === 1 && time_filter === 'today') {
       const [existingRows] = await db.execute(
         `SELECT top_ranker_from, top_ranker_to FROM users WHERE user_id = ? LIMIT 1`,
         [user_id]
@@ -3243,16 +3261,16 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
     return resp.json({
       status: 1,
       code: 200,
-      message: ["Daily ranking fetched successfully"],
+      message: ["Ranking fetched successfully"],
       data: {
         ranking: rankingList,
         currentUserRank: currentUserRank,
-        isTopRanker: currentUserRank === 1,
+        isTopRanker: currentUserRank === 1 && time_filter === 'today',
         topRankerDates: topRankerDates
       }
     });
   } catch (err) {
-    console.error("Error fetching daily ranking:", err);
+    console.error("Error fetching ranking:", err);
     return resp.json({ status: 0, code: 500, message: ["Failed to fetch ranking"] });
   }
 });

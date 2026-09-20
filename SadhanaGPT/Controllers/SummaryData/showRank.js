@@ -57,7 +57,9 @@ export const getStudentRank = asyncHandler(async (req, res) => {
         `;
 
         const [rows] = await db.execute(query, params);
-        console.log(`[Rank] Fetched for user_id ${user_id}:`, rows.length, "rows");
+        console.log("(query, params)",query, params);
+
+       
 
         let studentsList = rows.map(student => {
             const numericMarks = Number(student.total_marks);
@@ -72,18 +74,18 @@ export const getStudentRank = asyncHandler(async (req, res) => {
             };
         });
 
-        // Sort by percentage descending to compute ALL ranks first
-        studentsList.sort((a, b) => b.percentage - a.percentage);
+        // Sort by total_marks descending to compute ranks (Rank #1 = highest marks)
+        studentsList.sort((a, b) => b.total_marks - a.total_marks || b.percentage - a.percentage || a.student_name.localeCompare(b.student_name));
 
         let currentRank = 1;
-        let previousPercentage = null;
+        let previousMarks = null;
 
-        // Assign rank numbers based on percentage
+        // Assign rank numbers based on total_marks
         let rankedStudents = studentsList.map((student, index) => {
-            if (previousPercentage !== null && student.percentage < previousPercentage) {
+            if (previousMarks !== null && student.total_marks < previousMarks) {
                 currentRank = index + 1;
             }
-            previousPercentage = student.percentage;
+            previousMarks = student.total_marks;
 
             return {
                 ...student,
@@ -91,9 +93,13 @@ export const getStudentRank = asyncHandler(async (req, res) => {
             };
         });
 
-        // Now apply sorting based on query (if 'asc' we show bottom first)
+        // Apply display sorting for output page:
+        // - sort === 'asc' (Students Need Follow-up): Lowest rank / worst students first (rank DESC)
+        // - sort === 'desc' (Top Ranks): Highest rank / best students first (rank ASC)
         if (sort === 'asc') {
-            rankedStudents.sort((a, b) => a.percentage - b.percentage);
+            rankedStudents.sort((a, b) => b.rank - a.rank || a.student_name.localeCompare(b.student_name));
+        } else {
+            rankedStudents.sort((a, b) => a.rank - b.rank || a.student_name.localeCompare(b.student_name));
         }
 
         const total = rankedStudents.length;
