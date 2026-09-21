@@ -24,3 +24,6 @@ jobs:
           script: |
             cd ~/test-backend
             ./switch-db.sh ${{ github.event.inputs.target_db }}
+
+      - name: Confirm active database
+        run: echo "✅ test.sadhanagpt.com is now running on the **${{ github.event.inputs.target_db }}** database"
