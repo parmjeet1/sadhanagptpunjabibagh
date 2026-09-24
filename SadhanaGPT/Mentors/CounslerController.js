@@ -3459,9 +3459,7 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
       ORDER BY cl.name, l.name, u.name, dr.activity_date DESC
     `;
 
-    console.log("exportBulkStudentReports params:", params);
     const [rows] = await db.execute(query, params);
-    console.log("exportBulkStudentReports rows count:", rows?.length);
 
     return resp.json({
       status: 1,
