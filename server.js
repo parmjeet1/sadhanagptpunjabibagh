@@ -64,18 +64,9 @@ process.on("warning", (warning) => {
         credentials: true
       };
 
-      // app.post('/api/stripe-webhook', express.raw({ type: 'application/json' }), stripeWebhook);
-
+      
       app.use(cors(corsOptions));
-      // app.use((req, res, next) => {
-      //   if (req.method === "OPTIONS") {
-      //     res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-      //     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      //     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, access_token");
-      //     return res.sendStatus(204);
-      //   }
-      //   next();
-      // });
+     
       app.use(express.urlencoded({ extended: true }));
       app.use(express.json());
       app.use(bodyParser.json());
@@ -95,10 +86,7 @@ process.on("warning", (warning) => {
 
         app.use("/auth", authRoutes);
         
-
-      // ── Health-check routes ──────────────────────────────────────────────
-      // Confirms backend is reachable (fixes "Cannot GET /" on mobile)
-      app.get('/', (req, res) => {
+     app.get('/', (req, res) => {
         res.send('Backend is running');
       });
 
@@ -113,67 +101,15 @@ process.on("warning", (warning) => {
 
       });
 
-
-      // start react git
-        
-        //   app.use(express.static(path.join(__dirname, 'dist')));
-        // app.use((req, res) => {
-        //   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-        // });
-      /// end react 
-      
-      // Serve uploads statically for local development
+    
       app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
        
       const server = http.createServer(app);
       server.listen(PORT, '0.0.0.0', () => {
         // ── Startup info ────────────────────────────────────────────────────
-        import('os').then((osModule) => {
-          const os = osModule.default;
-          const nets = os.networkInterfaces();
-          const localIPs = [];
-          for (const iface of Object.values(nets)) {
-            for (const net of iface) {
-              if (net.family === 'IPv4' && !net.internal) localIPs.push(net.address);
-            }
-          }
-          console.log(`\n✅ Server is running on port ${PORT}`);
-          console.log(`   Local:   http://localhost:${PORT}`);
-          localIPs.forEach(ip => console.log(`   Network: http://${ip}:${PORT}  \u2190 use this on mobile`));
+       
+      });
 
-          // ── Print all registered routes ──────────────────────────────────
-          console.log('\n\ud83d\udccb Registered routes:');
-          app._router.stack.forEach((layer) => {
-            if (layer.route) {
-              const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase()).join(',');
-              console.log(`   ${methods.padEnd(8)} ${layer.route.path}`);
-            } else if (layer.name === 'router' && layer.handle.stack) {
-              const prefix = layer.regexp.source
-                .replace('^\\\/','/')
-                .replace('\\/?(?=\\\/|$)','');
-              layer.handle.stack.forEach((r) => {
-                if (r.route) {
-                  const methods = Object.keys(r.route.methods).map(m => m.toUpperCase()).join(',');
-                  console.log(`   ${methods.padEnd(8)} ${prefix}${r.route.path}`);
-                }
-              });
-            }
-          });
-          console.log('');
-          // ────────────────────────────────────────────────────────────────
-        }); // end import('os').then()
-      }); // end server.listen
-
-
-
-      
-      // cron.schedule('0 0 * * 7', async () => {
-
-      //   await dispatchWeeklyCounsellorReports();
-
-
-
-      // });
       cron.schedule(
   '0 0 * * 7',
   async () => {
