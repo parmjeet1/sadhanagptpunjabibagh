@@ -1,0 +1,77 @@
+import logger from "../logger.js";
+
+export const errorHandler = (err, req, res, next) => {
+
+    if (err && err.stack) {
+        let arrE = err.stack.split(",");
+        if (Array.isArray(arrE) && arrE.length) { 
+            let lineArr = arrE[0].split("at");
+            if (Array.isArray(lineArr) && lineArr.length > 1) { 
+                logger.error(`${err} at (${lineArr[1]}) On (${req?.originalUrl})`);
+            } else {
+                logger.error(` ${err} at (${arrE[0]}) On (${req?.originalUrl})`);
+            }
+        } else {
+            logger.error(`Error : ${err} On (${req?.originalUrl})`);
+        }
+    } else {
+        logger.error(`Error : ${err || "Unknown error"} On (${req?.originalUrl})`);
+    }
+
+    const message = "Oops! There is something went wrong! Please Try Again."  ;
+
+    return res.json({
+        status  : 0,
+        code    : err?.statusCode || 500,
+        message : [message]
+    });
+};
+
+export const olderrorHandler = (err, req, res, next) => {
+
+  logger.error(`
+ERROR: ${err.message}
+URL: ${req.originalUrl}
+METHOD: ${req.method}
+STACK:
+${err.stack}
+`);
+    const message = "Oops! There is something went wrong! Please Try Again."  ;
+
+    return res.json({
+        status  : 0,
+        code    : err.statusCode || 500,
+        message : [message]
+    });
+};
+export const tryCatchErrorHandler = (action, err, res, msg='' ) => {
+    
+    if (err && err.stack) {
+        let arrE = err.stack.split(",");
+        if (Array.isArray(arrE) && arrE.length) { 
+            let lineArr = arrE[0].split("at");
+            if (Array.isArray(lineArr) && lineArr.length > 1) { 
+                logger.error(` ${err} at (${lineArr[1]}) On (${action})`);
+            } else {
+                logger.error(` ${err} at (${arrE[0]}) On (${action})`);
+            }
+        } else {
+            logger.error(`Error : ${err} On (${action})`);
+        }
+    } else {
+        logger.error(`Error : ${err || "Unknown error"} On (${action})`);
+    }
+
+    const message = msg || "Oops! There is something went wrong! Please Try Again.";
+
+    if(res && Object.keys(res).length) {
+        return res.json({
+            status  : 0,
+            code    : err?.statusCode || 500,
+            message : [message]
+        });
+    } else {
+        return false;
+    }
+    
+};

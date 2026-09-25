@@ -1,0 +1,29 @@
+name: Switch Test Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_db:
+        description: 'Which database should test.sadhanagpt.com use?'
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+
+jobs:
+  switch-db:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and switch DB
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ~/test-backend
+            ./switch-db.sh ${{ github.event.inputs.target_db }}
+
+      - name: Confirm active database
+        run: echo "✅ test.sadhanagpt.com is now running on the **${{ github.event.inputs.target_db }}** database"
