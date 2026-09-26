@@ -181,6 +181,7 @@ function rowToActivityDefinition(row) {
         Math.round(goal / 2),
         Math.round(goal * 0.75),
         goal,
+        16
       ])].filter((v) => v > 0).sort((a, b) => a - b);
     }
   } else if (type === "duration") {
