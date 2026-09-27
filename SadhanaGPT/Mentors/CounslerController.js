@@ -1598,17 +1598,22 @@ export const aiReport = asyncHandler(async (req, resp) => {
     /* --------------------------
        2️⃣ Activity Records
     ---------------------------*/
+    // Same fix as bulkaiReport below: LEFT JOIN + (own_by = 0 OR fa.user_id =
+    // dr.user_id) so a student's own custom/counsellor-assigned activities
+    // aren't silently dropped, COALESCE so a deleted activity definition
+    // doesn't drop the row, and the missing comma after fa.own_by (a real
+    // SQL syntax error in the original) is fixed.
     const [rows] = await db.execute(
-      `SELECT 
+      `SELECT
         dr.activity_date,
         dr.activity_id,
-        fa.name as activity_name,
-        fa.own_by
+        COALESCE(fa.name, 'Unknown Activity') as activity_name,
+        fa.own_by,
         dr.count,
         dr.unit
       FROM daily_report dr
-      INNER JOIN fix_activities fa 
-      ON fa.activity_id = dr.activity_id and fa.own_by = 0
+      LEFT JOIN fix_activities fa
+      ON fa.activity_id = dr.activity_id AND (fa.own_by = 0 OR fa.user_id = dr.user_id)
       WHERE dr.user_id = ?
       AND dr.activity_date BETWEEN ? AND ?
       ORDER BY dr.activity_date`,
@@ -1747,19 +1752,34 @@ export const bulkaiReport = asyncHandler(async (req, resp) => {
     //   ORDER BY dr.activity_date`,
     //   [...parsedStudentIds, date_from, date_to]
     // );
+    // NOTE on the join below (this was the main cause of student data being
+    // incomplete in the AI analysis):
+    //  - It used to be an INNER JOIN restricted to `fa.own_by = 0` (global/
+    //    public activities only), which silently dropped every logged entry
+    //    for a student's own custom/counsellor-assigned activities
+    //    (own_by = 1, tied to fa.user_id) from the report sent to the AI.
+    //    Now a logged activity is included if it's global OR specifically
+    //    owned by that same student.
+    //  - It's now a LEFT JOIN so a `daily_report` row is never dropped just
+    //    because its `fix_activities` definition was later deleted/
+    //    deactivated — the activity name falls back to "Unknown Activity"
+    //    instead of losing the whole row.
+    //  - `dr.unit` is now selected (it was referenced below as `r.unit` but
+    //    was never actually in the SELECT list, so it was always undefined).
     const [rows] = await db.execute(
       `SELECT
          dr.user_id,
          dr.activity_date,
          dr.activity_id,
-         fa.name as activity_name,
+         COALESCE(fa.name, 'Unknown Activity') as activity_name,
          fa.target,
-         dr.count
-       
+         fa.own_by,
+         dr.count,
+         dr.unit
       FROM daily_report dr
-      INNER JOIN fix_activities fa 
-        ON fa.activity_id = dr.activity_id 
-        AND fa.own_by = 0
+      LEFT JOIN fix_activities fa
+        ON fa.activity_id = dr.activity_id
+        AND (fa.own_by = 0 OR fa.user_id = dr.user_id)
       WHERE dr.user_id IN (${placeholders})
       AND dr.activity_date BETWEEN ? AND ?
       ORDER BY dr.activity_date`,
@@ -1953,7 +1973,18 @@ export const studentDetails = asyncHandler(async (req, res) => {
   /* ---------------------------
      FETCH ACTIVITY SUMMARY
   ----------------------------*/
-
+  // FIX (this was why the "eye" icon / mentee analytics screen showed
+  // no charts at all): the WHERE clause used to be
+  //   WHERE fa.user_id = ? AND fa.own_by = 0
+  // which only matched an activity if it was BOTH this exact student's
+  // own row AND flagged global — but global/public activities
+  // (own_by = 0) are shared master rows not tied to one student's
+  // user_id, and a student's own custom activities (own_by = 1) were
+  // excluded outright by "AND own_by = 0". For most students this
+  // matched zero rows, so activities_analytics came back empty. Changed
+  // to an OR (same pattern used correctly elsewhere in this codebase,
+  // e.g. StudentController.js) so it includes shared global activities
+  // OR this student's own custom/assigned ones.
   const [student_data] = await db.execute(
     `
     SELECT
@@ -1976,11 +2007,10 @@ export const studentDetails = asyncHandler(async (req, res) => {
       COUNT(dr.id) AS attendance_count
 
     FROM fix_activities fa
-    LEFT JOIN daily_report dr 
-      ON dr.activity_id = fa.activity_id 
+    LEFT JOIN daily_report dr
+      ON dr.activity_id = fa.activity_id
       AND dr.user_id = ?
-    WHERE fa.user_id = ?
-    and fa.own_by=0
+    WHERE (fa.own_by = 0 OR fa.user_id = ?)
     GROUP BY
       fa.activity_id,
       fa.name,

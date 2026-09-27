@@ -423,7 +423,11 @@ export const assistantGetLast7DaysMarks = asyncHandler(async (req, resp) => {
 const TIME_TRIGGERS = {
   wakeup: /\b(?:woke|wake ?up|wakeup|utha|uthi|uth gaya|uth gayi|got up)\b/,
   sleep: /\b(?:sleep|slept|soya|so gaya|so gayi|went to bed|bed time)\b/,
-  chanting_completion_time: /\b(?:chanting (?:complete|completed|finished|done)|rounds? (?:complete|completed|done)|finished chanting)\b/,
+  // Broadened to also catch common Hinglish phrasing for finishing rounds —
+  // "mala poora kiya", "japa khatam hua", "chanting khatm ho gaya", etc. —
+  // not just the original English-only "chanting completed/finished/done".
+  chanting_completion_time:
+    /\b(?:chanting|rounds?|mala|japa)\s*(?:complete|completed|finish(?:ed)?|done|over|khatam|khatm|poora|pura|purn)(?:\s*(?:kiya|kar liya|ho gaya|ho gayi|hua|hui))?\b|\b(?:finished|completed)\s*(?:chanting|rounds?|mala|japa)\b/,
 };
 
 function escapeRegex(str) {
@@ -442,15 +446,36 @@ function regexInterpret(text, activities) {
       const unitWord = a.type === "duration"
         ? "(?:min(?:ute)?s?|mins?|hrs?|hours?|ghanta|ghante|ghanton)"
         : "(?:rounds?|round|mala|malas)";
-      const patterns = [
+      // "Strict" patterns require an actual unit word (rounds/mala/min/
+      // hour/etc.) next to the number, so they can only ever match a count
+      // or duration, never a clock time.
+      const strictPatterns = [
         new RegExp(`(\\d{1,4})\\s*${unitWord}[^\\d\\n]{0,20}${nameEsc}`),
         new RegExp(`${nameEsc}[^\\d\\n]{0,20}(\\d{1,4})\\s*${unitWord}`),
         new RegExp(`(\\d{1,4})\\s*${unitWord}\\s+(?:of\\s+)?${nameEsc}`),
+      ];
+      // "Loose" patterns fall back to plain proximity (any number within
+      // ~12 chars of the activity's name, no unit word required) — needed
+      // for terse messages like "chanting 16", but dangerous on their own:
+      // without a guard, "chanting completed AT 6" (a TIME) would be
+      // misread as "6 rounds of chanting" (a COUNT), producing a wrong-but-
+      // nonempty match that short-circuits the whole interpretation before
+      // it ever reaches the AI fallback (a local match always wins, right
+      // or wrong). So a loose match is only accepted when the number isn't
+      // itself an obvious clock-time reference ("at 6", "6 baje", "6pm",
+      // "6:30") — those are left for a stricter/AI pass to attribute to
+      // whichever TIME-type activity they actually belong to.
+      const loosePatterns = [
         new RegExp(`${nameEsc}[^\\d\\n]{0,12}(\\d{1,4})\\b`),
         new RegExp(`(\\d{1,4})[^\\d\\n]{0,12}${nameEsc}`),
       ];
+      const looksLikeClockTimeAt = (idx, numStr) => {
+        const before = lower.slice(Math.max(0, idx - 6), idx);
+        const after = lower.slice(idx + numStr.length, idx + numStr.length + 6);
+        return /\bat\s*$/.test(before) || /^\s*(?:am|pm|baje|:\s*\d|\.\d)/.test(after);
+      };
       let matched = false;
-      for (const re of patterns) {
+      for (const re of strictPatterns) {
         const m = lower.match(re);
         if (m) {
           const val = Number(m[1]);
@@ -459,6 +484,21 @@ function regexInterpret(text, activities) {
             matched = true;
           }
           break;
+        }
+      }
+      if (!matched) {
+        for (const re of loosePatterns) {
+          const m = lower.match(re);
+          if (m) {
+            const numIdx = m.index + m[0].lastIndexOf(m[1]);
+            if (looksLikeClockTimeAt(numIdx, m[1])) continue; // leave it for the time-activity / AI pass
+            const val = Number(m[1]);
+            if (!isNaN(val)) {
+              updates.push({ activity_id: a.activity_id, value: val });
+              matched = true;
+            }
+            break;
+          }
         }
       }
       if (!matched) {

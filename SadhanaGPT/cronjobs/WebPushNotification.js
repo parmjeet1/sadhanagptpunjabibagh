@@ -316,7 +316,7 @@ export const notifyMentorsOfIrregularMentees = async () => {
   }
 };
 const sendDailyGlobalReminder = async () => {
-  console.log("Starting daily 8:30 PM global reminder...");
+  console.log("Starting daily 9:00 PM global reminder...");
   try {
     // Fetch ALL push subscriptions directly
     const query = `SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions`;
@@ -362,9 +362,9 @@ const sendDailyGlobalReminder = async () => {
 export const freqSadhnaCronjob = () => {
   const timezone = 'Asia/Kolkata';
 
-  // Daily at 8:30 PM IST
-
-  cron.schedule('30 20 * * *', async () => {
+  // Daily at 9:00 PM IST (was mistakenly '30 20 * * *' = 8:30 PM — fixed to
+  // match the intended 9 PM daily "fill your sadhana" reminder).
+  cron.schedule('0 21 * * *', async () => {
     await sendDailyGlobalReminder();
   }, { timezone });
 
