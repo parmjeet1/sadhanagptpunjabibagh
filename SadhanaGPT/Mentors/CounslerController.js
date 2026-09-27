@@ -949,7 +949,7 @@ FROM fix_activities fa
     ON dr.activity_id = fa.activity_id  AND dr.user_id = ?
   JOIN users u ON u.user_id = ?
     WHERE
-         fa.own_by = 1  OR fa.user_id = ? GROUP BY fa.activity_id
+         fa.user_id = ? GROUP BY fa.activity_id
       `,
       [student_id, student_id, student_id]
     );
@@ -1598,11 +1598,26 @@ export const aiReport = asyncHandler(async (req, resp) => {
     /* --------------------------
        2️⃣ Activity Records
     ---------------------------*/
-    // Same fix as bulkaiReport below: LEFT JOIN + (own_by = 0 OR fa.user_id =
-    // dr.user_id) so a student's own custom/counsellor-assigned activities
-    // aren't silently dropped, COALESCE so a deleted activity definition
-    // doesn't drop the row, and the missing comma after fa.own_by (a real
-    // SQL syntax error in the original) is fixed.
+    // FIX: dr.activity_id already uniquely identifies exactly one
+    // fix_activities row, which already belongs to exactly one user (its
+    // own fa.user_id) regardless of whether it's flagged public (own_by=0)
+    // or custom (own_by=1) — own_by is only ever a descriptive flag on THAT
+    // same student's own row, never a marker for a row shared across
+    // multiple students. An earlier version of this fix added
+    // "OR fa.own_by = 0" to the join, thinking own_by=0 meant "a shared
+    // master row" — it does not, and every OTHER student's own own_by=0
+    // rows share that same flag, so that condition matched every public
+    // activity belonging to EVERY student in the whole app, not just this
+    // one, producing dozens of duplicate same-named ("Chanting" etc.)
+    // entries per student, every one of them showing 0 (since dr.user_id is
+    // already scoped to just this student in the WHERE clause, none of
+    // those OTHER students' activity_ids ever have a matching daily_report
+    // row here). The plain join below is the same pattern already used
+    // correctly for the student's own working Analytics tab
+    // (StudentController.js) — no own_by condition needed at all.
+    // Also: LEFT JOIN + COALESCE so a deleted activity definition doesn't
+    // drop the row, and the missing comma after fa.own_by (a real SQL
+    // syntax error in the original) is fixed.
     const [rows] = await db.execute(
       `SELECT
         dr.activity_date,
@@ -1613,7 +1628,7 @@ export const aiReport = asyncHandler(async (req, resp) => {
         dr.unit
       FROM daily_report dr
       LEFT JOIN fix_activities fa
-      ON fa.activity_id = dr.activity_id AND (fa.own_by = 0 OR fa.user_id = dr.user_id)
+      ON fa.activity_id = dr.activity_id
       WHERE dr.user_id = ?
       AND dr.activity_date BETWEEN ? AND ?
       ORDER BY dr.activity_date`,
@@ -1753,19 +1768,32 @@ export const bulkaiReport = asyncHandler(async (req, resp) => {
     //   [...parsedStudentIds, date_from, date_to]
     // );
     // NOTE on the join below (this was the main cause of student data being
-    // incomplete in the AI analysis):
+    // incomplete in the AI analysis, and later of duplicate zero-value
+    // "Chanting" etc. cards on the counsellor-side student report):
     //  - It used to be an INNER JOIN restricted to `fa.own_by = 0` (global/
     //    public activities only), which silently dropped every logged entry
     //    for a student's own custom/counsellor-assigned activities
-    //    (own_by = 1, tied to fa.user_id) from the report sent to the AI.
-    //    Now a logged activity is included if it's global OR specifically
-    //    owned by that same student.
-    //  - It's now a LEFT JOIN so a `daily_report` row is never dropped just
+    //    (own_by = 1) from the report sent to the AI.
+    //  - A LATER fix mistakenly added "OR fa.own_by = 0" to try to bring
+    //    those back — but own_by is only ever a flag on that ROW's own
+    //    fa.user_id, never a marker for a row shared across students, so
+    //    that condition matched every public activity belonging to EVERY
+    //    student in the whole app, not just the ones in this report,
+    //    producing dozens of duplicate same-named entries per student (all
+    //    showing 0, since dr.user_id is already scoped correctly and none
+    //    of those other students' activity_ids have a matching row here).
+    //  - dr.activity_id already uniquely identifies exactly one
+    //    fix_activities row belonging to exactly one user, so the join
+    //    needs no own_by/user_id condition at all — same plain pattern
+    //    already used correctly for the student's own working Analytics
+    //    tab (StudentController.js).
+    //  - Still a LEFT JOIN so a `daily_report` row is never dropped just
     //    because its `fix_activities` definition was later deleted/
     //    deactivated — the activity name falls back to "Unknown Activity"
     //    instead of losing the whole row.
-    //  - `dr.unit` is now selected (it was referenced below as `r.unit` but
-    //    was never actually in the SELECT list, so it was always undefined).
+    //  - `dr.unit` is still selected (it was referenced below as `r.unit`
+    //    but was never actually in the SELECT list before, so it was
+    //    always undefined).
     const [rows] = await db.execute(
       `SELECT
          dr.user_id,
@@ -1779,7 +1807,6 @@ export const bulkaiReport = asyncHandler(async (req, resp) => {
       FROM daily_report dr
       LEFT JOIN fix_activities fa
         ON fa.activity_id = dr.activity_id
-        AND (fa.own_by = 0 OR fa.user_id = dr.user_id)
       WHERE dr.user_id IN (${placeholders})
       AND dr.activity_date BETWEEN ? AND ?
       ORDER BY dr.activity_date`,
@@ -1973,18 +2000,29 @@ export const studentDetails = asyncHandler(async (req, res) => {
   /* ---------------------------
      FETCH ACTIVITY SUMMARY
   ----------------------------*/
-  // FIX (this was why the "eye" icon / mentee analytics screen showed
-  // no charts at all): the WHERE clause used to be
-  //   WHERE fa.user_id = ? AND fa.own_by = 0
-  // which only matched an activity if it was BOTH this exact student's
-  // own row AND flagged global — but global/public activities
-  // (own_by = 0) are shared master rows not tied to one student's
-  // user_id, and a student's own custom activities (own_by = 1) were
-  // excluded outright by "AND own_by = 0". For most students this
-  // matched zero rows, so activities_analytics came back empty. Changed
-  // to an OR (same pattern used correctly elsewhere in this codebase,
-  // e.g. StudentController.js) so it includes shared global activities
-  // OR this student's own custom/assigned ones.
+  // FIX — this query has now been through two bugs:
+  //   1. Originally: WHERE fa.user_id = ? AND fa.own_by = 0 — matched an
+  //      activity only if it was BOTH this student's own row AND flagged
+  //      global, excluding this same student's own custom (own_by = 1)
+  //      activities outright. For most students this matched zero rows, so
+  //      activities_analytics came back empty — the "eye" icon screen
+  //      showed no charts at all.
+  //   2. A later fix changed the AND to OR ("fa.own_by = 0 OR
+  //      fa.user_id = ?"), on the mistaken assumption that own_by = 0 rows
+  //      are shared master rows not tied to any one student. They are not:
+  //      every fix_activities row (own_by 0 or 1) already carries its own
+  //      owning user_id — own_by is only a descriptive public/custom flag
+  //      on that SAME student's row. "OR fa.own_by = 0" therefore matched
+  //      every public activity belonging to EVERY student in the whole
+  //      app, producing dozens of duplicate same-named ("Chanting" etc.)
+  //      cards, every one of them at 0 (since the LEFT JOIN above already
+  //      scopes dr.user_id to just this one student, so none of those
+  //      other students' activity_ids have a matching daily_report row
+  //      here).
+  // Correct filter is simply this student's own rows, own_by regardless —
+  // the same plain pattern already used correctly for the student's own
+  // working Analytics tab (StudentController.js, e.g. its personal-report
+  // query: "WHERE fa.user_id = ?", no own_by condition at all).
   const [student_data] = await db.execute(
     `
     SELECT
@@ -2010,7 +2048,7 @@ export const studentDetails = asyncHandler(async (req, res) => {
     LEFT JOIN daily_report dr
       ON dr.activity_id = fa.activity_id
       AND dr.user_id = ?
-    WHERE (fa.own_by = 0 OR fa.user_id = ?)
+    WHERE fa.user_id = ?
     GROUP BY
       fa.activity_id,
       fa.name,
