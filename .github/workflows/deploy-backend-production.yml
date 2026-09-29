@@ -1,10 +1,10 @@
-name: Deploy Backend (Test)
+name: Deploy Backend (Production)
 
 on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-backend-test
+  group: deploy-backend-production
   cancel-in-progress: false
 
 jobs:
@@ -14,30 +14,30 @@ jobs:
       - name: Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ secrets.DEPLOY_PROD_HOST }}
           username: ubuntu
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          key: ${{ secrets.DEPLOY_PROD_SSH_KEY }}
           script: |
             set -e
-            cd /home/ubuntu/test-backend
+            cd /home/ubuntu/sadhanagptpunjabibagh
             echo "Rollback point: $(git rev-parse --short HEAD)"
-            git fetch origin backend-test
-            git reset --hard origin/backend-test
+            git fetch origin main
+            git reset --hard origin/main
             echo "Now at: $(git log -1 --oneline)"
             npm install
-            pm2 restart sadhanagpt-test-backend
+            pm2 restart sadhanagpt-backend
 
       - name: Health check
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ secrets.DEPLOY_PROD_HOST }}
           username: ubuntu
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          key: ${{ secrets.DEPLOY_PROD_SSH_KEY }}
           script: |
             sleep 5
-            pm2 show sadhanagpt-test-backend | grep -q "status.*online" \
+            pm2 show sadhanagpt-backend | grep -q "status.*online" \
               || { echo "PM2 process not online"; exit 1; }
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/)
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/)
             echo "Backend HTTP status: $code"
             if [ "$code" = "000" ] || [ "$code" -ge 500 ]; then
               echo "Backend not responding properly"; exit 1
