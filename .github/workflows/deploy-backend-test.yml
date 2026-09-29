@@ -3,19 +3,43 @@ name: Deploy Backend (Test)
 on:
   workflow_dispatch:
 
+concurrency:
+  group: deploy-backend-test
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: SSH and deploy backend
-        uses: appleboy/ssh-action@v1
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd ~/test-backend
-            git fetch origin
+            set -e
+            cd /home/ubuntu/test-backend
+            echo "Rollback point: $(git rev-parse --short HEAD)"
+            git fetch origin backend-test
             git reset --hard origin/backend-test
+            echo "Now at: $(git log -1 --oneline)"
             npm install
             pm2 restart sadhanagpt-test-backend
+
+      - name: Health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            sleep 5
+            pm2 show sadhanagpt-test-backend | grep -q "status.*online" \
+              || { echo "PM2 process not online"; exit 1; }
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/)
+            echo "Backend HTTP status: $code"
+            if [ "$code" = "000" ] || [ "$code" -ge 500 ]; then
+              echo "Backend not responding properly"; exit 1
+            fi
+            echo "Healthy"

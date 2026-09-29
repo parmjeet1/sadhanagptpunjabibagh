@@ -1,0 +1,55 @@
+name: Deploy Backend (Production)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type DEPLOY to deploy to sadhanagpt.com"
+        required: true
+
+concurrency:
+  group: deploy-backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm
+        if: ${{ inputs.confirm != 'DEPLOY' }}
+        run: |
+          echo "Confirmation failed. Type DEPLOY exactly."
+          exit 1
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_PROD_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_PROD_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/ubuntu/sadhanagptpunjabibagh
+            echo "Rollback point: $(git rev-parse --short HEAD)"
+            git fetch origin main
+            git reset --hard origin/main
+            echo "Now at: $(git log -1 --oneline)"
+            npm install
+            pm2 restart sadhanagpt-backend
+
+      - name: Health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_PROD_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_PROD_SSH_KEY }}
+          script: |
+            sleep 5
+            pm2 show sadhanagpt-backend | grep -q "status.*online" \
+              || { echo "PM2 process not online"; exit 1; }
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/)
+            echo "Backend HTTP status: $code"
+            if [ "$code" = "000" ] || [ "$code" -ge 500 ]; then
+              echo "Backend not responding properly"; exit 1
+            fi
+            echo "Healthy"
