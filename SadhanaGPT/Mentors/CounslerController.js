@@ -262,6 +262,70 @@ export const editLable = asyncHandler(async (req, resp) => {
 
 });
 
+// ---------------------------------------------------------------------------
+// clearLabelReferences — remove/clear every row that still points at the given
+// subgroup (labels_list) ids so the labels_list DELETE can't be blocked by a
+// foreign-key constraint (which surfaced to the user as a generic 500
+// "Internal server error" when deleting a subgroup).
+//
+//  * user_assignments.label_id  -> set NULL (student keeps account, Sadhna
+//    records and Group assignment; they just show as "no subgroup").
+//  * label_centers / content_labels / counselor_added_activities -> the rows
+//    are pure link/assignment rows scoped to that subgroup, so they're deleted
+//    (each guarded: a table/column that doesn't exist in this DB is skipped).
+//  * ANY OTHER table that has a real FK to labels_list.id (discovered from
+//    information_schema, so we don't depend on guessing the schema): column
+//    set NULL when nullable, otherwise the referencing row is deleted.
+// ---------------------------------------------------------------------------
+async function clearLabelReferences(labelIds) {
+  if (!Array.isArray(labelIds) || labelIds.length === 0) return;
+  const ph = labelIds.map(() => "?").join(",");
+
+  await db.execute(
+    `UPDATE user_assignments SET label_id = NULL WHERE label_id IN (${ph})`,
+    labelIds
+  );
+
+  // Known link tables. Skipped silently when the table/column doesn't exist
+  // (ER_NO_SUCH_TABLE 1146 / ER_BAD_FIELD_ERROR 1054).
+  for (const table of ["label_centers", "content_labels", "counselor_added_activities"]) {
+    try {
+      await db.execute(`DELETE FROM \`${table}\` WHERE label_id IN (${ph})`, labelIds);
+    } catch (e) {
+      if (e && (e.errno === 1146 || e.errno === 1054)) continue;
+      throw e;
+    }
+  }
+
+  // Any other real foreign key pointing at labels_list.id.
+  try {
+    const [fks] = await db.execute(
+      `SELECT kcu.TABLE_NAME AS tbl, kcu.COLUMN_NAME AS col, c.IS_NULLABLE AS nullable
+         FROM information_schema.KEY_COLUMN_USAGE kcu
+         JOIN information_schema.COLUMNS c
+           ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+          AND c.TABLE_NAME = kcu.TABLE_NAME
+          AND c.COLUMN_NAME = kcu.COLUMN_NAME
+        WHERE kcu.TABLE_SCHEMA = DATABASE()
+          AND kcu.REFERENCED_TABLE_NAME = 'labels_list'
+          AND kcu.REFERENCED_COLUMN_NAME = 'id'`
+    );
+    const handled = new Set(["user_assignments", "label_centers", "content_labels", "counselor_added_activities"]);
+    for (const fk of fks) {
+      if (handled.has(fk.tbl)) continue;
+      if (fk.nullable === "YES") {
+        await db.execute(`UPDATE \`${fk.tbl}\` SET \`${fk.col}\` = NULL WHERE \`${fk.col}\` IN (${ph})`, labelIds);
+      } else {
+        await db.execute(`DELETE FROM \`${fk.tbl}\` WHERE \`${fk.col}\` IN (${ph})`, labelIds);
+      }
+    }
+  } catch (e) {
+    // information_schema unreadable on this DB user — the known-table cleanup
+    // above already ran; log and let the final DELETE report the real error.
+    console.warn("clearLabelReferences: FK discovery skipped:", e && e.message);
+  }
+}
+
 export const deleteLable = asyncHandler(async (req, res) => {
 
   const { user_id, label_id } = mergeParam(req);
@@ -309,12 +373,14 @@ export const deleteLable = asyncHandler(async (req, res) => {
     // show as Uncategorised at the subgroup level rather than pointing at
     // a deleted subgroup. Their Group assignment and all other data is
     // left exactly as-is.
-    await db.execute(
-      `UPDATE user_assignments SET label_id = NULL WHERE label_id = ?`,
-      [label_id]
-    );
+    // FIX (Internal server error on subgroup delete): the DELETE below
+    // assumed every other table referencing this label would cascade
+    // automatically. It doesn't, so a subgroup with tagged content /
+    // subgroup-level activities / any other FK row hit a constraint error
+    // that was reported as a generic 500. Clear every referencing row first
+    // (also nulls user_assignments.label_id as before).
+    await clearLabelReferences([label_id]);
 
-    // Delete label (label_centers rows auto delete via CASCADE)
     await db.execute(
       `DELETE FROM labels_list WHERE id = ?`,
       [label_id]
@@ -328,12 +394,15 @@ export const deleteLable = asyncHandler(async (req, res) => {
 
   } catch (err) {
 
-    console.log("delete label error", err);
+    console.error("delete label error", err && err.code, err && err.sqlMessage, err);
 
     return res.status(500).json({
       status: 0,
       code: 500,
-      message: ["Internal server error"]
+      message: ["Internal server error"],
+      // DB error class only (e.g. ER_ROW_IS_REFERENCED_2) — no SQL/text — so
+      // if this ever recurs the exact cause is visible without server logs.
+      error_code: (err && err.code) || null
     });
 
   }
@@ -681,6 +750,23 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
     );
 
     // ✅ 3. Delete this group's sub-groups
+    // FIX: clear anything still referencing these subgroups (tagged content,
+    // subgroup-level activities, other FK rows) first — same root cause as
+    // deleteLable() — otherwise a group whose subgroups have any of that
+    // fails here with a foreign-key error / 500.
+    const [centerLabels] = await db.execute(
+      `SELECT id FROM labels_list WHERE center_id = ? AND counsellor_id = ?`,
+      [center_id, user_id]
+    );
+    await clearLabelReferences(centerLabels.map((l) => l.id));
+    // Center-wide custom-activity assignments for this group (guarded: skip
+    // if the table/column isn't present in this DB).
+    try {
+      await db.execute(`DELETE FROM counselor_added_activities WHERE center_id = ?`, [center_id]);
+    } catch (e) {
+      if (!(e && (e.errno === 1146 || e.errno === 1054))) throw e;
+    }
+
     await db.execute(
       `DELETE FROM labels_list WHERE center_id = ? AND counsellor_id = ?`,
       [center_id, user_id]

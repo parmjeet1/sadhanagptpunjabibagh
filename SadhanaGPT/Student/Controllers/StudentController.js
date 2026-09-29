@@ -767,24 +767,28 @@ export const todayReportlist = asyncHandler(async (req, resp) => {
   }
 
   try {
-    const [rows] = await db.execute(
-      `SELECT activity_id, count 
+    // PERFORMANCE: these two queries are independent — run them concurrently
+    // instead of back-to-back (each is a round trip to the remote DB, and this
+    // endpoint is on the dashboard's critical load path).
+    const [[rows], [activityRows]] = await Promise.all([
+      db.execute(
+        `SELECT activity_id, count
        FROM daily_report
        WHERE user_id = ? AND DATE(activity_date) = ?`,
-      [user_id, activity_date]
-    );
-
-    const [activityRows] = await db.execute(
-      `SELECT 
-        fa.activity_id, 
-        fa.activity_type, 
-        fa.target, 
+        [user_id, activity_date]
+      ),
+      db.execute(
+        `SELECT
+        fa.activity_id,
+        fa.activity_type,
+        fa.target,
         dr.count
        FROM fix_activities fa
        LEFT JOIN daily_report dr ON fa.activity_id = dr.activity_id AND dr.user_id = fa.user_id AND DATE(dr.activity_date) = ?
        WHERE fa.user_id = ?`,
-      [activity_date, user_id]
-    );
+        [activity_date, user_id]
+      ),
+    ]);
 
     const color = calculateColorForActivities(activityRows);
 
@@ -3471,11 +3475,32 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
   const body = req.body || {};
   const query = req.query || {};
 
+  // SECURITY FIX: this route is exempted from the app's normal API-key
+  // middleware entirely (see Authorization middleware.js — it short-circuits
+  // for '/whatsapp-webhook' before the key check runs), by design, because a
+  // real WhatsApp/Meta webhook call can't attach the app's Authorization
+  // header. That left it 100% unauthenticated: anyone on the internet who
+  // could guess/know a student's mobile number could POST arbitrary
+  // "activity: value" text here and silently overwrite that student's real
+  // daily_report rows for any date — which is what was causing activities
+  // like Study Hours / Day Rest / Reading to change on their own between
+  // refreshes with no corresponding action in the app. Meta's own webhook
+  // protocol has its own secret (a pre-shared verify token for the GET
+  // handshake, and the same or a header secret for POST deliveries), so we
+  // gate on that instead of the app's Authorization header. Fails CLOSED:
+  // if WHATSAPP_WEBHOOK_TOKEN isn't configured, every call is rejected
+  // rather than left open like before.
+  const configuredToken = process.env.WHATSAPP_WEBHOOK_TOKEN;
+
   // GET verification for WhatsApp/Meta Webhooks
   if (req.method === 'GET') {
     const hubMode = query['hub.mode'];
     const hubChallenge = query['hub.challenge'];
+    const hubVerifyToken = query['hub.verify_token'];
     if (hubMode === 'subscribe' && hubChallenge) {
+      if (!configuredToken || hubVerifyToken !== configuredToken) {
+        return resp.status(403).json({ status: 0, code: 403, message: ["Verification token mismatch."] });
+      }
       return resp.send(hubChallenge);
     }
     return resp.json({
