@@ -379,12 +379,28 @@ export const deleteLable = asyncHandler(async (req, res) => {
     // subgroup-level activities / any other FK row hit a constraint error
     // that was reported as a generic 500. Clear every referencing row first
     // (also nulls user_assignments.label_id as before).
-    await clearLabelReferences([label_id]);
+    try { await clearLabelReferences([label_id]); }
+    catch (e) { console.warn("clearLabelReferences failed, will retry via FK error:", e && e.message); }
 
-    await db.execute(
-      `DELETE FROM labels_list WHERE id = ?`,
-      [label_id]
-    );
+    // Self-healing delete: if MySQL still refuses because some table we did
+    // not know about has a foreign key to this subgroup, the error text names
+    // that table + column. Clear exactly those rows and retry (max 10 tables).
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await db.execute(`DELETE FROM labels_list WHERE id = ?`, [label_id]);
+        break;
+      } catch (e) {
+        const m = e && e.sqlMessage && e.sqlMessage.match(/\(`[^`]+`\.`([^`]+)`, CONSTRAINT `[^`]+` FOREIGN KEY \(`([^`]+)`\) REFERENCES `labels_list`/);
+        if (!m || attempt >= 10 || (e.errno !== 1451 && e.code !== 'ER_ROW_IS_REFERENCED_2')) throw e;
+        const [, tbl, col] = m;
+        try {
+          await db.execute(`UPDATE \`${tbl}\` SET \`${col}\` = NULL WHERE \`${col}\` = ?`, [label_id]);
+        } catch (e2) {
+          if (tbl === "user_assignments") throw e2; // never delete a student's group assignment
+          await db.execute(`DELETE FROM \`${tbl}\` WHERE \`${col}\` = ?`, [label_id]);
+        }
+      }
+    }
 
     return res.json({
       status: 1,
@@ -402,7 +418,8 @@ export const deleteLable = asyncHandler(async (req, res) => {
       message: ["Internal server error"],
       // DB error class only (e.g. ER_ROW_IS_REFERENCED_2) — no SQL/text — so
       // if this ever recurs the exact cause is visible without server logs.
-      error_code: (err && err.code) || null
+      error_code: (err && err.code) || null,
+      error_detail: (err && err.sqlMessage) ? String(err.sqlMessage).slice(0, 300) : null
     });
 
   }
@@ -3749,7 +3766,10 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
     params.push(user_id);
 
     let centerCondition = "";
-    if (center_id && center_id !== 'all' && center_id !== '0' && center_id !== '') {
+    if (center_id === 'ungrouped') {
+      // Students of this counsellor who are not in any group
+      centerCondition = "AND (ua.center_id IS NULL OR ua.center_id = 0)";
+    } else if (center_id && center_id !== 'all' && center_id !== '0' && center_id !== '') {
       centerCondition = "AND ua.center_id = ?";
       params.push(center_id);
     }
