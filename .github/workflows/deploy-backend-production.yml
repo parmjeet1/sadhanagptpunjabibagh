@@ -2,10 +2,6 @@ name: Deploy Backend (Production)
 
 on:
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: "Type DEPLOY to deploy to sadhanagpt.com"
-        required: true
 
 concurrency:
   group: deploy-backend-production
@@ -15,12 +11,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Confirm
-        if: ${{ inputs.confirm != 'DEPLOY' }}
-        run: |
-          echo "Confirmation failed. Type DEPLOY exactly."
-          exit 1
-
       - name: Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
