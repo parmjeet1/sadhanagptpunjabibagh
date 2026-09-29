@@ -2,7 +2,7 @@ import { Router } from "express";
 
 import { checkPushNotificationStatus, downloadErrorLog, Register, removeSubscription, saveSubscription, sendEmailOtp, updateReminderPreferences, updateFcmToken, verifyEmailOtp } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, removeCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge, getStudentAppliedMarkingScheme, whatsappWebhookActivityLog } from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, studentExportReport, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, removeCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge, getStudentAppliedMarkingScheme, whatsappWebhookActivityLog } from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
 import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, studentAnalysisPreview, generateAIAnalysis, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentNotesList, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings, getStudentAiAnalysisHistory, getSingleAiAnalysisReport, aiChatHandler, aiHealthHandler, aiTestHandler, aiDebugAuthHandler, exportBulkStudentReports, removeMentee, updateMenteeName } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
@@ -19,6 +19,7 @@ import {
   assistantUpdateActivity,
   assistantGetActivitiesForDate,
   assistantUpdateActivityForDate,
+  assistantUpdateActivitiesForDates,
   assistantGetTodayMarks,
   assistantGetLast7DaysMarks,
   assistantInterpretNL,
@@ -99,6 +100,7 @@ const LoggedinRoute = [
     { method: 'get', path: '/top-ranker-badge', handler: getTopRankerBadge, role: "student" },
     { method: 'get', path: '/applied-marking-scheme', handler: getStudentAppliedMarkingScheme, role: "student" },
     { method: 'get', path: '/student-activities-analytics', handler: StudentActivitiesAnalytics, role: "student" },
+    { method: 'get', path: '/student-export-report', handler: studentExportReport, role: "student" },
 
     { method: 'get', path: '/detail-report', handler: detailReport, role: "student" },
 
@@ -114,6 +116,7 @@ const LoggedinRoute = [
     { method: 'post', path: '/assistant/activities/update', handler: assistantUpdateActivity, role: "student" },
     { method: 'get', path: '/assistant/activities/by-date/:date', handler: assistantGetActivitiesForDate, role: "student" },
     { method: 'post', path: '/assistant/activities/update-for-date', handler: assistantUpdateActivityForDate, role: "student" },
+    { method: 'post', path: '/assistant/activities/update-for-dates', handler: assistantUpdateActivitiesForDates, role: "student" },
     { method: 'get', path: '/assistant/marks/today', handler: assistantGetTodayMarks, role: "student" },
     { method: 'get', path: '/assistant/marks/last7days', handler: assistantGetLast7DaysMarks, role: "student" },
     { method: 'post', path: '/assistant/nlp/interpret', handler: assistantInterpretNL, role: "student" },

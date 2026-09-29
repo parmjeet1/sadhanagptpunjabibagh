@@ -5,6 +5,7 @@ import {
   saveActivityEntry,
   calculateDailySadhanaScore,
 } from "./StudentController.js";
+import { dailyStudentSummary } from "../../Controllers/SummaryData/summary-report.js";
 import { interpretWithGpt5Nano, transcribeAudio } from "../../../utils/openaiService.js";
 
 /**
@@ -347,6 +348,79 @@ export const assistantUpdateActivityForDate = asyncHandler(async (req, resp) => 
 
   const result = await applyActivityUpdate({ user_id, activity_id, value, activity_date: date });
   return resp.json({ status: result.success ? 1 : 0, code: result.success ? 200 : 422, ...result });
+});
+
+// ============================================================================
+// 6b. updateActivitiesForDates — ONE request for "Fill Same Sadhna for Certain
+// Days". Body: { dates: ["YYYY-MM-DD", ...], updates: [{ activity_id, value }] }
+// The client used to send one request per (date x activity), i.e. hundreds of
+// round trips for a month. Now the whole range is one HTTP call: the server
+// loops, and refreshes the daily summary once per date instead of once per
+// activity.
+// ============================================================================
+const BATCH_MAX_DATES = 62;
+const BATCH_MAX_UPDATES = 100;
+
+export const assistantUpdateActivitiesForDates = asyncHandler(async (req, resp) => {
+  const { user_id } = mergeParam(req);
+  const { dates, updates } = req.body || {};
+
+  if (!Array.isArray(dates) || dates.length === 0 || !Array.isArray(updates) || updates.length === 0) {
+    return resp.json({ status: 0, code: 422, success: false, error: "dates and updates are required" });
+  }
+  const cleanDates = [...new Set(dates.map((d) => String(d)))];
+  if (cleanDates.length > BATCH_MAX_DATES || updates.length > BATCH_MAX_UPDATES) {
+    return resp.json({ status: 0, code: 422, success: false, error: "Too many dates or activities in one request" });
+  }
+  if (cleanDates.some((d) => !moment(d, "YYYY-MM-DD", true).isValid())) {
+    return resp.json({ status: 0, code: 422, success: false, error: "All dates must be valid (YYYY-MM-DD)" });
+  }
+
+  // Resolve every activity ONCE (and confirm it belongs to this student).
+  const [infoRows] = await db.execute(
+    `SELECT activity_id, activity_type, unit FROM fix_activities WHERE user_id = ?`,
+    [user_id]
+  );
+  const infoById = new Map(infoRows.map((r) => [String(r.activity_id), r]));
+
+  const prepared = [];
+  const errors = [];
+  for (const u of updates) {
+    const info = infoById.get(String(u?.activity_id));
+    if (!info) { errors.push({ activity_id: u?.activity_id, error: "That activity could not be found." }); continue; }
+    const count = widgetValueToDbCount(info.activity_type, u.value);
+    if (count === null) { errors.push({ activity_id: u.activity_id, error: "Could not understand the value for this activity." }); continue; }
+    prepared.push({ activity_id: u.activity_id, count, unit: info.unit });
+  }
+
+  let saved = 0;
+  const saveDate = async (date) => {
+    // Sequential within a date (keeps marks/dependency logic identical to the
+    // single-update path); dates themselves run a few at a time below.
+    for (const p of prepared) {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await saveActivityEntry({ activity_id: p.activity_id, count: p.count, activity_date: date, user_id, unit: p.unit, skipSummary: true });
+      if (r && r.status === 1) saved += 1;
+      else errors.push({ activity_id: p.activity_id, date, error: (Array.isArray(r?.message) ? r.message[0] : r?.message) || "Failed to save activity." });
+    }
+    await dailyStudentSummary(user_id, date).catch((e) => console.error("batch summary error:", e));
+  };
+
+  const CHUNK = 4;
+  for (let i = 0; i < cleanDates.length; i += CHUNK) {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(cleanDates.slice(i, i + CHUNK).map(saveDate));
+  }
+
+  const total = cleanDates.length * prepared.length;
+  const success = total > 0 && saved === total && errors.length === 0;
+  return resp.json({
+    status: saved > 0 ? 1 : 0,
+    code: saved > 0 ? 200 : 422,
+    success,
+    data: { saved, total, dates: cleanDates.length, errors: errors.slice(0, 20) },
+    error: success ? undefined : (errors[0]?.error || "Some entries could not be saved."),
+  });
 });
 
 // ============================================================================

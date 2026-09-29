@@ -1127,7 +1127,7 @@ export const oldaddSadhna = asyncHandler(async (req, resp) => {
  * SadhnaAssistant chatbot integration) without duplicating the marks
  * calculation. Returns the exact JSON body an Express handler would send.
  */
-export const saveActivityEntry = async ({ activity_id, count, activity_date, user_id, unit }) => {
+export const saveActivityEntry = async ({ activity_id, count, activity_date, user_id, unit, skipSummary = false }) => {
   const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
   let storedCount = count;
 
@@ -1206,7 +1206,8 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
       );
 
       // Async background summary update (non-blocking)
-      await dailyStudentSummary(user_id, final_activity_date).catch(err =>
+      // (batch callers pass skipSummary and refresh the summary once per date)
+      if (!skipSummary) await dailyStudentSummary(user_id, final_activity_date).catch(err =>
         console.error("Error updating daily student summary:", err)
       );
 
@@ -1227,7 +1228,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
 
     if (insert_data) {
       // Async background summary update (non-blocking)
-      dailyStudentSummary(user_id, final_activity_date).catch(err =>
+      if (!skipSummary) dailyStudentSummary(user_id, final_activity_date).catch(err =>
         console.error("Error updating daily student summary:", err)
       );
 
@@ -2415,6 +2416,73 @@ FROM fix_activities fa
     //  }
   });
 
+});
+
+// ---------------------------------------------------------------------------
+// Student's OWN export rows (PDF/Excel/CSV). /student-activities-analytics
+// returns only averages/counts — no marks and no max-possible marks — so the
+// student-side export always computed 0%. This returns the same row shape the
+// mentor export uses (/export-bulk-student-reports), scoped to the logged-in
+// student (user_id comes from the access token), including per-row marks and
+// activity_max_possible_marks so the percentage is computed correctly.
+// ---------------------------------------------------------------------------
+export const studentExportReport = asyncHandler(async (req, res) => {
+  try {
+    const { user_id, filter = '7', start_date, end_date } = mergeParam(req);
+    if (!user_id) return res.json({ status: 1, code: 200, data: [] });
+
+    const params = [];
+    let dateCondition = "";
+    if (start_date && end_date && filter !== 'all') {
+      dateCondition = "AND DATE(dr.activity_date) >= ? AND DATE(dr.activity_date) <= ?";
+      params.push(start_date, end_date);
+    } else if (filter !== 'all') {
+      dateCondition = "AND DATE(dr.activity_date) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)";
+      params.push(parseInt(filter) || 7);
+    }
+    params.push(user_id);
+
+    const [rows] = await db.execute(
+      `SELECT
+         u.user_id AS student_id,
+         u.name AS student_name,
+         u.mobile,
+         COALESCE(cl.name, 'Personal Sadhana') AS center_name,
+         COALESCE(l.name, 'My Sadhana') AS label_name,
+         COALESCE(fa.name, CASE WHEN dr.id IS NOT NULL THEN 'Activity' ELSE 'No Logged Activity' END) AS activity_name,
+         dr.activity_id AS activity_id,
+         COALESCE(dr.count, '-') AS activity_value,
+         COALESCE(dr.marks, 0) AS activity_marks,
+         CASE WHEN dr.id IS NOT NULL THEN
+           COALESCE(
+             (SELECT MAX(mr.marks) FROM marking_rules mr
+               WHERE mr.master_activity_id = fa.master_activity_id
+                 AND mr.status = 1 AND mr.frequency = 'daily'
+                 AND mr.scheme_id = COALESCE(l.marking_scheme_id, cl.marking_scheme_id, 1)),
+             (SELECT MAX(mr2.marks) FROM marking_rules mr2
+               WHERE mr2.master_activity_id = fa.master_activity_id
+                 AND mr2.status = 1 AND mr2.frequency = 'daily' AND mr2.scheme_id = 1),
+             0
+           )
+         ELSE NULL END AS activity_max_possible_marks,
+         COALESCE(DATE_FORMAT(dr.activity_date, '%Y-%m-%d'), '-') AS activity_date
+       FROM users u
+       LEFT JOIN user_assignments ua
+         ON ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = u.user_id)
+       LEFT JOIN center_list cl ON cl.center_id = ua.center_id
+       LEFT JOIN labels_list l ON l.id = ua.label_id
+       LEFT JOIN daily_report dr ON dr.user_id = u.user_id ${dateCondition}
+       LEFT JOIN fix_activities fa ON fa.activity_id = dr.activity_id
+       WHERE u.user_id = ?
+       ORDER BY dr.activity_date DESC`,
+      params
+    );
+
+    return res.json({ status: 1, code: 200, message: ["Export data fetched successfully"], data: rows });
+  } catch (error) {
+    console.error("Error in studentExportReport:", error);
+    return res.status(500).json({ status: 0, code: 500, message: ["Failed to fetch export report data"], data: [] });
+  }
 });
 
 export const StudentActivitiesAnalytics = asyncHandler(async (req, res) => {
