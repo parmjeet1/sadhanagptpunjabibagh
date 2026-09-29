@@ -53,8 +53,8 @@ export const sendSadhanaPushReminders = async () => {
         body: message
       });
       try {
-        // Send the push notification
-        await webpush.sendNotification(pushSubscription, pushPayload);
+        // Send the push notification (high urgency so Android doesn't defer it in Doze/App Standby)
+        await webpush.sendNotification(pushSubscription, pushPayload, { urgency: 'high', TTL: 60 });
         // console.log(`✅ Push sent to ${studentName}`);
       } catch (pushErr) {
         // If statusCode is 410, it means the user manually blocked notifications or the subscription expired
@@ -252,7 +252,7 @@ const sendPush = async (user_id, title, body, url) => {
   if (pushSubscription) {
     const payload = JSON.stringify({ title, body, url: "/student/dashboard" });
 
-    await webpush.sendNotification(pushSubscription, payload)
+    await webpush.sendNotification(pushSubscription, payload, { urgency: 'high', TTL: 60 })
       .catch(err => {
         if (err.statusCode === 410) {
           console.log(`Subscription expired for user ${user_id}. You might want to delete it from DB.`);
@@ -342,7 +342,7 @@ const sendDailyGlobalReminder = async () => {
           auth: sub.auth
         }
       };
-      await webpush.sendNotification(pushConfig, payload)
+      await webpush.sendNotification(pushConfig, payload, { urgency: 'high', TTL: 60 })
         .catch(async (err) => {
           // 410 means the user revoked permission or the browser token expired
           if (err.statusCode === 410) {

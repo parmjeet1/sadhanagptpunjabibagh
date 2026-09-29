@@ -4,7 +4,7 @@ import { checkPushNotificationStatus, downloadErrorLog, Register, removeSubscrip
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
 import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, removeCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge, getStudentAppliedMarkingScheme, whatsappWebhookActivityLog } from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, studentAnalysisPreview, generateAIAnalysis, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentNotesList, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings, getStudentAiAnalysisHistory, getSingleAiAnalysisReport, aiChatHandler, aiHealthHandler, aiTestHandler, aiDebugAuthHandler, exportBulkStudentReports } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, studentAnalysisPreview, generateAIAnalysis, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentNotesList, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings, getStudentAiAnalysisHistory, getSingleAiAnalysisReport, aiChatHandler, aiHealthHandler, aiTestHandler, aiDebugAuthHandler, exportBulkStudentReports, removeMentee, updateMenteeName } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
 import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 import { irregularMenteesList, toggleMenteeNotification } from "../SadhanaGPT/Mentors/NotificationController.js";
@@ -185,6 +185,8 @@ const LoggedinRoute = [
 
     { method: 'post', path: '/assign-student-center-label', handler: bulkAssignStudents, role: "counsellor" },
     { method: 'post', path: '/export-bulk-student-reports', handler: exportBulkStudentReports, role: "counsellor" },
+    { method: 'post', path: '/remove-mentee', handler: removeMentee, role: "counsellor" },
+    { method: 'post', path: '/edit-mentee-name', handler: updateMenteeName, role: "counsellor" },
 
     // {method: 'get', path: '/chart-details', handler: chartdetail},
     // {method: 'get', path: '/user-activity-details', handler: activitydetail},

@@ -264,10 +264,21 @@ export const editLable = asyncHandler(async (req, resp) => {
 
 export const deleteLable = asyncHandler(async (req, res) => {
 
-  const { label_id } = req.body;
+  const { user_id, label_id } = mergeParam(req);
 
+  // FIX: this previously validated/looked up label_id ONLY, with no
+  // ownership check at all (any counsellor could delete any other
+  // counsellor's label by guessing its id) and no cleanup of students
+  // already pointing at this label — it relied on an unverified "CASCADE"
+  // comment. Now: (1) ownership is checked the same way editLable already
+  // does it, and (2) any user_assignments row referencing this label has
+  // its label_id cleared FIRST, so affected students fall back to
+  // Uncategorised at the subgroup level instead of silently keeping a
+  // reference to a label that no longer exists. Students' accounts,
+  // Sadhna records and Group assignment are untouched.
   const { isValid, errors } = validateFields(req.body, {
-    label_id: ["required"]
+    label_id: ["required"],
+    user_id: ["required"]
   });
 
   if (!isValid) {
@@ -280,10 +291,10 @@ export const deleteLable = asyncHandler(async (req, res) => {
 
   try {
 
-    // Check label exists
+    // Check label exists AND belongs to this counsellor
     const [[label]] = await db.execute(
-      `SELECT id FROM labels_list WHERE id = ?`,
-      [label_id]
+      `SELECT id FROM labels_list WHERE id = ? AND counsellor_id = ?`,
+      [label_id, user_id]
     );
 
     if (!label) {
@@ -293,6 +304,15 @@ export const deleteLable = asyncHandler(async (req, res) => {
         message: ["Label not found"]
       });
     }
+
+    // Clear this label from any students currently assigned to it so they
+    // show as Uncategorised at the subgroup level rather than pointing at
+    // a deleted subgroup. Their Group assignment and all other data is
+    // left exactly as-is.
+    await db.execute(
+      `UPDATE user_assignments SET label_id = NULL WHERE label_id = ?`,
+      [label_id]
+    );
 
     // Delete label (label_centers rows auto delete via CASCADE)
     await db.execute(
@@ -684,6 +704,131 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
 
   }
 
+});
+
+// ============================================================================
+// removeMentee — counsellor-initiated removal of the mentor–mentee
+// relationship. This is the mirror of StudentController.js's
+// `removeCounsellor` (which lets a STUDENT drop their counsellor) — there
+// was previously no equivalent for the counsellor to drop a student.
+//
+// This ONLY deletes the `user_counsellors` relationship row (and, so the
+// student doesn't linger in this counsellor's Group/Subgroup filters
+// afterwards, the matching `user_assignments` row for this counsellor).
+// It NEVER touches the student's account (`users`), their Sadhna records
+// (`daily_report`), or their analytics/summary history — those all live
+// keyed by the student's own user_id, independent of any counsellor link.
+// ============================================================================
+export const removeMentee = asyncHandler(async (req, resp) => {
+  const { user_id, student_id } = mergeParam(req); // user_id = the counsellor's own id
+
+  const { isValid, errors } = validateFields({ user_id, student_id }, {
+    user_id: ["required"],
+    student_id: ["required"],
+  });
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  try {
+    // Ownership check — only allow removing a relationship that actually
+    // exists between THIS counsellor and THIS student.
+    const relation = await queryDB(
+      `SELECT user_id FROM user_counsellors WHERE user_id = ? AND counsller_id = ?`,
+      [student_id, user_id]
+    );
+
+    if (!relation) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["This student is not one of your mentees."],
+      });
+    }
+
+    await db.execute(
+      `DELETE FROM user_counsellors WHERE user_id = ? AND counsller_id = ?`,
+      [student_id, user_id]
+    );
+
+    // Clean up this counsellor's Group/Subgroup assignment for the student
+    // too, since it no longer makes sense once they're not a mentee here.
+    await db.execute(
+      `DELETE FROM user_assignments WHERE user_id = ? AND counsellor_id = ?`,
+      [student_id, user_id]
+    );
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Mentee removed successfully"],
+    });
+  } catch (err) {
+    console.log("removeMentee error:", err);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"],
+    });
+  }
+});
+
+// ============================================================================
+// updateMenteeName — lets a counsellor correct/rename a mentee's display
+// name (e.g. a typo at signup). Ownership-checked the same way as
+// removeMentee above: only ever updates a student who is actually this
+// counsellor's mentee. Only touches `users.name` — nothing else about the
+// student's account or history.
+// ============================================================================
+export const updateMenteeName = asyncHandler(async (req, resp) => {
+  const { user_id, student_id, name } = mergeParam(req); // user_id = the counsellor's own id
+
+  const { isValid, errors } = validateFields({ user_id, student_id, name }, {
+    user_id: ["required"],
+    student_id: ["required"],
+    name: ["required"],
+  });
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  const trimmedName = String(name).trim();
+  if (!trimmedName) {
+    return resp.json({ status: 0, code: 422, message: ["Name cannot be empty"] });
+  }
+
+  try {
+    const relation = await queryDB(
+      `SELECT user_id FROM user_counsellors WHERE user_id = ? AND counsller_id = ?`,
+      [student_id, user_id]
+    );
+
+    if (!relation) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["This student is not one of your mentees."],
+      });
+    }
+
+    await db.execute(`UPDATE users SET name = ? WHERE user_id = ?`, [trimmedName, student_id]);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Mentee name updated successfully"],
+      data: { student_id, name: trimmedName },
+    });
+  } catch (err) {
+    console.log("updateMenteeName error:", err);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"],
+    });
+  }
 });
 
 export const studentlist = asyncHandler(async (req, resp) => {
@@ -3516,9 +3661,43 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
         COALESCE(fa.name, CASE WHEN dr.id IS NOT NULL THEN 'Activity' ELSE 'No Logged Activity' END) AS activity_name,
         COALESCE(dr.count, '-') AS activity_value,
         COALESCE(dr.marks, 0) AS activity_marks,
-        COALESCE(DATE_FORMAT(dr.activity_date, '%Y-%m-%d'), '-') AS activity_date
+        COALESCE(DATE_FORMAT(dr.activity_date, '%Y-%m-%d'), '-') AS activity_date,
+        COALESCE(l.marking_scheme_id, cl.marking_scheme_id, 1) AS marking_scheme_id,
+        COALESCE((
+          SELECT SUM(
+            COALESCE(
+              (
+                SELECT MAX(mr.marks)
+                FROM marking_rules mr
+                WHERE mr.master_activity_id = fmax.master_activity_id
+                  AND mr.status = 1
+                  AND mr.frequency = 'daily'
+                  AND mr.scheme_id = COALESCE(l.marking_scheme_id, cl.marking_scheme_id, 1)
+              ),
+              (
+                SELECT MAX(mr_default.marks)
+                FROM marking_rules mr_default
+                WHERE mr_default.master_activity_id = fmax.master_activity_id
+                  AND mr_default.status = 1
+                  AND mr_default.frequency = 'daily'
+                  AND mr_default.scheme_id = 1
+              ),
+              0
+            )
+          )
+          FROM fix_activities fmax
+          WHERE fmax.user_id = u.user_id
+            AND fmax.master_activity_id IS NOT NULL
+            AND fmax.master_activity_id > 0
+        ), 0) AS daily_max_possible_marks
       FROM users u
-      LEFT JOIN user_assignments ua ON ua.user_id = u.user_id
+      LEFT JOIN user_assignments ua ON ua.id = (
+        SELECT ua_latest.id
+        FROM user_assignments ua_latest
+        WHERE ua_latest.user_id = u.user_id
+        ORDER BY ua_latest.id DESC
+        LIMIT 1
+      )
       LEFT JOIN center_list cl ON cl.center_id = ua.center_id
       LEFT JOIN labels_list l ON l.id = ua.label_id
       LEFT JOIN daily_report dr ON dr.user_id = u.user_id ${dateCondition}
