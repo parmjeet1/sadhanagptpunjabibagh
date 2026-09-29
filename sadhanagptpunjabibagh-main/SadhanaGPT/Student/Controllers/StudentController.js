@@ -3485,18 +3485,6 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
     });
   }
 
-  // POST deliveries (the actual activity-logging calls) must present the
-  // same shared secret — Meta lets you configure this as part of the
-  // webhook subscription; anything without it is rejected outright.
-  const providedToken = req.headers['x-webhook-token'] || body.verify_token || query.verify_token;
-  if (!configuredToken || providedToken !== configuredToken) {
-    return resp.status(403).json({
-      status: 0,
-      code: 403,
-      message: ["Invalid or missing webhook token."]
-    });
-  }
-
   // Extract mobile & activities string
   const mobile = body.mobile || body.mobile_number || body.phone || body.phone_number || body.from || body.sender || query.mobile || query.phone;
   const activitiesStr = body.activities || body.activities_string || body.message || body.text || body.body || body.content || body.data || query.activities || query.message;
