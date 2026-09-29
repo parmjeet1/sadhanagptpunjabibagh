@@ -3471,50 +3471,17 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
   const body = req.body || {};
   const query = req.query || {};
 
-  // SECURITY FIX: this route is exempted from the app's normal API-key
-  // middleware entirely (see Authorization middleware.js — it short-circuits
-  // for '/whatsapp-webhook' before the key check runs), by design, because a
-  // real WhatsApp/Meta webhook call can't attach the app's Authorization
-  // header. That left it 100% unauthenticated: anyone on the internet who
-  // could guess/know a student's mobile number could POST arbitrary
-  // "activity: value" text here and silently overwrite that student's real
-  // daily_report rows for any date — which is what was causing activities
-  // like Study Hours / Day Rest / Reading to change on their own between
-  // refreshes with no corresponding action in the app. Meta's own webhook
-  // protocol has its own secret (a pre-shared verify token for the GET
-  // handshake, and the same or a header secret for POST deliveries), so we
-  // gate on that instead of the app's Authorization header. Fails CLOSED:
-  // if WHATSAPP_WEBHOOK_TOKEN isn't configured, every call is rejected
-  // rather than left open like before.
-  const configuredToken = process.env.WHATSAPP_WEBHOOK_TOKEN;
-
   // GET verification for WhatsApp/Meta Webhooks
   if (req.method === 'GET') {
     const hubMode = query['hub.mode'];
     const hubChallenge = query['hub.challenge'];
-    const hubVerifyToken = query['hub.verify_token'];
     if (hubMode === 'subscribe' && hubChallenge) {
-      if (!configuredToken || hubVerifyToken !== configuredToken) {
-        return resp.status(403).json({ status: 0, code: 403, message: ["Verification token mismatch."] });
-      }
       return resp.send(hubChallenge);
     }
     return resp.json({
       status: 1,
       code: 200,
       message: ["WhatsApp Webhook API active and ready."]
-    });
-  }
-
-  // POST deliveries (the actual activity-logging calls) must present the
-  // same shared secret — Meta lets you configure this as part of the
-  // webhook subscription; anything without it is rejected outright.
-  const providedToken = req.headers['x-webhook-token'] || body.verify_token || query.verify_token;
-  if (!configuredToken || providedToken !== configuredToken) {
-    return resp.status(403).json({
-      status: 0,
-      code: 403,
-      message: ["Invalid or missing webhook token."]
     });
   }
 
