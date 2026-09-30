@@ -1936,38 +1936,7 @@ const registerUser = async (
     };
   }
 };
-export const olduserProfile = asyncHandler(async (req, resp) => {
-  const { user_id } = mergeParam(req);
-  const { isValid, errors } = validateFields(mergeParam(req), {
-    user_id: ["required"],
-  });
 
-  if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-  const user = await queryDB(
-    `SELECT user_id, name, email,mobile,temple_id,user_type,
-         (SELECT counsller_id FROM user_counsellors WHERE user_id = users.user_id LIMIT 1)
-          AS counsller_id FROM 
-          users WHERE user_id = ?`,
-    [user_id],
-  );
-
-  if (!user) {
-    return resp.json({
-      status: 0,
-      code: 404,
-
-      message: ["User not found"],
-    });
-  }
-  const rewards = await getUserRewards(user_id);
-  return resp.json({
-    status: 1,
-    code: 200,
-    data: { user, rewards },
-    message: ["User data fetched successfully"],
-  });
-
-});
 export const userProfile = asyncHandler(async (req, resp) => {
   const { user_id } = mergeParam(req);
 
@@ -2012,7 +1981,8 @@ export const userProfile = asyncHandler(async (req, resp) => {
     `,
     [user_id]
   );
-
+ const [dependencyRows] = await db.query("SELECT * FROM db_dependency LIMIT 1");
+    const dependency = dependencyRows[0] || null;
   if (!users.length) {
     return resp.json({
       status: 0,
@@ -2049,6 +2019,7 @@ export const userProfile = asyncHandler(async (req, resp) => {
      FETCH REWARDS (your function)
   ----------------------------*/
   const rewards = await getUserRewards(user_id);
+  console.log("dependency",dependency)
 
   /* ---------------------------
      FORMAT RESPONSE
@@ -2071,7 +2042,8 @@ export const userProfile = asyncHandler(async (req, resp) => {
         profile: userData.profile,
         dob: userData.dob,
         center_name: userData.center_name,
-        label_name: userData.label_name
+        label_name: userData.label_name,
+        dependency 
       },
 
       mentors: mentors.map((m) => ({
@@ -3783,4 +3755,140 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
       ignored_activities: ignoredActivities
     }
   });
+});
+
+/* ---------------------------
+   RAZORPAY PAYMENT ENDPOINTS
+----------------------------*/
+export const createRazorpayOrder = asyncHandler(async (req, resp) => {
+  const { amount } = mergeParam(req);
+
+  const numAmount = Number(amount) || 100;
+  const amountInPaisa = Math.round(numAmount * 100);
+
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (!keyId || !keySecret) {
+    return resp.json({
+      status: 0,
+      code: 400,
+      message: ["Razorpay key ID or Secret missing in environment configuration."],
+    });
+  }
+
+  try {
+    const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+    const response = await fetch('https://api.razorpay.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: amountInPaisa,
+        currency: 'INR',
+        receipt: `receipt_${Date.now()}`,
+      }),
+    });
+
+    const orderData = await response.json();
+    if (orderData && orderData.id) {
+      return resp.json({
+        status: 1,
+        code: 200,
+        data: {
+          order_id: orderData.id,
+          amount: orderData.amount,
+          currency: orderData.currency,
+          key_id: keyId,
+        },
+      });
+    } else {
+      return resp.json({
+        status: 0,
+        code: 400,
+        message: [orderData?.error?.description || "Failed to create Razorpay order"],
+      });
+    }
+  } catch (error) {
+    console.error("Error creating Razorpay order:", error);
+    return resp.json({
+      status: 0,
+      code: 500,
+      message: [error.message || "Failed to create Razorpay order"],
+    });
+  }
+});
+
+export const verifyRazorpayPayment = asyncHandler(async (req, resp) => {
+  const {
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature,
+    amount,
+    userName,
+    userEmail,
+    user_id,
+    message
+  } = mergeParam(req);
+
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: ["Missing required Razorpay parameters."],
+    });
+  }
+
+  const hmac = crypto.createHmac("sha256", keySecret || "");
+  hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
+  const generatedSignature = hmac.digest("hex");
+
+  if (generatedSignature === razorpay_signature) {
+    const senderName = userName || 'Anonymous Devotee';
+    const senderEmail = userEmail || 'N/A';
+    const senderUserId = user_id || 'N/A';
+    const paidAmount = amount ? `₹${amount}` : 'N/A';
+    const feedbackMsg = (message && message.trim()) ? message.trim() : 'No additional message provided.';
+
+    try {
+      const emailSubject = `🔔 New App Feedback from ${senderName}`;
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <div style="background-color: #f97316; padding: 16px; border-radius: 8px; text-align: center;">
+            <h2 style="color: #ffffff; margin: 0; font-size: 20px;">Someone  Offerd  donation</h2>
+          </div>
+          <div style="padding: 20px 0; color: #1e293b;">
+            <p style="margin: 6px 0;"><strong>Sender Name:</strong> ${senderName}</p>
+            <p style="margin: 6px 0;"><strong>Sender Email:</strong> ${senderEmail}</p>
+            <p style="margin: 6px 0;"><strong>User ID:</strong> ${senderUserId}</p>
+            <p style="margin: 6px 0;"><strong>Amount Offered:</strong> ${paidAmount}</p>
+            <p style="margin: 6px 0;"><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
+            <p style="margin: 16px 0 6px 0;"><strong>Feedback Message:</strong></p>
+            <div style="background-color: #f8fafc; border-left: 4px solid #f97316; padding: 14px; margin-top: 6px; border-radius: 4px; font-size: 15px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${feedbackMsg}</div>
+          </div>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+          <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">Sent automatically from SadhanaGPT App</p>
+        </div>
+      `;
+      emailQueue.addEmail('paramjeetsinghwork7@gmail.com', emailSubject, emailHtml);
+    } catch (mailErr) {
+      console.error("Error enqueuing app feedback email:", mailErr);
+    }
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Payment verified successfully"],
+    });
+  } else {
+    return resp.json({
+      status: 0,
+      code: 400,
+      message: ["Invalid payment signature"],
+    });
+  }
 });
