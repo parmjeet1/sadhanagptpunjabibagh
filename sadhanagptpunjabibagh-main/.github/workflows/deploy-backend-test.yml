@@ -1,0 +1,21 @@
+name: Deploy Backend (Test)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy backend
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ubuntu
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ~/test-backend
+            git fetch origin
+            git reset --hard origin/backend-test
+            npm install
+            pm2 restart sadhanagpt-test-backend

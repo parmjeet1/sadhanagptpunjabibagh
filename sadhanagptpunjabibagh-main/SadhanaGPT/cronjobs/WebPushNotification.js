@@ -53,8 +53,8 @@ export const sendSadhanaPushReminders = async () => {
         body: message
       });
       try {
-        // Send the push notification (high urgency so Android doesn't defer it in Doze/App Standby)
-        await webpush.sendNotification(pushSubscription, pushPayload, { urgency: 'high', TTL: 60 });
+        // Send the push notification
+        await webpush.sendNotification(pushSubscription, pushPayload);
         // console.log(`✅ Push sent to ${studentName}`);
       } catch (pushErr) {
         // If statusCode is 410, it means the user manually blocked notifications or the subscription expired
@@ -252,7 +252,7 @@ const sendPush = async (user_id, title, body, url) => {
   if (pushSubscription) {
     const payload = JSON.stringify({ title, body, url: "/student/dashboard" });
 
-    await webpush.sendNotification(pushSubscription, payload, { urgency: 'high', TTL: 60 })
+    await webpush.sendNotification(pushSubscription, payload)
       .catch(err => {
         if (err.statusCode === 410) {
           console.log(`Subscription expired for user ${user_id}. You might want to delete it from DB.`);
@@ -316,7 +316,7 @@ export const notifyMentorsOfIrregularMentees = async () => {
   }
 };
 const sendDailyGlobalReminder = async () => {
-  console.log("Starting daily 9:00 PM global reminder...");
+  console.log("Starting daily 8:30 PM global reminder...");
   try {
     // Fetch ALL push subscriptions directly
     const query = `SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions`;
@@ -342,7 +342,7 @@ const sendDailyGlobalReminder = async () => {
           auth: sub.auth
         }
       };
-      await webpush.sendNotification(pushConfig, payload, { urgency: 'high', TTL: 60 })
+      await webpush.sendNotification(pushConfig, payload)
         .catch(async (err) => {
           // 410 means the user revoked permission or the browser token expired
           if (err.statusCode === 410) {
@@ -362,9 +362,9 @@ const sendDailyGlobalReminder = async () => {
 export const freqSadhnaCronjob = () => {
   const timezone = 'Asia/Kolkata';
 
-  // Daily at 9:00 PM IST (was mistakenly '30 20 * * *' = 8:30 PM — fixed to
-  // match the intended 9 PM daily "fill your sadhana" reminder).
-  cron.schedule('0 21 * * *', async () => {
+  // Daily at 8:30 PM IST
+
+  cron.schedule('30 20 * * *', async () => {
     await sendDailyGlobalReminder();
   }, { timezone });
 
