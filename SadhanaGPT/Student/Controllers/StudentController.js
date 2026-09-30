@@ -2050,7 +2050,19 @@ export const userProfile = asyncHandler(async (req, resp) => {
   ----------------------------*/
   const rewards = await getUserRewards(user_id);
   
-
+  /* ---------------------------
+     FETCH DB DEPENDENCY
+  ----------------------------*/
+  let dependency = null;
+  try {
+    const [depRows] = await db.query("SELECT * FROM db_dependency LIMIT 1");
+    if (depRows && depRows.length > 0) {
+      dependency = depRows[0];
+    }
+  } catch (err) {
+    console.error("Error fetching db_dependency in userProfile:", err);
+  }
+console.log("dependency",dependency)
   /* ---------------------------
      FORMAT RESPONSE
   ----------------------------*/
@@ -2072,7 +2084,8 @@ export const userProfile = asyncHandler(async (req, resp) => {
         profile: userData.profile,
         dob: userData.dob,
         center_name: userData.center_name,
-        label_name: userData.label_name
+        label_name: userData.label_name,
+        dependency: dependency || null
       },
 
       mentors: mentors.map((m) => ({
@@ -2090,7 +2103,9 @@ export const userProfile = asyncHandler(async (req, resp) => {
       })),
 
       rewards: rewards || [],
+      dependency: dependency || null
     },
+    dependency: dependency || null
   };
 
   return resp.json(response);
