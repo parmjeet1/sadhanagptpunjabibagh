@@ -58,8 +58,10 @@ function buildResponseSchema(activityIds) {
         confidence: { type: "number" },
         clarification: { type: ["string", "null"] },
         target_date: { type: ["string", "null"] },
+        // Conversational reply, only used when intent is "unrecognized".
+        reply: { type: ["string", "null"] },
       },
-      required: ["intent", "updates", "confidence", "clarification", "target_date"],
+      required: ["intent", "updates", "confidence", "clarification", "target_date", "reply"],
     },
   };
 }
@@ -264,7 +266,22 @@ OUTPUT RULES
 - confidence: 0-1, genuine confidence in the mapping.
 - Only ever use activity_id values supplied in context.activities, and only
   enum option values supplied on that specific activity. Never invent one.
-- target_date: "YYYY-MM-DD" or null, per the rule above.`;
+- target_date: "YYYY-MM-DD" or null, per the rule above.
+
+CHAT FALLBACK (the "reply" field)
+- Whenever you return intent "unrecognized" (the message is not a sadhana
+  entry — a greeting, a question, small talk, a doubt about sadhana or the
+  app), ALSO write a short, warm, conversational answer in "reply", the way a
+  friendly sadhana companion would talk. Maximum 3 short sentences. Use the
+  same language and style as the user (English, Hindi, or Hinglish in Roman
+  letters). Answer general questions about sadhana, japa, hearing, reading,
+  routines and using the app helpfully and simply. Greet back when greeted.
+- Stay respectful and on topic: if the message is unrelated or
+  inappropriate, gently steer back to sadhana in one sentence. Never claim to
+  know or change the user's recorded data, and never invent statistics.
+- When it fits, end by inviting them to log practice, with a tiny example
+  such as "16 rounds, 30 min hearing, woke at 4:25".
+- For every other intent, set "reply" to null.`;
 
 const NUMBER_WORDS = {
   zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
@@ -386,16 +403,22 @@ ${JSON.stringify(context?.today ?? [], null, 2)}`;
   // One retry — a strict-schema call occasionally fails transiently.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const completion = await openai.chat.completions.create({
-        model: MODEL,
-        messages,
-        response_format: schema,
-      });
+      // Speed/robustness: gpt-5 / o-series are "thinking" models and can take
+      // a long time by default; this is a simple extraction task, so ask for
+      // minimal reasoning, and never wait longer than 20s per attempt so the
+      // request can't outlive a host/proxy time limit (which surfaced to the
+      // user as "Something went wrong understanding that").
+      const body = { model: MODEL, messages, response_format: schema, max_completion_tokens: 700 };
+      if (/^(gpt-5|o\d)/.test(MODEL)) body.reasoning_effort = "minimal";
+      const completion = await openai.chat.completions.create(body, { timeout: 12000, maxRetries: 0 });
       result = JSON.parse(completion.choices[0].message.content);
       break;
     } catch (err) {
       lastErr = err;
       console.warn(`[openaiService] interpret attempt ${attempt + 1} failed:`, err?.message || err);
+      // A timeout means OpenAI is slow right now — retrying would just double
+      // the user's wait, so give up quickly. (Other transient errors retry once.)
+      if (err?.name === "APIConnectionTimeoutError" || /timed? ?out/i.test(String(err?.message))) break;
     }
   }
 

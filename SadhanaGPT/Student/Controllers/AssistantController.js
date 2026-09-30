@@ -513,6 +513,7 @@ function regexInterpret(text, activities) {
   const updates = [];
 
   for (const a of activities) {
+    if (!a || !a.name) continue; // an unnamed activity must never crash the whole request
     if (updates.some((u) => u.activity_id === a.activity_id)) continue;
     const nameEsc = escapeRegex(a.name.toLowerCase());
 
@@ -789,6 +790,16 @@ export const assistantInterpretNL = asyncHandler(async (req, resp) => {
       today: Array.isArray(context?.today) ? context.today : undefined,
       todayDate: today(),
     });
+
+    // Not a sadhana entry but the model wrote a conversational answer ->
+    // send it back as a chat message instead of a canned "couldn't understand".
+    if (aiResult.intent === "unrecognized" && typeof aiResult.reply === "string" && aiResult.reply.trim()) {
+      return resp.json({
+        status: 1,
+        code: 200,
+        data: { intent: "chat", updates: [], reply: aiResult.reply.trim().slice(0, 800) },
+      });
+    }
 
     if (aiResult.intent === "unrecognized") {
       aiResult.clarification =
