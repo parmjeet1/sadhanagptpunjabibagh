@@ -5,7 +5,6 @@ import {
   saveActivityEntry,
   calculateDailySadhanaScore,
 } from "./StudentController.js";
-import { dailyStudentSummary } from "../../Controllers/SummaryData/summary-report.js";
 import { interpretWithGpt5Nano, transcribeAudio } from "../../../utils/openaiService.js";
 
 /**
@@ -182,7 +181,6 @@ function rowToActivityDefinition(row) {
         Math.round(goal / 2),
         Math.round(goal * 0.75),
         goal,
-        16
       ])].filter((v) => v > 0).sort((a, b) => a - b);
     }
   } else if (type === "duration") {
@@ -190,15 +188,6 @@ function rowToActivityDefinition(row) {
     const goal = Number(row.target);
     if (!isNaN(goal) && goal > 0) {
       def.goal = goal;
-    }
-    // day_rest, hearing ("study hours") and reading get a fixed, small
-    // quick-pick range (20, 50, 80, 110, 120 minutes) instead of the
-    // goal-derived one below — the goal-based formula produced chips as
-    // large as [90, 180, 270, 360] for a 180-minute goal, which was far
-    // too coarse for how these are actually logged day to day.
-    if (["day_rest", "hearing", "reading"].includes(category)) {
-      def.quickOptions = [20, 50, 80, 110, 120];
-    } else if (!isNaN(goal) && goal > 0) {
       def.quickOptions = [...new Set([
         Math.round(goal / 2),
         goal,
@@ -351,79 +340,6 @@ export const assistantUpdateActivityForDate = asyncHandler(async (req, resp) => 
 });
 
 // ============================================================================
-// 6b. updateActivitiesForDates — ONE request for "Fill Same Sadhna for Certain
-// Days". Body: { dates: ["YYYY-MM-DD", ...], updates: [{ activity_id, value }] }
-// The client used to send one request per (date x activity), i.e. hundreds of
-// round trips for a month. Now the whole range is one HTTP call: the server
-// loops, and refreshes the daily summary once per date instead of once per
-// activity.
-// ============================================================================
-const BATCH_MAX_DATES = 62;
-const BATCH_MAX_UPDATES = 100;
-
-export const assistantUpdateActivitiesForDates = asyncHandler(async (req, resp) => {
-  const { user_id } = mergeParam(req);
-  const { dates, updates } = req.body || {};
-
-  if (!Array.isArray(dates) || dates.length === 0 || !Array.isArray(updates) || updates.length === 0) {
-    return resp.json({ status: 0, code: 422, success: false, error: "dates and updates are required" });
-  }
-  const cleanDates = [...new Set(dates.map((d) => String(d)))];
-  if (cleanDates.length > BATCH_MAX_DATES || updates.length > BATCH_MAX_UPDATES) {
-    return resp.json({ status: 0, code: 422, success: false, error: "Too many dates or activities in one request" });
-  }
-  if (cleanDates.some((d) => !moment(d, "YYYY-MM-DD", true).isValid())) {
-    return resp.json({ status: 0, code: 422, success: false, error: "All dates must be valid (YYYY-MM-DD)" });
-  }
-
-  // Resolve every activity ONCE (and confirm it belongs to this student).
-  const [infoRows] = await db.execute(
-    `SELECT activity_id, activity_type, unit FROM fix_activities WHERE user_id = ?`,
-    [user_id]
-  );
-  const infoById = new Map(infoRows.map((r) => [String(r.activity_id), r]));
-
-  const prepared = [];
-  const errors = [];
-  for (const u of updates) {
-    const info = infoById.get(String(u?.activity_id));
-    if (!info) { errors.push({ activity_id: u?.activity_id, error: "That activity could not be found." }); continue; }
-    const count = widgetValueToDbCount(info.activity_type, u.value);
-    if (count === null) { errors.push({ activity_id: u.activity_id, error: "Could not understand the value for this activity." }); continue; }
-    prepared.push({ activity_id: u.activity_id, count, unit: info.unit });
-  }
-
-  let saved = 0;
-  const saveDate = async (date) => {
-    // Sequential within a date (keeps marks/dependency logic identical to the
-    // single-update path); dates themselves run a few at a time below.
-    for (const p of prepared) {
-      // eslint-disable-next-line no-await-in-loop
-      const r = await saveActivityEntry({ activity_id: p.activity_id, count: p.count, activity_date: date, user_id, unit: p.unit, skipSummary: true });
-      if (r && r.status === 1) saved += 1;
-      else errors.push({ activity_id: p.activity_id, date, error: (Array.isArray(r?.message) ? r.message[0] : r?.message) || "Failed to save activity." });
-    }
-    await dailyStudentSummary(user_id, date).catch((e) => console.error("batch summary error:", e));
-  };
-
-  const CHUNK = 4;
-  for (let i = 0; i < cleanDates.length; i += CHUNK) {
-    // eslint-disable-next-line no-await-in-loop
-    await Promise.all(cleanDates.slice(i, i + CHUNK).map(saveDate));
-  }
-
-  const total = cleanDates.length * prepared.length;
-  const success = total > 0 && saved === total && errors.length === 0;
-  return resp.json({
-    status: saved > 0 ? 1 : 0,
-    code: saved > 0 ? 200 : 422,
-    success,
-    data: { saved, total, dates: cleanDates.length, errors: errors.slice(0, 20) },
-    error: success ? undefined : (errors[0]?.error || "Some entries could not be saved."),
-  });
-});
-
-// ============================================================================
 // 7. getTodayMarks
 // ============================================================================
 export const assistantGetTodayMarks = asyncHandler(async (req, resp) => {
@@ -497,11 +413,7 @@ export const assistantGetLast7DaysMarks = asyncHandler(async (req, resp) => {
 const TIME_TRIGGERS = {
   wakeup: /\b(?:woke|wake ?up|wakeup|utha|uthi|uth gaya|uth gayi|got up)\b/,
   sleep: /\b(?:sleep|slept|soya|so gaya|so gayi|went to bed|bed time)\b/,
-  // Broadened to also catch common Hinglish phrasing for finishing rounds —
-  // "mala poora kiya", "japa khatam hua", "chanting khatm ho gaya", etc. —
-  // not just the original English-only "chanting completed/finished/done".
-  chanting_completion_time:
-    /\b(?:chanting|rounds?|mala|japa)\s*(?:complete|completed|finish(?:ed)?|done|over|khatam|khatm|poora|pura|purn)(?:\s*(?:kiya|kar liya|ho gaya|ho gayi|hua|hui))?\b|\b(?:finished|completed)\s*(?:chanting|rounds?|mala|japa)\b/,
+  chanting_completion_time: /\b(?:chanting (?:complete|completed|finished|done)|rounds? (?:complete|completed|done)|finished chanting)\b/,
 };
 
 function escapeRegex(str) {
@@ -520,36 +432,15 @@ function regexInterpret(text, activities) {
       const unitWord = a.type === "duration"
         ? "(?:min(?:ute)?s?|mins?|hrs?|hours?|ghanta|ghante|ghanton)"
         : "(?:rounds?|round|mala|malas)";
-      // "Strict" patterns require an actual unit word (rounds/mala/min/
-      // hour/etc.) next to the number, so they can only ever match a count
-      // or duration, never a clock time.
-      const strictPatterns = [
+      const patterns = [
         new RegExp(`(\\d{1,4})\\s*${unitWord}[^\\d\\n]{0,20}${nameEsc}`),
         new RegExp(`${nameEsc}[^\\d\\n]{0,20}(\\d{1,4})\\s*${unitWord}`),
         new RegExp(`(\\d{1,4})\\s*${unitWord}\\s+(?:of\\s+)?${nameEsc}`),
-      ];
-      // "Loose" patterns fall back to plain proximity (any number within
-      // ~12 chars of the activity's name, no unit word required) — needed
-      // for terse messages like "chanting 16", but dangerous on their own:
-      // without a guard, "chanting completed AT 6" (a TIME) would be
-      // misread as "6 rounds of chanting" (a COUNT), producing a wrong-but-
-      // nonempty match that short-circuits the whole interpretation before
-      // it ever reaches the AI fallback (a local match always wins, right
-      // or wrong). So a loose match is only accepted when the number isn't
-      // itself an obvious clock-time reference ("at 6", "6 baje", "6pm",
-      // "6:30") — those are left for a stricter/AI pass to attribute to
-      // whichever TIME-type activity they actually belong to.
-      const loosePatterns = [
         new RegExp(`${nameEsc}[^\\d\\n]{0,12}(\\d{1,4})\\b`),
         new RegExp(`(\\d{1,4})[^\\d\\n]{0,12}${nameEsc}`),
       ];
-      const looksLikeClockTimeAt = (idx, numStr) => {
-        const before = lower.slice(Math.max(0, idx - 6), idx);
-        const after = lower.slice(idx + numStr.length, idx + numStr.length + 6);
-        return /\bat\s*$/.test(before) || /^\s*(?:am|pm|baje|:\s*\d|\.\d)/.test(after);
-      };
       let matched = false;
-      for (const re of strictPatterns) {
+      for (const re of patterns) {
         const m = lower.match(re);
         if (m) {
           const val = Number(m[1]);
@@ -558,21 +449,6 @@ function regexInterpret(text, activities) {
             matched = true;
           }
           break;
-        }
-      }
-      if (!matched) {
-        for (const re of loosePatterns) {
-          const m = lower.match(re);
-          if (m) {
-            const numIdx = m.index + m[0].lastIndexOf(m[1]);
-            if (looksLikeClockTimeAt(numIdx, m[1])) continue; // leave it for the time-activity / AI pass
-            const val = Number(m[1]);
-            if (!isNaN(val)) {
-              updates.push({ activity_id: a.activity_id, value: val });
-              matched = true;
-            }
-            break;
-          }
         }
       }
       if (!matched) {
@@ -619,17 +495,7 @@ function regexInterpret(text, activities) {
           if (!isNaN(hour) && hour <= 23 && minute <= 59) {
             if (meridiem === "pm" && hour < 12) hour += 12;
             if (meridiem === "am" && hour === 12) hour = 0;
-            if (!meridiem && a.category === "sleep") {
-              // Night-sleep-specific defaulting for a bare hour like "1
-              // baje soya" (no am/pm given): people go to bed in the
-              // evening (7-11 => PM) or occasionally past midnight
-              // (1-6 => AM, i.e. after 12). "12 baje" on its own means
-              // midnight. This replaces the old blunt "always add 12"
-              // rule, which turned "1 baje soya" into 1 PM.
-              if (hour >= 7 && hour <= 11) hour += 12; // 7-11 -> PM (19:00-23:00)
-              else if (hour === 12) hour = 0; // 12 baje (night) -> midnight
-              // hour 1-6 is left as-is -> AM (after midnight)
-            }
+            if (!meridiem && a.category === "sleep" && hour < 12) hour += 12;
             updates.push({
               activity_id: a.activity_id,
               value: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
