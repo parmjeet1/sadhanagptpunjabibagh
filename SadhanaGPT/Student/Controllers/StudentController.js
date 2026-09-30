@@ -2019,8 +2019,7 @@ export const userProfile = asyncHandler(async (req, resp) => {
      FETCH REWARDS (your function)
   ----------------------------*/
   const rewards = await getUserRewards(user_id);
-  console.log("dependency",dependency)
-
+  
   /* ---------------------------
      FORMAT RESPONSE
   ----------------------------*/
@@ -3892,3 +3891,55 @@ export const verifyRazorpayPayment = asyncHandler(async (req, resp) => {
     });
   }
 });
+
+export const submitProjectInquiry = asyncHandler(async (req, resp) => {
+  const { name, message, user_id, email, phone } = mergeParam(req);
+
+  const senderName = name || 'Devotee / Supporter';
+  const senderMessage = (message && message.trim()) ? message.trim() : '';
+
+  if (!senderMessage) {
+    return resp.json({
+      status: 0,
+      code: 422,
+      message: ["Project details message is required."],
+    });
+  }
+
+  try {
+    const emailSubject = `🚀 New Project Inquiry from ${senderName}`;
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+        <div style="background-color: #7c2d12; padding: 16px; border-radius: 8px; text-align: center;">
+          <h2 style="color: #ffffff; margin: 0; font-size: 20px;">🚀 New Project Inquiry Received</h2>
+        </div>
+        <div style="padding: 20px 0; color: #1e293b;">
+          <p style="margin: 6px 0;"><strong>Sender Name:</strong> ${senderName}</p>
+          <p style="margin: 6px 0;"><strong>Sender Email:</strong> ${email || 'N/A'}</p>
+          <p style="margin: 6px 0;"><strong>Sender Phone:</strong> ${phone || 'N/A'}</p>
+          <p style="margin: 6px 0;"><strong>User ID:</strong> ${user_id || 'N/A'}</p>
+          <p style="margin: 16px 0 6px 0;"><strong>Project Details / Message:</strong></p>
+          <div style="background-color: #fff3e0; border-left: 4px solid #ea580c; padding: 14px; margin-top: 6px; border-radius: 4px; font-size: 15px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${senderMessage}</div>
+        </div>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+        <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">Sent automatically from SadhanaGPT App</p>
+      </div>
+    `;
+
+    emailQueue.addEmail('paramjeetsinghwork7@gmail.com', emailSubject, emailHtml);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Project inquiry submitted successfully. We will get back to you soon!"],
+    });
+  } catch (error) {
+    console.error("Error submitting project inquiry:", error);
+    return resp.json({
+      status: 0,
+      code: 500,
+      message: ["Failed to submit project inquiry."],
+    });
+  }
+});
+

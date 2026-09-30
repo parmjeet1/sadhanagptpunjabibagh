@@ -2,7 +2,7 @@ import { Router } from "express";
 
 import { checkPushNotificationStatus, downloadErrorLog, Register, removeSubscription, saveSubscription, sendEmailOtp, updateReminderPreferences, updateFcmToken, verifyEmailOtp } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, studentExportReport, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, removeCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge, getStudentAppliedMarkingScheme, whatsappWebhookActivityLog, createRazorpayOrder, verifyRazorpayPayment } from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, studentExportReport, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, removeCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge, getStudentAppliedMarkingScheme, whatsappWebhookActivityLog, createRazorpayOrder, verifyRazorpayPayment, submitProjectInquiry } from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
 import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, studentAnalysisPreview, generateAIAnalysis, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentNotesList, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings, getStudentAiAnalysisHistory, getSingleAiAnalysisReport, aiChatHandler, aiHealthHandler, aiTestHandler, aiDebugAuthHandler, exportBulkStudentReports, removeMentee, updateMenteeName } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
@@ -71,6 +71,7 @@ const LoggedinRoute = [
     { method: 'post', path: '/app-feedback', handler: submitAppFeedback, role: "student" },
     { method: 'post', path: '/create-razorpay-order', handler: createRazorpayOrder, role: "student" },
     { method: 'post', path: '/verify-razorpay-payment', handler: verifyRazorpayPayment, role: "student" },
+    { method: 'post', path: '/submit-project-inquiry', handler: submitProjectInquiry, role: "student" },
 
     //studnet apis
     { method: 'post', path: '/add-temple', handler: addTemple, role: "student" },
