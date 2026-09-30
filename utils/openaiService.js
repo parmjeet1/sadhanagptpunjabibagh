@@ -386,17 +386,54 @@ ${JSON.stringify(context?.today ?? [], null, 2)}`;
   // One retry — a strict-schema call occasionally fails transiently.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const completion = await openai.chat.completions.create({
-        model: MODEL,
-        messages,
-        response_format: schema,
-      });
+      //const completion = await openai.chat.completions.create({
+        //model: MODEL,
+        //messages,
+        //response_format: schema,
+      //});
+      const body = {
+  model: MODEL,
+  messages,
+  response_format: schema,
+  max_completion_tokens: 700
+};
+
+if (/^(gpt-5|o\d)/.test(MODEL)) {
+  body.reasoning_effort = "minimal";
+}
+
+const completion = await openai.chat.completions.create(
+  body,
+  {
+    timeout: 12000,
+    maxRetries: 0
+  }
+);
       result = JSON.parse(completion.choices[0].message.content);
       break;
-    } catch (err) {
-      lastErr = err;
-      console.warn(`[openaiService] interpret attempt ${attempt + 1} failed:`, err?.message || err);
-    }
+    //} catch (err) {
+     // lastErr = err;
+     // console.warn(`[openaiService] interpret attempt ${attempt + 1} failed:`, err?.message || err);
+    //}
+} catch (err) {
+  lastErr = err;
+
+  console.warn(
+    `[openaiService] interpret attempt ${attempt + 1} failed:`,
+    err?.message || err
+  );
+
+  // Don't retry OpenAI timeout errors
+  if (
+    err?.name === "APIConnectionTimeoutError" ||
+    /timed? ?out/i.test(String(err?.message))
+  ) {
+    break;
+  }
+}
+
+
+    
   }
 
   if (!result) {
