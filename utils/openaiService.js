@@ -214,6 +214,62 @@ If both are stated:
 
 Never confuse a count with a completion time.
 
+CHANTING COMPLETION-TIME HARD RULE
+
+When chanting/japa/mala is described as being "poori", "complete",
+"completed", "khatam", "finish", "ho gayi", "ho gaya", or "hui",
+and a clock-time expression follows or is attached to it, the number is
+ALWAYS the CHANTING COMPLETION TIME, never the chanting round count.
+
+Examples:
+"chanting poori hui 3 baje" -> COMPLETION TIME = 03:00
+"chanting poori ho gayi 3 baje" -> COMPLETION TIME = 03:00
+"meri chanting 3 baje poori hui" -> COMPLETION TIME = 03:00
+"japa khatam hua 4:30 baje" -> COMPLETION TIME = 04:30
+"mala poori hui 6 baje" -> COMPLETION TIME = 06:00
+"chanting 7 baje complete hui" -> COMPLETION TIME = 07:00
+
+IMPORTANT:
+The number after "poori hui/complete hui/khatam hui" is a CLOCK TIME
+when followed by "baje", "am", "pm", "pe", "tak", or another clear time
+marker.
+
+Therefore:
+"chanting poori hui 3 baje"
+means:
+CHANTING COMPLETION TIME = 03:00
+
+It does NOT mean:
+CHANTING COUNT = 3.
+
+Only assign CHANTING COUNT when the number is explicitly expressed as a
+count, such as:
+"3 rounds"
+"3 mala"
+"3 japa"
+"chanting 3 rounds"
+
+The word "chanting" or "mala" alone must NEVER make a clock-time number
+into a chanting count.
+
+COMPLETION-EVENT RULE
+
+Words such as "poori hui", "complete hui", "khatam hui", "finished",
+"completed", "ho gayi" describe completion of an activity.
+
+If a number is associated with a completion event and has a clock marker
+such as "baje", "pe", "am", "pm", "at", "by", or "tak", interpret it as
+the COMPLETION TIME, not as a count.
+
+"chanting poori hui 3 baje" -> 03:00
+NOT 3 rounds.
+
+"chanting 3 rounds" -> COUNT = 3
+"3 mala" -> COUNT = 3
+"chanting poori hui 3 baje" -> COMPLETION TIME = 03:00
+"3 baje chanting poori hui" -> COMPLETION TIME = 03:00
+"3 baje tak chanting complete hui" -> COMPLETION TIME = 03:00
+
 ==================================================
 6. TIME NORMALIZATION
 ==================================================
