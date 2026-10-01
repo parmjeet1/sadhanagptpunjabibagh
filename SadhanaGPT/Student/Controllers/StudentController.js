@@ -1736,6 +1736,10 @@ export const onBoarding = asyncHandler(async (req, resp) => {
       message: ["User registred successfully"],
     });
   }
+  if (new_counsellor_email &&
+    new_counsellor_email.trim().toLowerCase() === email.trim().toLowerCase()) {
+  return resp.json({ status: 0, code: 422, message: ["Counsellor email cannot be your own email"] });
+}
   switch (user_type) {
     case "student":
       // CASE 1: Student selected an existing counsellor from dropdown
