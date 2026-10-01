@@ -3899,12 +3899,10 @@ export const verifyRazorpayPayment = asyncHandler(async (req, resp) => {
     const feedbackMsg = (message && message.trim()) ? message.trim() : 'No additional message provided.';
 
     try {
-      const emailSubject = `🔔 New App Feedback from ${senderName}`;
+      const emailSubject = `🔔  ${senderName} ,paid with prayers`;
       const emailHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-          <div style="background-color: #f97316; padding: 16px; border-radius: 8px; text-align: center;">
-            <h2 style="color: #ffffff; margin: 0; font-size: 20px;">Someone  Offerd  donation</h2>
-          </div>
+          
           <div style="padding: 20px 0; color: #1e293b;">
             <p style="margin: 6px 0;"><strong>Sender Name:</strong> ${senderName}</p>
             <p style="margin: 6px 0;"><strong>Sender Email:</strong> ${senderEmail}</p>
@@ -3938,7 +3936,7 @@ export const verifyRazorpayPayment = asyncHandler(async (req, resp) => {
 });
 
 export const submitProjectInquiry = asyncHandler(async (req, resp) => {
-  const { name, message, user_id, email, phone } = mergeParam(req);
+  const { name, message, user_id, email, phone, contact, mobile } = mergeParam(req);
 
   const senderName = name || 'Devotee / Supporter';
   const senderMessage = (message && message.trim()) ? message.trim() : '';
@@ -3951,6 +3949,19 @@ export const submitProjectInquiry = asyncHandler(async (req, resp) => {
     });
   }
 
+  let senderEmail = email || '';
+  let senderPhone = phone || contact || mobile || '';
+
+  if (user_id && (!senderEmail || !senderPhone)) {
+    try {
+      const [uRows] = await db.query("SELECT email, mobile FROM users WHERE user_id = ?", [user_id]);
+      if (uRows && uRows.length > 0) {
+        if (!senderEmail) senderEmail = uRows[0].email || '';
+        if (!senderPhone) senderPhone = uRows[0].mobile || '';
+      }
+    } catch (err) { }
+  }
+
   try {
     const emailSubject = `🚀 New Project Inquiry from ${senderName}`;
     const emailHtml = `
@@ -3960,8 +3971,8 @@ export const submitProjectInquiry = asyncHandler(async (req, resp) => {
         </div>
         <div style="padding: 20px 0; color: #1e293b;">
           <p style="margin: 6px 0;"><strong>Sender Name:</strong> ${senderName}</p>
-          <p style="margin: 6px 0;"><strong>Sender Email:</strong> ${email || 'N/A'}</p>
-          <p style="margin: 6px 0;"><strong>Sender Phone:</strong> ${phone || 'N/A'}</p>
+          <p style="margin: 6px 0;"><strong>Sender Email:</strong> ${senderEmail || 'N/A'}</p>
+          <p style="margin: 6px 0;"><strong>Sender Phone / Contact:</strong> ${senderPhone || 'N/A'}</p>
           <p style="margin: 6px 0;"><strong>User ID:</strong> ${user_id || 'N/A'}</p>
           <p style="margin: 16px 0 6px 0;"><strong>Project Details / Message:</strong></p>
           <div style="background-color: #fff3e0; border-left: 4px solid #ea580c; padding: 14px; margin-top: 6px; border-radius: 4px; font-size: 15px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${senderMessage}</div>
