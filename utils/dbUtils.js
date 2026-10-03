@@ -16,14 +16,11 @@ export const insertRecord = async (table, columns, values, connection = null) =>
   try {
     const dbConn = connection ? connection : await db.getConnection();
     const [result] = await dbConn.execute(sql, values);
-  
-    if (!connection) { dbConn.release(); }
-
     return {
       insertId: result.insertId,
       affectedRows: result.affectedRows,
       data: Object.fromEntries(columns.map((col, index) => [col, values[index]])),
-    };
+    }; 
   } catch (error) {
     throw new Error(`Insert operation failed: ${error.message}`);
   }finally {
@@ -93,8 +90,7 @@ export const queryDB = async (query, params, connection = null) => {
   const dbConn = connection ? connection : await db.getConnection();
   try {
   const [[results]] = await dbConn.execute(query, params);
-  }catch(e){
-throw new Error(`Insert operation failed: ${error.message}`);
+  return results;    
   }
    finally {
     if (!connection) dbConn.release();
