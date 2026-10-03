@@ -50,3 +50,7 @@ Stop and ask the owner for approval first (explain what and why in plain English
 - Do not write into the project report doc on your own.
 - Add today's work to the project report doc only when the owner asks for it (for example "log today's work").
 - When asked, add dated entries (12-hour time, IST) with the developer name **Manvatar Prabhu Ji**, and any decisions made.
+
+## 11. Developer name in every commit
+- Every commit message must include the line `Developer: Manvatar Prabhu Ji` (on its own line, before any other trailers).
+- This applies to all commits Claude makes in this repo, with no exceptions.
