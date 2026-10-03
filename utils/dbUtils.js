@@ -12,21 +12,21 @@ import db from "../config/database.js";
 export const insertRecord = async (table, columns, values, connection = null) => {
   const placeholders = columns.map(() => "?").join(", ");
   const sql = `INSERT INTO ${table} (${columns.join( ", " )}) VALUES (${placeholders})`;
- 
+ const dbConn = connection ? connection : await db.getConnection();
+    
   try {
-    const dbConn = connection ? connection : await db.getConnection();
     const [result] = await dbConn.execute(sql, values);
-  
-    if (!connection) { dbConn.release(); }
-
     return {
       insertId: result.insertId,
       affectedRows: result.affectedRows,
       data: Object.fromEntries(columns.map((col, index) => [col, values[index]])),
-    };
+    }; 
   } catch (error) {
     throw new Error(`Insert operation failed: ${error.message}`);
+  }finally {
+    if (!connection) dbConn.release();
   }
+
 };
 export const deleteRecord = async (table, whereKey, whereValue) => {
   try {
@@ -54,18 +54,16 @@ export const updateRecord = async (table, updates, whereColumns, whereValues, co
   const whereClause = whereColumns.map(col => `${col} = ?`).join(" AND ");
   
   const sql = `UPDATE ${table} SET ${setClause} WHERE ${whereClause}`;
+  const dbConn = connection ? connection : await db.getConnection();
   try {
-    const dbConn = connection ? connection : await db.getConnection();
+   
 // console.log("Executing Update:", sql, [...Object.values(updates), ...whereValues]);
     const [result] = await dbConn.execute(sql, [
       ...Object.values(updates),
       ...whereValues,
     ]);
 
-    if (!connection) {
-      dbConn.release();
-    }
-    
+  
     return {
       affectedRows: result.affectedRows,
       info: result.info,
@@ -74,6 +72,8 @@ export const updateRecord = async (table, updates, whereColumns, whereValues, co
     };
   } catch (error) {
     throw new Error(`Update operation failed: ${error.message}`);
+  }finally {
+    if (!connection) dbConn.release();
   }
 };
 
@@ -86,11 +86,16 @@ export const updateRecord = async (table, updates, whereColumns, whereValues, co
  */
 export const queryDB = async (query, params, connection = null) => {
   const dbConn = connection ? connection : await db.getConnection();
-  // console.log("Executing Query:", query);
+  try {
   const [[results]] = await dbConn.execute(query, params);
-  if (!connection) {
-    dbConn.release();
+  return results;    
+  }catch(error){
+     throw new Error(`Update operation failed: ${error.message}`);
   }
+   finally {
+    if (!connection) dbConn.release();
+  }
+  
   return results;
 };
 

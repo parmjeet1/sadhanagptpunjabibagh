@@ -262,12 +262,87 @@ export const editLable = asyncHandler(async (req, resp) => {
 
 });
 
+// ---------------------------------------------------------------------------
+// clearLabelReferences — remove/clear every row that still points at the given
+// subgroup (labels_list) ids so the labels_list DELETE can't be blocked by a
+// foreign-key constraint (which surfaced to the user as a generic 500
+// "Internal server error" when deleting a subgroup).
+//
+//  * user_assignments.label_id  -> set NULL (student keeps account, Sadhna
+//    records and Group assignment; they just show as "no subgroup").
+//  * label_centers / content_labels / counselor_added_activities -> the rows
+//    are pure link/assignment rows scoped to that subgroup, so they're deleted
+//    (each guarded: a table/column that doesn't exist in this DB is skipped).
+//  * ANY OTHER table that has a real FK to labels_list.id (discovered from
+//    information_schema, so we don't depend on guessing the schema): column
+//    set NULL when nullable, otherwise the referencing row is deleted.
+// ---------------------------------------------------------------------------
+async function clearLabelReferences(labelIds) {
+  if (!Array.isArray(labelIds) || labelIds.length === 0) return;
+  const ph = labelIds.map(() => "?").join(",");
+
+  await db.execute(
+    `UPDATE user_assignments SET label_id = NULL WHERE label_id IN (${ph})`,
+    labelIds
+  );
+
+  // Known link tables. Skipped silently when the table/column doesn't exist
+  // (ER_NO_SUCH_TABLE 1146 / ER_BAD_FIELD_ERROR 1054).
+  for (const table of ["label_centers", "content_labels", "counselor_added_activities"]) {
+    try {
+      await db.execute(`DELETE FROM \`${table}\` WHERE label_id IN (${ph})`, labelIds);
+    } catch (e) {
+      if (e && (e.errno === 1146 || e.errno === 1054)) continue;
+      throw e;
+    }
+  }
+
+  // Any other real foreign key pointing at labels_list.id.
+  try {
+    const [fks] = await db.execute(
+      `SELECT kcu.TABLE_NAME AS tbl, kcu.COLUMN_NAME AS col, c.IS_NULLABLE AS nullable
+         FROM information_schema.KEY_COLUMN_USAGE kcu
+         JOIN information_schema.COLUMNS c
+           ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+          AND c.TABLE_NAME = kcu.TABLE_NAME
+          AND c.COLUMN_NAME = kcu.COLUMN_NAME
+        WHERE kcu.TABLE_SCHEMA = DATABASE()
+          AND kcu.REFERENCED_TABLE_NAME = 'labels_list'
+          AND kcu.REFERENCED_COLUMN_NAME = 'id'`
+    );
+    const handled = new Set(["user_assignments", "label_centers", "content_labels", "counselor_added_activities"]);
+    for (const fk of fks) {
+      if (handled.has(fk.tbl)) continue;
+      if (fk.nullable === "YES") {
+        await db.execute(`UPDATE \`${fk.tbl}\` SET \`${fk.col}\` = NULL WHERE \`${fk.col}\` IN (${ph})`, labelIds);
+      } else {
+        await db.execute(`DELETE FROM \`${fk.tbl}\` WHERE \`${fk.col}\` IN (${ph})`, labelIds);
+      }
+    }
+  } catch (e) {
+    // information_schema unreadable on this DB user — the known-table cleanup
+    // above already ran; log and let the final DELETE report the real error.
+    console.warn("clearLabelReferences: FK discovery skipped:", e && e.message);
+  }
+}
+
 export const deleteLable = asyncHandler(async (req, res) => {
 
-  const { label_id } = req.body;
+  const { user_id, label_id } = mergeParam(req);
 
+  // FIX: this previously validated/looked up label_id ONLY, with no
+  // ownership check at all (any counsellor could delete any other
+  // counsellor's label by guessing its id) and no cleanup of students
+  // already pointing at this label — it relied on an unverified "CASCADE"
+  // comment. Now: (1) ownership is checked the same way editLable already
+  // does it, and (2) any user_assignments row referencing this label has
+  // its label_id cleared FIRST, so affected students fall back to
+  // Uncategorised at the subgroup level instead of silently keeping a
+  // reference to a label that no longer exists. Students' accounts,
+  // Sadhna records and Group assignment are untouched.
   const { isValid, errors } = validateFields(req.body, {
-    label_id: ["required"]
+    label_id: ["required"],
+    user_id: ["required"]
   });
 
   if (!isValid) {
@@ -280,10 +355,10 @@ export const deleteLable = asyncHandler(async (req, res) => {
 
   try {
 
-    // Check label exists
+    // Check label exists AND belongs to this counsellor
     const [[label]] = await db.execute(
-      `SELECT id FROM labels_list WHERE id = ?`,
-      [label_id]
+      `SELECT id FROM labels_list WHERE id = ? AND counsellor_id = ?`,
+      [label_id, user_id]
     );
 
     if (!label) {
@@ -294,11 +369,38 @@ export const deleteLable = asyncHandler(async (req, res) => {
       });
     }
 
-    // Delete label (label_centers rows auto delete via CASCADE)
-    await db.execute(
-      `DELETE FROM labels_list WHERE id = ?`,
-      [label_id]
-    );
+    // Clear this label from any students currently assigned to it so they
+    // show as Uncategorised at the subgroup level rather than pointing at
+    // a deleted subgroup. Their Group assignment and all other data is
+    // left exactly as-is.
+    // FIX (Internal server error on subgroup delete): the DELETE below
+    // assumed every other table referencing this label would cascade
+    // automatically. It doesn't, so a subgroup with tagged content /
+    // subgroup-level activities / any other FK row hit a constraint error
+    // that was reported as a generic 500. Clear every referencing row first
+    // (also nulls user_assignments.label_id as before).
+    try { await clearLabelReferences([label_id]); }
+    catch (e) { console.warn("clearLabelReferences failed, will retry via FK error:", e && e.message); }
+
+    // Self-healing delete: if MySQL still refuses because some table we did
+    // not know about has a foreign key to this subgroup, the error text names
+    // that table + column. Clear exactly those rows and retry (max 10 tables).
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await db.execute(`DELETE FROM labels_list WHERE id = ?`, [label_id]);
+        break;
+      } catch (e) {
+        const m = e && e.sqlMessage && e.sqlMessage.match(/\(`[^`]+`\.`([^`]+)`, CONSTRAINT `[^`]+` FOREIGN KEY \(`([^`]+)`\) REFERENCES `labels_list`/);
+        if (!m || attempt >= 10 || (e.errno !== 1451 && e.code !== 'ER_ROW_IS_REFERENCED_2')) throw e;
+        const [, tbl, col] = m;
+        try {
+          await db.execute(`UPDATE \`${tbl}\` SET \`${col}\` = NULL WHERE \`${col}\` = ?`, [label_id]);
+        } catch (e2) {
+          if (tbl === "user_assignments") throw e2; // never delete a student's group assignment
+          await db.execute(`DELETE FROM \`${tbl}\` WHERE \`${col}\` = ?`, [label_id]);
+        }
+      }
+    }
 
     return res.json({
       status: 1,
@@ -308,12 +410,16 @@ export const deleteLable = asyncHandler(async (req, res) => {
 
   } catch (err) {
 
-    console.log("delete label error", err);
+    console.error("delete label error", err && err.code, err && err.sqlMessage, err);
 
     return res.status(500).json({
       status: 0,
       code: 500,
-      message: ["Internal server error"]
+      message: ["Internal server error"],
+      // DB error class only (e.g. ER_ROW_IS_REFERENCED_2) — no SQL/text — so
+      // if this ever recurs the exact cause is visible without server logs.
+      error_code: (err && err.code) || null,
+      error_detail: (err && err.sqlMessage) ? String(err.sqlMessage).slice(0, 300) : null
     });
 
   }
@@ -617,6 +723,13 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
     }
 
     // ✅ Check center exists
+    // FIX: queryDB() (utils/dbUtils.js) destructures `[[results]]` and
+    // returns the single matched ROW OBJECT directly (or undefined) — it is
+    // NOT an array of rows. This code was checking `center.length === 0`
+    // (always undefined/falsy on a plain object, so a missing center never
+    // triggered the 404) and then reading `center[0].counsller_id` (`[0]`
+    // on a plain object is undefined), which threw and was caught by the
+    // outer catch as a 500 "Internal server error" on every delete attempt.
     const center = await queryDB(
       `SELECT center_id AS id, counsller_id
        FROM center_list
@@ -624,7 +737,7 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
       [center_id]
     );
 
-    if (!center || center.length === 0) {
+    if (!center) {
       return resp.json({
         status: 0,
         code: 404,
@@ -633,7 +746,7 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
     }
 
     // ✅ Security check
-    if (center[0].counsller_id != user_id) {
+    if (center.counsller_id != user_id) {
       return resp.json({
         status: 0,
         code: 403,
@@ -654,6 +767,23 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
     );
 
     // ✅ 3. Delete this group's sub-groups
+    // FIX: clear anything still referencing these subgroups (tagged content,
+    // subgroup-level activities, other FK rows) first — same root cause as
+    // deleteLable() — otherwise a group whose subgroups have any of that
+    // fails here with a foreign-key error / 500.
+    const [centerLabels] = await db.execute(
+      `SELECT id FROM labels_list WHERE center_id = ? AND counsellor_id = ?`,
+      [center_id, user_id]
+    );
+    await clearLabelReferences(centerLabels.map((l) => l.id));
+    // Center-wide custom-activity assignments for this group (guarded: skip
+    // if the table/column isn't present in this DB).
+    try {
+      await db.execute(`DELETE FROM counselor_added_activities WHERE center_id = ?`, [center_id]);
+    } catch (e) {
+      if (!(e && (e.errno === 1146 || e.errno === 1054))) throw e;
+    }
+
     await db.execute(
       `DELETE FROM labels_list WHERE center_id = ? AND counsellor_id = ?`,
       [center_id, user_id]
@@ -684,6 +814,131 @@ export const deleteCenter = asyncHandler(async (req, resp) => {
 
   }
 
+});
+
+// ============================================================================
+// removeMentee — counsellor-initiated removal of the mentor–mentee
+// relationship. This is the mirror of StudentController.js's
+// `removeCounsellor` (which lets a STUDENT drop their counsellor) — there
+// was previously no equivalent for the counsellor to drop a student.
+//
+// This ONLY deletes the `user_counsellors` relationship row (and, so the
+// student doesn't linger in this counsellor's Group/Subgroup filters
+// afterwards, the matching `user_assignments` row for this counsellor).
+// It NEVER touches the student's account (`users`), their Sadhna records
+// (`daily_report`), or their analytics/summary history — those all live
+// keyed by the student's own user_id, independent of any counsellor link.
+// ============================================================================
+export const removeMentee = asyncHandler(async (req, resp) => {
+  const { user_id, student_id } = mergeParam(req); // user_id = the counsellor's own id
+
+  const { isValid, errors } = validateFields({ user_id, student_id }, {
+    user_id: ["required"],
+    student_id: ["required"],
+  });
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  try {
+    // Ownership check — only allow removing a relationship that actually
+    // exists between THIS counsellor and THIS student.
+    const relation = await queryDB(
+      `SELECT user_id FROM user_counsellors WHERE user_id = ? AND counsller_id = ?`,
+      [student_id, user_id]
+    );
+
+    if (!relation) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["This student is not one of your mentees."],
+      });
+    }
+
+    await db.execute(
+      `DELETE FROM user_counsellors WHERE user_id = ? AND counsller_id = ?`,
+      [student_id, user_id]
+    );
+
+    // Clean up this counsellor's Group/Subgroup assignment for the student
+    // too, since it no longer makes sense once they're not a mentee here.
+    await db.execute(
+      `DELETE FROM user_assignments WHERE user_id = ? AND counsellor_id = ?`,
+      [student_id, user_id]
+    );
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Mentee removed successfully"],
+    });
+  } catch (err) {
+    console.log("removeMentee error:", err);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"],
+    });
+  }
+});
+
+// ============================================================================
+// updateMenteeName — lets a counsellor correct/rename a mentee's display
+// name (e.g. a typo at signup). Ownership-checked the same way as
+// removeMentee above: only ever updates a student who is actually this
+// counsellor's mentee. Only touches `users.name` — nothing else about the
+// student's account or history.
+// ============================================================================
+export const updateMenteeName = asyncHandler(async (req, resp) => {
+  const { user_id, student_id, name } = mergeParam(req); // user_id = the counsellor's own id
+
+  const { isValid, errors } = validateFields({ user_id, student_id, name }, {
+    user_id: ["required"],
+    student_id: ["required"],
+    name: ["required"],
+  });
+
+  if (!isValid) {
+    return resp.json({ status: 0, code: 422, message: errors });
+  }
+
+  const trimmedName = String(name).trim();
+  if (!trimmedName) {
+    return resp.json({ status: 0, code: 422, message: ["Name cannot be empty"] });
+  }
+
+  try {
+    const relation = await queryDB(
+      `SELECT user_id FROM user_counsellors WHERE user_id = ? AND counsller_id = ?`,
+      [student_id, user_id]
+    );
+
+    if (!relation) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["This student is not one of your mentees."],
+      });
+    }
+
+    await db.execute(`UPDATE users SET name = ? WHERE user_id = ?`, [trimmedName, student_id]);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["Mentee name updated successfully"],
+      data: { student_id, name: trimmedName },
+    });
+  } catch (err) {
+    console.log("updateMenteeName error:", err);
+    return resp.status(500).json({
+      status: 0,
+      code: 500,
+      message: ["Internal server error"],
+    });
+  }
 });
 
 export const studentlist = asyncHandler(async (req, resp) => {
@@ -949,7 +1204,7 @@ FROM fix_activities fa
     ON dr.activity_id = fa.activity_id  AND dr.user_id = ?
   JOIN users u ON u.user_id = ?
     WHERE
-         fa.own_by = 1  OR fa.user_id = ? GROUP BY fa.activity_id
+         fa.user_id = ? GROUP BY fa.activity_id
       `,
       [student_id, student_id, student_id]
     );
@@ -1598,17 +1853,37 @@ export const aiReport = asyncHandler(async (req, resp) => {
     /* --------------------------
        2️⃣ Activity Records
     ---------------------------*/
+    // FIX: dr.activity_id already uniquely identifies exactly one
+    // fix_activities row, which already belongs to exactly one user (its
+    // own fa.user_id) regardless of whether it's flagged public (own_by=0)
+    // or custom (own_by=1) — own_by is only ever a descriptive flag on THAT
+    // same student's own row, never a marker for a row shared across
+    // multiple students. An earlier version of this fix added
+    // "OR fa.own_by = 0" to the join, thinking own_by=0 meant "a shared
+    // master row" — it does not, and every OTHER student's own own_by=0
+    // rows share that same flag, so that condition matched every public
+    // activity belonging to EVERY student in the whole app, not just this
+    // one, producing dozens of duplicate same-named ("Chanting" etc.)
+    // entries per student, every one of them showing 0 (since dr.user_id is
+    // already scoped to just this student in the WHERE clause, none of
+    // those OTHER students' activity_ids ever have a matching daily_report
+    // row here). The plain join below is the same pattern already used
+    // correctly for the student's own working Analytics tab
+    // (StudentController.js) — no own_by condition needed at all.
+    // Also: LEFT JOIN + COALESCE so a deleted activity definition doesn't
+    // drop the row, and the missing comma after fa.own_by (a real SQL
+    // syntax error in the original) is fixed.
     const [rows] = await db.execute(
-      `SELECT 
+      `SELECT
         dr.activity_date,
         dr.activity_id,
-        fa.name as activity_name,
-        fa.own_by
+        COALESCE(fa.name, 'Unknown Activity') as activity_name,
+        fa.own_by,
         dr.count,
         dr.unit
       FROM daily_report dr
-      INNER JOIN fix_activities fa 
-      ON fa.activity_id = dr.activity_id and fa.own_by = 0
+      LEFT JOIN fix_activities fa
+      ON fa.activity_id = dr.activity_id
       WHERE dr.user_id = ?
       AND dr.activity_date BETWEEN ? AND ?
       ORDER BY dr.activity_date`,
@@ -1747,19 +2022,46 @@ export const bulkaiReport = asyncHandler(async (req, resp) => {
     //   ORDER BY dr.activity_date`,
     //   [...parsedStudentIds, date_from, date_to]
     // );
+    // NOTE on the join below (this was the main cause of student data being
+    // incomplete in the AI analysis, and later of duplicate zero-value
+    // "Chanting" etc. cards on the counsellor-side student report):
+    //  - It used to be an INNER JOIN restricted to `fa.own_by = 0` (global/
+    //    public activities only), which silently dropped every logged entry
+    //    for a student's own custom/counsellor-assigned activities
+    //    (own_by = 1) from the report sent to the AI.
+    //  - A LATER fix mistakenly added "OR fa.own_by = 0" to try to bring
+    //    those back — but own_by is only ever a flag on that ROW's own
+    //    fa.user_id, never a marker for a row shared across students, so
+    //    that condition matched every public activity belonging to EVERY
+    //    student in the whole app, not just the ones in this report,
+    //    producing dozens of duplicate same-named entries per student (all
+    //    showing 0, since dr.user_id is already scoped correctly and none
+    //    of those other students' activity_ids have a matching row here).
+    //  - dr.activity_id already uniquely identifies exactly one
+    //    fix_activities row belonging to exactly one user, so the join
+    //    needs no own_by/user_id condition at all — same plain pattern
+    //    already used correctly for the student's own working Analytics
+    //    tab (StudentController.js).
+    //  - Still a LEFT JOIN so a `daily_report` row is never dropped just
+    //    because its `fix_activities` definition was later deleted/
+    //    deactivated — the activity name falls back to "Unknown Activity"
+    //    instead of losing the whole row.
+    //  - `dr.unit` is still selected (it was referenced below as `r.unit`
+    //    but was never actually in the SELECT list before, so it was
+    //    always undefined).
     const [rows] = await db.execute(
       `SELECT
          dr.user_id,
          dr.activity_date,
          dr.activity_id,
-         fa.name as activity_name,
+         COALESCE(fa.name, 'Unknown Activity') as activity_name,
          fa.target,
-         dr.count
-       
+         fa.own_by,
+         dr.count,
+         dr.unit
       FROM daily_report dr
-      INNER JOIN fix_activities fa 
-        ON fa.activity_id = dr.activity_id 
-        AND fa.own_by = 0
+      LEFT JOIN fix_activities fa
+        ON fa.activity_id = dr.activity_id
       WHERE dr.user_id IN (${placeholders})
       AND dr.activity_date BETWEEN ? AND ?
       ORDER BY dr.activity_date`,
@@ -1953,7 +2255,29 @@ export const studentDetails = asyncHandler(async (req, res) => {
   /* ---------------------------
      FETCH ACTIVITY SUMMARY
   ----------------------------*/
-
+  // FIX — this query has now been through two bugs:
+  //   1. Originally: WHERE fa.user_id = ? AND fa.own_by = 0 — matched an
+  //      activity only if it was BOTH this student's own row AND flagged
+  //      global, excluding this same student's own custom (own_by = 1)
+  //      activities outright. For most students this matched zero rows, so
+  //      activities_analytics came back empty — the "eye" icon screen
+  //      showed no charts at all.
+  //   2. A later fix changed the AND to OR ("fa.own_by = 0 OR
+  //      fa.user_id = ?"), on the mistaken assumption that own_by = 0 rows
+  //      are shared master rows not tied to any one student. They are not:
+  //      every fix_activities row (own_by 0 or 1) already carries its own
+  //      owning user_id — own_by is only a descriptive public/custom flag
+  //      on that SAME student's row. "OR fa.own_by = 0" therefore matched
+  //      every public activity belonging to EVERY student in the whole
+  //      app, producing dozens of duplicate same-named ("Chanting" etc.)
+  //      cards, every one of them at 0 (since the LEFT JOIN above already
+  //      scopes dr.user_id to just this one student, so none of those
+  //      other students' activity_ids have a matching daily_report row
+  //      here).
+  // Correct filter is simply this student's own rows, own_by regardless —
+  // the same plain pattern already used correctly for the student's own
+  // working Analytics tab (StudentController.js, e.g. its personal-report
+  // query: "WHERE fa.user_id = ?", no own_by condition at all).
   const [student_data] = await db.execute(
     `
     SELECT
@@ -1976,11 +2300,10 @@ export const studentDetails = asyncHandler(async (req, res) => {
       COUNT(dr.id) AS attendance_count
 
     FROM fix_activities fa
-    LEFT JOIN daily_report dr 
-      ON dr.activity_id = fa.activity_id 
+    LEFT JOIN daily_report dr
+      ON dr.activity_id = fa.activity_id
       AND dr.user_id = ?
     WHERE fa.user_id = ?
-    and fa.own_by=0
     GROUP BY
       fa.activity_id,
       fa.name,
@@ -3406,7 +3729,23 @@ export const aiDebugAuthHandler = asyncHandler(async (req, res) => { res.json({ 
 
 export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
   try {
-    const { center_id, label_id, filter = '7', start_date, end_date, student_ids } = mergeParam(req);
+    const { user_id, center_id, label_id, filter = '7', start_date, end_date, student_ids } = mergeParam(req);
+
+    // FIX (counsellor-scoping leak): this endpoint previously never scoped
+    // results to the requesting counsellor at all, so it returned every
+    // student/group/subgroup across EVERY counsellor's account. Mirrors the
+    // proven scoping pattern from studentlist() above: require the
+    // requesting counsellor's user_id and only include students who have a
+    // user_counsellors row for that counsellor. If user_id is missing,
+    // fail safe (return no data) rather than leaking every account's data.
+    if (!user_id) {
+      return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Export data fetched successfully"],
+        data: []
+      });
+    }
 
     let dateCondition = "";
     const params = [];
@@ -3420,8 +3759,17 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
       params.push(days);
     }
 
+    // Counsellor-scoping param, inserted into the WHERE clause immediately
+    // after the fixed 'u.user_type != counsellor' condition (see query
+    // below) — pushed here so params[] stays in the same left-to-right
+    // order as the placeholders appear in the final query string.
+    params.push(user_id);
+
     let centerCondition = "";
-    if (center_id && center_id !== 'all' && center_id !== '0' && center_id !== '') {
+    if (center_id === 'ungrouped') {
+      // Students of this counsellor who are not in any group
+      centerCondition = "AND (ua.center_id IS NULL OR ua.center_id = 0)";
+    } else if (center_id && center_id !== 'all' && center_id !== '0' && center_id !== '') {
       centerCondition = "AND ua.center_id = ?";
       params.push(center_id);
     }
@@ -3439,23 +3787,37 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
     }
 
     const query = `
-      SELECT 
+      SELECT
         u.user_id AS student_id,
         u.name AS student_name,
         u.mobile,
         COALESCE(cl.name, 'Unassigned Group') AS center_name,
         COALESCE(l.name, 'Uncategorized') AS label_name,
         COALESCE(fa.name, CASE WHEN dr.id IS NOT NULL THEN 'Activity' ELSE 'No Logged Activity' END) AS activity_name,
+        dr.activity_id AS activity_id,
         COALESCE(dr.count, '-') AS activity_value,
         COALESCE(dr.marks, 0) AS activity_marks,
+        CASE WHEN dr.id IS NOT NULL THEN
+          COALESCE(
+            (SELECT MAX(mr.marks) FROM marking_rules mr
+              WHERE mr.master_activity_id = fa.master_activity_id
+                AND mr.status = 1 AND mr.frequency = 'daily'
+                AND mr.scheme_id = COALESCE(l.marking_scheme_id, cl.marking_scheme_id, 1)),
+            (SELECT MAX(mr2.marks) FROM marking_rules mr2
+              WHERE mr2.master_activity_id = fa.master_activity_id
+                AND mr2.status = 1 AND mr2.frequency = 'daily' AND mr2.scheme_id = 1),
+            0
+          )
+        ELSE NULL END AS activity_max_possible_marks,
         COALESCE(DATE_FORMAT(dr.activity_date, '%Y-%m-%d'), '-') AS activity_date
       FROM users u
-      LEFT JOIN user_assignments ua ON ua.user_id = u.user_id
+      INNER JOIN user_counsellors uc ON uc.user_id = u.user_id
+      LEFT JOIN user_assignments ua ON ua.user_id = u.user_id AND ua.counsellor_id = uc.counsller_id
       LEFT JOIN center_list cl ON cl.center_id = ua.center_id
       LEFT JOIN labels_list l ON l.id = ua.label_id
       LEFT JOIN daily_report dr ON dr.user_id = u.user_id ${dateCondition}
       LEFT JOIN fix_activities fa ON fa.activity_id = dr.activity_id
-      WHERE u.user_type != 'counsellor' ${centerCondition} ${labelCondition} ${studentCondition}
+      WHERE u.user_type != 'counsellor' AND uc.counsller_id = ? ${centerCondition} ${labelCondition} ${studentCondition}
       ORDER BY cl.name, l.name, u.name, dr.activity_date DESC
     `;
 

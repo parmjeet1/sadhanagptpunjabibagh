@@ -767,28 +767,24 @@ export const todayReportlist = asyncHandler(async (req, resp) => {
   }
 
   try {
-    // PERFORMANCE: these two queries are independent — run them concurrently
-    // instead of back-to-back (each is a round trip to the remote DB, and this
-    // endpoint is on the dashboard's critical load path).
-    const [[rows], [activityRows]] = await Promise.all([
-      db.execute(
-        `SELECT activity_id, count
+    const [rows] = await db.execute(
+      `SELECT activity_id, count 
        FROM daily_report
        WHERE user_id = ? AND DATE(activity_date) = ?`,
-        [user_id, activity_date]
-      ),
-      db.execute(
-        `SELECT
-        fa.activity_id,
-        fa.activity_type,
-        fa.target,
+      [user_id, activity_date]
+    );
+
+    const [activityRows] = await db.execute(
+      `SELECT 
+        fa.activity_id, 
+        fa.activity_type, 
+        fa.target, 
         dr.count
        FROM fix_activities fa
        LEFT JOIN daily_report dr ON fa.activity_id = dr.activity_id AND dr.user_id = fa.user_id AND DATE(dr.activity_date) = ?
        WHERE fa.user_id = ?`,
-        [activity_date, user_id]
-      ),
-    ]);
+      [activity_date, user_id]
+    );
 
     const color = calculateColorForActivities(activityRows);
 
@@ -1127,7 +1123,7 @@ export const oldaddSadhna = asyncHandler(async (req, resp) => {
  * SadhnaAssistant chatbot integration) without duplicating the marks
  * calculation. Returns the exact JSON body an Express handler would send.
  */
-export const saveActivityEntry = async ({ activity_id, count, activity_date, user_id, unit, skipSummary = false }) => {
+export const saveActivityEntry = async ({ activity_id, count, activity_date, user_id, unit }) => {
   const final_activity_date = moment(activity_date).format("YYYY-MM-DD");
   let storedCount = count;
 
@@ -1206,8 +1202,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
       );
 
       // Async background summary update (non-blocking)
-      // (batch callers pass skipSummary and refresh the summary once per date)
-      if (!skipSummary) await dailyStudentSummary(user_id, final_activity_date).catch(err =>
+      await dailyStudentSummary(user_id, final_activity_date).catch(err =>
         console.error("Error updating daily student summary:", err)
       );
 
@@ -1228,7 +1223,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
 
     if (insert_data) {
       // Async background summary update (non-blocking)
-      if (!skipSummary) dailyStudentSummary(user_id, final_activity_date).catch(err =>
+      dailyStudentSummary(user_id, final_activity_date).catch(err =>
         console.error("Error updating daily student summary:", err)
       );
 
@@ -1705,7 +1700,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
   //   counsllor_type='primary' ) AS counsller_id FROM users WHERE 
   //   email = ?`,[email]);
   const isExist = await queryDB(
-    `SELECT name,profile, access_token,user_id,email,mobile,temple_id,user_type, 
+    `SELECT profile, access_token,user_id,email,mobile,temple_id,user_type, 
     (SELECT counsller_id FROM user_counsellors WHERE user_id = users.user_id and counsllor_type='primary' ) AS counsller_id FROM users WHERE 
     email = ?`, [email]);
   const access_token = crypto.randomBytes(12).toString("hex");
@@ -1717,14 +1712,6 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     //   ["google_id"],
     //   [google_id],
     // );
-    let token = isExist.access_token;
-    if (!token) {
-      token = crypto.randomBytes(12).toString("hex");
-      await db.execute(
-        `UPDATE users SET access_token = ? WHERE user_id = ?`,
-        [token, isExist.user_id]
-      );
-    }
 
     return resp.json({
       status: 1,
@@ -1734,8 +1721,8 @@ export const onBoarding = asyncHandler(async (req, resp) => {
         email: isExist.email,
         name: isExist.name,
         mobile: isExist.mobile,
-        access_token: isExist.access_token ? isExist.access_token : token,
-           temple_id: isExist.temple_id,
+        access_token: isExist.access_token,
+        temple_id: isExist.temple_id,
         user_type: isExist.user_type,
         counsller_id: isExist.counsller_id,
         profile: isExist.profile ? isExist.profile : process.env.IMAGE_UPLOAD_PATH + "default_profile.png",
@@ -1744,10 +1731,6 @@ export const onBoarding = asyncHandler(async (req, resp) => {
       message: ["User registred successfully"],
     });
   }
-  if (new_counsellor_email &&
-    new_counsellor_email.trim().toLowerCase() === email.trim().toLowerCase()) {
-  return resp.json({ status: 0, code: 422, message: ["Counsellor email cannot be your own email"] });
-}
   switch (user_type) {
     case "student":
       // CASE 1: Student selected an existing counsellor from dropdown
@@ -2061,20 +2044,7 @@ export const userProfile = asyncHandler(async (req, resp) => {
      FETCH REWARDS (your function)
   ----------------------------*/
   const rewards = await getUserRewards(user_id);
-  
-  /* ---------------------------
-     FETCH DB DEPENDENCY
-  ----------------------------*/
-  let dependency = null;
-  try {
-    const [depRows] = await db.query("SELECT * FROM db_dependency LIMIT 1");
-    if (depRows && depRows.length > 0) {
-      dependency = depRows[0];
-    }
-  } catch (err) {
-    console.error("Error fetching db_dependency in userProfile:", err);
-  }
-console.log("dependency",dependency)
+
   /* ---------------------------
      FORMAT RESPONSE
   ----------------------------*/
@@ -2096,8 +2066,7 @@ console.log("dependency",dependency)
         profile: userData.profile,
         dob: userData.dob,
         center_name: userData.center_name,
-        label_name: userData.label_name,
-        dependency: dependency || null
+        label_name: userData.label_name
       },
 
       mentors: mentors.map((m) => ({
@@ -2115,9 +2084,7 @@ console.log("dependency",dependency)
       })),
 
       rewards: rewards || [],
-      dependency: dependency || null
     },
-    dependency: dependency || null
   };
 
   return resp.json(response);
@@ -2444,73 +2411,6 @@ FROM fix_activities fa
     //  }
   });
 
-});
-
-// ---------------------------------------------------------------------------
-// Student's OWN export rows (PDF/Excel/CSV). /student-activities-analytics
-// returns only averages/counts — no marks and no max-possible marks — so the
-// student-side export always computed 0%. This returns the same row shape the
-// mentor export uses (/export-bulk-student-reports), scoped to the logged-in
-// student (user_id comes from the access token), including per-row marks and
-// activity_max_possible_marks so the percentage is computed correctly.
-// ---------------------------------------------------------------------------
-export const studentExportReport = asyncHandler(async (req, res) => {
-  try {
-    const { user_id, filter = '7', start_date, end_date } = mergeParam(req);
-    if (!user_id) return res.json({ status: 1, code: 200, data: [] });
-
-    const params = [];
-    let dateCondition = "";
-    if (start_date && end_date && filter !== 'all') {
-      dateCondition = "AND DATE(dr.activity_date) >= ? AND DATE(dr.activity_date) <= ?";
-      params.push(start_date, end_date);
-    } else if (filter !== 'all') {
-      dateCondition = "AND DATE(dr.activity_date) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)";
-      params.push(parseInt(filter) || 7);
-    }
-    params.push(user_id);
-
-    const [rows] = await db.execute(
-      `SELECT
-         u.user_id AS student_id,
-         u.name AS student_name,
-         u.mobile,
-         COALESCE(cl.name, 'Personal Sadhana') AS center_name,
-         COALESCE(l.name, 'My Sadhana') AS label_name,
-         COALESCE(fa.name, CASE WHEN dr.id IS NOT NULL THEN 'Activity' ELSE 'No Logged Activity' END) AS activity_name,
-         dr.activity_id AS activity_id,
-         COALESCE(dr.count, '-') AS activity_value,
-         COALESCE(dr.marks, 0) AS activity_marks,
-         CASE WHEN dr.id IS NOT NULL THEN
-           COALESCE(
-             (SELECT MAX(mr.marks) FROM marking_rules mr
-               WHERE mr.master_activity_id = fa.master_activity_id
-                 AND mr.status = 1 AND mr.frequency = 'daily'
-                 AND mr.scheme_id = COALESCE(l.marking_scheme_id, cl.marking_scheme_id, 1)),
-             (SELECT MAX(mr2.marks) FROM marking_rules mr2
-               WHERE mr2.master_activity_id = fa.master_activity_id
-                 AND mr2.status = 1 AND mr2.frequency = 'daily' AND mr2.scheme_id = 1),
-             0
-           )
-         ELSE NULL END AS activity_max_possible_marks,
-         COALESCE(DATE_FORMAT(dr.activity_date, '%Y-%m-%d'), '-') AS activity_date
-       FROM users u
-       LEFT JOIN user_assignments ua
-         ON ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = u.user_id)
-       LEFT JOIN center_list cl ON cl.center_id = ua.center_id
-       LEFT JOIN labels_list l ON l.id = ua.label_id
-       LEFT JOIN daily_report dr ON dr.user_id = u.user_id ${dateCondition}
-       LEFT JOIN fix_activities fa ON fa.activity_id = dr.activity_id
-       WHERE u.user_id = ?
-       ORDER BY dr.activity_date DESC`,
-      params
-    );
-
-    return res.json({ status: 1, code: 200, message: ["Export data fetched successfully"], data: rows });
-  } catch (error) {
-    console.error("Error in studentExportReport:", error);
-    return res.status(500).json({ status: 0, code: 500, message: ["Failed to fetch export report data"], data: [] });
-  }
 });
 
 export const StudentActivitiesAnalytics = asyncHandler(async (req, res) => {
@@ -3571,50 +3471,17 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
   const body = req.body || {};
   const query = req.query || {};
 
-  // SECURITY FIX: this route is exempted from the app's normal API-key
-  // middleware entirely (see Authorization middleware.js — it short-circuits
-  // for '/whatsapp-webhook' before the key check runs), by design, because a
-  // real WhatsApp/Meta webhook call can't attach the app's Authorization
-  // header. That left it 100% unauthenticated: anyone on the internet who
-  // could guess/know a student's mobile number could POST arbitrary
-  // "activity: value" text here and silently overwrite that student's real
-  // daily_report rows for any date — which is what was causing activities
-  // like Study Hours / Day Rest / Reading to change on their own between
-  // refreshes with no corresponding action in the app. Meta's own webhook
-  // protocol has its own secret (a pre-shared verify token for the GET
-  // handshake, and the same or a header secret for POST deliveries), so we
-  // gate on that instead of the app's Authorization header. Fails CLOSED:
-  // if WHATSAPP_WEBHOOK_TOKEN isn't configured, every call is rejected
-  // rather than left open like before.
-  const configuredToken = process.env.WHATSAPP_WEBHOOK_TOKEN;
-
   // GET verification for WhatsApp/Meta Webhooks
   if (req.method === 'GET') {
     const hubMode = query['hub.mode'];
     const hubChallenge = query['hub.challenge'];
-    const hubVerifyToken = query['hub.verify_token'];
     if (hubMode === 'subscribe' && hubChallenge) {
-      if (!configuredToken || hubVerifyToken !== configuredToken) {
-        return resp.status(403).json({ status: 0, code: 403, message: ["Verification token mismatch."] });
-      }
       return resp.send(hubChallenge);
     }
     return resp.json({
       status: 1,
       code: 200,
       message: ["WhatsApp Webhook API active and ready."]
-    });
-  }
-
-  // POST deliveries (the actual activity-logging calls) must present the
-  // same shared secret — Meta lets you configure this as part of the
-  // webhook subscription; anything without it is rejected outright.
-  const providedToken = req.headers['x-webhook-token'] || body.verify_token || query.verify_token;
-  if (!configuredToken || providedToken !== configuredToken) {
-    return resp.status(403).json({
-      status: 0,
-      code: 403,
-      message: ["Invalid or missing webhook token."]
     });
   }
 
@@ -3812,202 +3679,3 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
     }
   });
 });
-
-/* ---------------------------
-   RAZORPAY PAYMENT ENDPOINTS
-----------------------------*/
-export const createRazorpayOrder = asyncHandler(async (req, resp) => {
-  const { amount } = mergeParam(req);
-
-  const numAmount = Number(amount) || 100;
-  const amountInPaisa = Math.round(numAmount * 100);
-
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-  if (!keyId || !keySecret) {
-    return resp.json({
-      status: 0,
-      code: 400,
-      message: ["Razorpay key ID or Secret missing in environment configuration."],
-    });
-  }
-
-  try {
-    const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-    const response = await fetch('https://api.razorpay.com/v1/orders', {
-      method: 'POST',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        amount: amountInPaisa,
-        currency: 'INR',
-        receipt: `receipt_${Date.now()}`,
-      }),
-    });
-
-    const orderData = await response.json();
-    if (orderData && orderData.id) {
-      return resp.json({
-        status: 1,
-        code: 200,
-        data: {
-          order_id: orderData.id,
-          amount: orderData.amount,
-          currency: orderData.currency,
-          key_id: keyId,
-        },
-      });
-    } else {
-      return resp.json({
-        status: 0,
-        code: 400,
-        message: [orderData?.error?.description || "Failed to create Razorpay order"],
-      });
-    }
-  } catch (error) {
-    console.error("Error creating Razorpay order:", error);
-    return resp.json({
-      status: 0,
-      code: 500,
-      message: [error.message || "Failed to create Razorpay order"],
-    });
-  }
-});
-
-export const verifyRazorpayPayment = asyncHandler(async (req, resp) => {
-  const {
-    razorpay_order_id,
-    razorpay_payment_id,
-    razorpay_signature,
-    amount,
-    userName,
-    userEmail,
-    user_id,
-    message
-  } = mergeParam(req);
-
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-    return resp.json({
-      status: 0,
-      code: 422,
-      message: ["Missing required Razorpay parameters."],
-    });
-  }
-
-  const hmac = crypto.createHmac("sha256", keySecret || "");
-  hmac.update(`${razorpay_order_id}|${razorpay_payment_id}`);
-  const generatedSignature = hmac.digest("hex");
-
-  if (generatedSignature === razorpay_signature) {
-    const senderName = userName || 'Anonymous Devotee';
-    const senderEmail = userEmail || 'N/A';
-    const senderUserId = user_id || 'N/A';
-    const paidAmount = amount ? `₹${amount}` : 'N/A';
-    const feedbackMsg = (message && message.trim()) ? message.trim() : 'No additional message provided.';
-
-    try {
-      const emailSubject = `🔔  ${senderName} ,paid with prayers`;
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-          
-          <div style="padding: 20px 0; color: #1e293b;">
-            <p style="margin: 6px 0;"><strong>Sender Name:</strong> ${senderName}</p>
-            <p style="margin: 6px 0;"><strong>Sender Email:</strong> ${senderEmail}</p>
-            <p style="margin: 6px 0;"><strong>User ID:</strong> ${senderUserId}</p>
-            <p style="margin: 6px 0;"><strong>Amount Offered:</strong> ${paidAmount}</p>
-            <p style="margin: 6px 0;"><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
-            <p style="margin: 16px 0 6px 0;"><strong>Feedback Message:</strong></p>
-            <div style="background-color: #f8fafc; border-left: 4px solid #f97316; padding: 14px; margin-top: 6px; border-radius: 4px; font-size: 15px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${feedbackMsg}</div>
-          </div>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">Sent automatically from SadhanaGPT App</p>
-        </div>
-      `;
-      emailQueue.addEmail('paramjeetsinghwork7@gmail.com', emailSubject, emailHtml);
-    } catch (mailErr) {
-      console.error("Error enqueuing app feedback email:", mailErr);
-    }
-
-    return resp.json({
-      status: 1,
-      code: 200,
-      message: ["Payment verified successfully"],
-    });
-  } else {
-    return resp.json({
-      status: 0,
-      code: 400,
-      message: ["Invalid payment signature"],
-    });
-  }
-});
-
-export const submitProjectInquiry = asyncHandler(async (req, resp) => {
-  const { name, message, user_id, email, phone, contact, mobile } = mergeParam(req);
-
-  const senderName = name || 'Devotee / Supporter';
-  const senderMessage = (message && message.trim()) ? message.trim() : '';
-
-  if (!senderMessage) {
-    return resp.json({
-      status: 0,
-      code: 422,
-      message: ["Project details message is required."],
-    });
-  }
-
-  let senderEmail = email || '';
-  let senderPhone = phone || contact || mobile || '';
-
-  if (user_id && (!senderEmail || !senderPhone)) {
-    try {
-      const [uRows] = await db.query("SELECT email, mobile FROM users WHERE user_id = ?", [user_id]);
-      if (uRows && uRows.length > 0) {
-        if (!senderEmail) senderEmail = uRows[0].email || '';
-        if (!senderPhone) senderPhone = uRows[0].mobile || '';
-      }
-    } catch (err) { }
-  }
-
-  try {
-    const emailSubject = `🚀 New Project Inquiry from ${senderName}`;
-    const emailHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-        <div style="background-color: #7c2d12; padding: 16px; border-radius: 8px; text-align: center;">
-          <h2 style="color: #ffffff; margin: 0; font-size: 20px;">🚀 New Project Inquiry Received</h2>
-        </div>
-        <div style="padding: 20px 0; color: #1e293b;">
-          <p style="margin: 6px 0;"><strong>Sender Name:</strong> ${senderName}</p>
-          <p style="margin: 6px 0;"><strong>Sender Email:</strong> ${senderEmail || 'N/A'}</p>
-          <p style="margin: 6px 0;"><strong>Sender Phone / Contact:</strong> ${senderPhone || 'N/A'}</p>
-          <p style="margin: 6px 0;"><strong>User ID:</strong> ${user_id || 'N/A'}</p>
-          <p style="margin: 16px 0 6px 0;"><strong>Project Details / Message:</strong></p>
-          <div style="background-color: #fff3e0; border-left: 4px solid #ea580c; padding: 14px; margin-top: 6px; border-radius: 4px; font-size: 15px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${senderMessage}</div>
-        </div>
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-        <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">Sent automatically from SadhanaGPT App</p>
-      </div>
-    `;
-
-    emailQueue.addEmail('paramjeetsinghwork7@gmail.com', emailSubject, emailHtml);
-
-    return resp.json({
-      status: 1,
-      code: 200,
-      message: ["Project inquiry submitted successfully. We will get back to you soon!"],
-    });
-  } catch (error) {
-    console.error("Error submitting project inquiry:", error);
-    return resp.json({
-      status: 0,
-      code: 500,
-      message: ["Failed to submit project inquiry."],
-    });
-  }
-});
-
