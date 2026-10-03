@@ -26,7 +26,10 @@ export const insertRecord = async (table, columns, values, connection = null) =>
     };
   } catch (error) {
     throw new Error(`Insert operation failed: ${error.message}`);
+  }finally {
+    if (!connection) dbConn.release();
   }
+
 };
 export const deleteRecord = async (table, whereKey, whereValue) => {
   try {
@@ -74,6 +77,8 @@ export const updateRecord = async (table, updates, whereColumns, whereValues, co
     };
   } catch (error) {
     throw new Error(`Update operation failed: ${error.message}`);
+  }finally {
+    if (!connection) dbConn.release();
   }
 };
 
@@ -86,11 +91,15 @@ export const updateRecord = async (table, updates, whereColumns, whereValues, co
  */
 export const queryDB = async (query, params, connection = null) => {
   const dbConn = connection ? connection : await db.getConnection();
-  // console.log("Executing Query:", query);
+  try {
   const [[results]] = await dbConn.execute(query, params);
-  if (!connection) {
-    dbConn.release();
+  }catch(e){
+throw new Error(`Insert operation failed: ${error.message}`);
   }
+   finally {
+    if (!connection) dbConn.release();
+  }
+  
   return results;
 };
 

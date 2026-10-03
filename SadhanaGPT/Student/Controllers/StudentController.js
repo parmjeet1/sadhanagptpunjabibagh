@@ -1705,7 +1705,7 @@ export const onBoarding = asyncHandler(async (req, resp) => {
   //   counsllor_type='primary' ) AS counsller_id FROM users WHERE 
   //   email = ?`,[email]);
   const isExist = await queryDB(
-    `SELECT profile, access_token,user_id,email,mobile,temple_id,user_type, 
+    `SELECT name,profile, access_token,user_id,email,mobile,temple_id,user_type, 
     (SELECT counsller_id FROM user_counsellors WHERE user_id = users.user_id and counsllor_type='primary' ) AS counsller_id FROM users WHERE 
     email = ?`, [email]);
   const access_token = crypto.randomBytes(12).toString("hex");
@@ -1717,6 +1717,14 @@ export const onBoarding = asyncHandler(async (req, resp) => {
     //   ["google_id"],
     //   [google_id],
     // );
+    let token = isExist.access_token;
+    if (!token) {
+      token = crypto.randomBytes(12).toString("hex");
+      await db.execute(
+        `UPDATE users SET access_token = ? WHERE user_id = ?`,
+        [token, isExist.user_id]
+      );
+    }
 
     return resp.json({
       status: 1,
@@ -1726,8 +1734,8 @@ export const onBoarding = asyncHandler(async (req, resp) => {
         email: isExist.email,
         name: isExist.name,
         mobile: isExist.mobile,
-        access_token: isExist.access_token,
-        temple_id: isExist.temple_id,
+        access_token: isExist.access_token ? isExist.access_token : token,
+           temple_id: isExist.temple_id,
         user_type: isExist.user_type,
         counsller_id: isExist.counsller_id,
         profile: isExist.profile ? isExist.profile : process.env.IMAGE_UPLOAD_PATH + "default_profile.png",
