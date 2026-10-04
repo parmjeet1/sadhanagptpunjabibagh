@@ -4,6 +4,25 @@ import validateFields from "../../../utils/validation.js";
 import db from "../../../config/database.js";
 import crypto from "crypto";
 
+// Builds the DELETE for counselor_added_activities rows of a group.
+// - A specific sub-group chosen  -> only that sub-group's rows are removed.
+// - "All Subgroups" (no label)    -> EVERY row of the group for these activities
+//   is removed, whatever sub-group it was saved with. Before, only rows with no
+//   sub-group were removed, so activities that had been added to specific
+//   sub-groups stayed "already added" in the list after being deleted.
+export const buildGroupActivityDelete = (centerId, activityIds, labelId) => {
+  const ids = Array.isArray(activityIds) ? activityIds : [activityIds];
+  const placeholders = ids.map(() => "?").join(",");
+  let query = `DELETE FROM counselor_added_activities WHERE center_id = ? AND master_activity_id IN (${placeholders})`;
+  const params = [centerId, ...ids];
+  // "0" / 0 / empty all mean "All Subgroups" (the frontend sends "0").
+  if (labelId && labelId !== "0" && labelId !== 0) {
+    query += ` AND label_id = ?`;
+    params.push(labelId);
+  }
+  return { query, params };
+};
+
 export const getMentorSelectableActivities = asyncHandler(async (req, resp) => {
   try {
     const {
@@ -389,15 +408,8 @@ export const deassignActivitiesFromGroup = asyncHandler(async (req, resp) => {
     const activityPlaceholders = activityIds.map(() => "?").join(",");
 
     // 1. Delete from counselor_added_activities
-    let deleteCaaQuery = `DELETE FROM counselor_added_activities WHERE center_id = ? AND master_activity_id IN (${activityPlaceholders})`;
-    let deleteCaaParams = [center_id, ...activityIds];
-
-    if (safeLabelId) {
-      deleteCaaQuery += ` AND label_id = ?`;
-      deleteCaaParams.push(safeLabelId);
-    } else {
-      deleteCaaQuery += ` AND label_id IS NULL`;
-    }
+    // (no sub-group chosen = remove every sub-group's row for this group)
+    const { query: deleteCaaQuery, params: deleteCaaParams } = buildGroupActivityDelete(center_id, activityIds, safeLabelId);
 
     await db.query(deleteCaaQuery, deleteCaaParams);
 
@@ -519,15 +531,8 @@ export const deleteAssignedCustomActivity = asyncHandler(async (req, resp) => {
     const safeLabelId = (label_id && label_id !== "0" && label_id !== 0) ? label_id : null;
 
     // 1. Delete from counselor_added_activities
-    let deleteCaaQuery = `DELETE FROM counselor_added_activities WHERE center_id = ? AND master_activity_id = ?`;
-    let deleteCaaParams = [center_id, master_activity_id];
-
-    if (safeLabelId) {
-      deleteCaaQuery += ` AND label_id = ?`;
-      deleteCaaParams.push(safeLabelId);
-    } else {
-      deleteCaaQuery += ` AND label_id IS NULL`;
-    }
+    // (no sub-group chosen = remove every sub-group's row for this group)
+    const { query: deleteCaaQuery, params: deleteCaaParams } = buildGroupActivityDelete(center_id, [master_activity_id], safeLabelId);
     await db.query(deleteCaaQuery, deleteCaaParams);
 
     // 2. Fetch all students in this group/sub-group
