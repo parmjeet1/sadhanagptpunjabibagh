@@ -40,6 +40,36 @@ export const STANDARD_ACTIVITY_NAMES = [
 export const normalizeActivityName = (name) =>
   String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
+// Different spellings of the SAME activity (after normalizeActivityName). If the person
+// already has any of these, the others are not offered again.
+const NAME_ALIASES = [
+  ["wakeuptime", "wakeup"],
+  ["sleeptime", "sleep"],
+  ["mangalaarti", "mangalaartiattended"],
+  ["dayrest", "dayrestmin"],
+  ["hearing", "hearingmin"],
+  ["reading", "readingmin", "bookreading"],
+  ["chanting", "japa"],
+];
+const ALIAS_CANONICAL = new Map(NAME_ALIASES.flatMap(group => group.map(k => [k, group[0]])));
+
+/** Name key used to decide "the person already has this activity". Exported for testing. */
+export const ownedNameKey = (name) => {
+  const key = normalizeActivityName(name);
+  return ALIAS_CANONICAL.get(key) || key;
+};
+
+/** Drops rows whose name matches (by ownedNameKey) one of the names the person already has. */
+export const removeAlreadyOwned = (rows, ownedNames) => {
+  const owned = new Set((ownedNames || []).map(ownedNameKey).filter(Boolean));
+  return (rows || []).filter(r => !owned.has(ownedNameKey(r.name)));
+};
+
+const getOwnedNames = async (userId) => {
+  const [rows] = await db.query("SELECT name FROM fix_activities WHERE user_id = ?", [userId]);
+  return rows.map(r => r.name);
+};
+
 const ALLOWED_ORDER = new Map(STANDARD_ACTIVITY_NAMES.map((n, i) => [normalizeActivityName(n), i]));
 
 // Active activities (1 = built-in, 3 = counsellor custom).
@@ -107,9 +137,8 @@ export const buildAddableActivitiesQuery = ({ userId }) => {
            a.activity_type, a.status AS original_status, a.counsellor_id
     FROM activities a
     WHERE a.status IN (${CANDIDATE_STATUSES.join(",")})
-      AND NOT EXISTS (SELECT 1 FROM fix_activities f WHERE f.user_id = ? AND f.master_activity_id = a.id)
-      AND NOT EXISTS (SELECT 1 FROM fix_activities f2 WHERE f2.user_id = ? AND LOWER(TRIM(f2.name)) = LOWER(TRIM(a.name)))`;
-  return { query, params: [userId, userId] };
+      AND NOT EXISTS (SELECT 1 FROM fix_activities f WHERE f.user_id = ? AND f.master_activity_id = a.id)`;
+  return { query, params: [userId] };
 };
 
 // GET /addable-activities
@@ -125,7 +154,8 @@ export const getAddableActivities = asyncHandler(async (req, resp) => {
     const [candidates] = await db.query(query, params);
     const text = String(search_text || "").trim().toLowerCase();
     const counsellorIds = await getPickCounsellorIds(userId);
-    const rows = filterStandardActivities(candidates, { counsellorIds }).filter(r =>
+    const ownedNames = await getOwnedNames(userId);
+    const rows = filterStandardActivities(removeAlreadyOwned(candidates, ownedNames), { counsellorIds }).filter(r =>
       !text || `${r.name} ${r.description || ""}`.toLowerCase().includes(text)
     );
 
@@ -169,14 +199,14 @@ export const addSelectedActivities = asyncHandler(async (req, resp) => {
        FROM activities a
        WHERE a.id IN (${placeholders})
          AND a.status IN (${CANDIDATE_STATUSES.join(",")})
-         AND NOT EXISTS (SELECT 1 FROM fix_activities f WHERE f.user_id = ? AND f.master_activity_id = a.id)
-         AND NOT EXISTS (SELECT 1 FROM fix_activities f2 WHERE f2.user_id = ? AND LOWER(TRIM(f2.name)) = LOWER(TRIM(a.name)))`,
-      [...ids, userId, userId]
+         AND NOT EXISTS (SELECT 1 FROM fix_activities f WHERE f.user_id = ? AND f.master_activity_id = a.id)`,
+      [...ids, userId]
     );
+    const ownedNames = await getOwnedNames(userId);
     // Only the standard activities and the person's own counsellor's customs can be added,
     // whatever ids are sent.
     const counsellorIds = await getPickCounsellorIds(userId);
-    const candidates = filterStandardActivities(found, { counsellorIds });
+    const candidates = filterStandardActivities(removeAlreadyOwned(found, ownedNames), { counsellorIds });
 
     if (candidates.length === 0) {
       return resp.json({
