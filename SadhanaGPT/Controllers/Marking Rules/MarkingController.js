@@ -2,7 +2,6 @@ import { insertRecord, deleteRecord } from "../../../utils/dbUtils.js";
 import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 import validateFields from "../../../utils/validation.js";
 import db from "../../../config/database.js";
-import { recalculateTodayMarksSoon, getTargetsUsingScheme, targetsFromAssignments, mergeTargets } from "./recalculateMarks.js";
 
 export const addMarkingRule = asyncHandler(async (req, resp) => {
   try {
@@ -243,13 +242,6 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
       }
     }
 
-    // Today's entries of the students on this scheme follow the saved rules straight away.
-    // (The built-in default scheme is never recalculated here: it covers everyone.)
-    const [[savedScheme]] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [schemeIdToUse]);
-    if (savedScheme && savedScheme.counsellor_id !== 'system') {
-      await recalculateTodayMarksSoon(await getTargetsUsingScheme(schemeIdToUse));
-    }
-
     return resp.json({
       status: 1,
       code: 200,
@@ -454,9 +446,6 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
       }
     }
 
-    // Allotted to groups / sub-groups: recalculate today's entries with the new scheme.
-    await recalculateTodayMarksSoon(targetsFromAssignments(assignList));
-
     return resp.json({
       status: 1,
       code: 200,
@@ -560,9 +549,6 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
       await db.query("UPDATE marking_schemes SET name = ? WHERE id = ?", [name.trim(), scheme_id]);
     }
 
-    // Remember who used this scheme before, so students who lose it are recalculated too.
-    const previousTargets = await getTargetsUsingScheme(scheme_id);
-
     // Unlink old assignments
     await db.query(`UPDATE center_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
     await db.query(`UPDATE labels_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
@@ -575,8 +561,6 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
         await db.query("UPDATE labels_list SET marking_scheme_id = ? WHERE id = ?", [scheme_id, a.id]);
       }
     }
-
-    await recalculateTodayMarksSoon(mergeTargets(previousTargets, targetsFromAssignments(assignList)));
 
     return resp.json({
       status: 1,
@@ -610,17 +594,12 @@ export const deleteMarkingScheme = asyncHandler(async (req, resp) => {
       return resp.json({ status: 0, code: 403, message: ["Scheme not found or access denied."] });
     }
 
-    const previousTargets = await getTargetsUsingScheme(scheme_id);
-
     await db.query("DELETE FROM marking_rules WHERE scheme_id = ?", [scheme_id]);
 
     await db.query(`UPDATE center_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
     await db.query(`UPDATE labels_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
 
     await db.query("DELETE FROM marking_schemes WHERE id = ?", [scheme_id]);
-
-    // Those students are back on the default scheme: recalculate today's entries.
-    await recalculateTodayMarksSoon(previousTargets);
 
     return resp.json({
       status: 1,

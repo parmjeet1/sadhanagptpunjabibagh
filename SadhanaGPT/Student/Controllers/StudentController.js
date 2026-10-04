@@ -68,39 +68,6 @@ const parseValToNumber = (val, isTime = false, isYesNo = false) => {
   return parseFloat(str);
 };
 
-/**
- * The ONE rule for which marking scheme applies to a student, used everywhere marks or
- * possible marks are worked out (it matches the "Applied Marking Scheme" screen):
- *  - the sub-group's own scheme, if it has a custom one (anything other than the default, 1);
- *  - otherwise the group's scheme (a sub-group that only carries the default scheme
- *    inherits the group's custom scheme);
- *  - otherwise the default scheme (1).
- * Before, saving marks used "sub-group scheme || group scheme", so a sub-group holding the
- * default id hid the group's custom scheme and marks came from the default scheme while the
- * screen showed the custom one.
- */
-export const resolveEffectiveSchemeId = (labelSchemeId, centerSchemeId) => {
-  const label = Number(labelSchemeId);
-  if (label > 0 && label !== 1) return label;
-  const center = Number(centerSchemeId);
-  if (center > 0) return center;
-  return 1;
-};
-
-/**
- * The rules query returns rules from the student's own scheme AND from the
- * default scheme (id 1) so the default can act as a fallback. The two must not
- * be mixed: calculateBestMarks() takes the HIGHEST matching mark, so a default
- * rule worth more than the custom one would always win and the custom scheme
- * would never take effect. If the student's scheme has rules for this
- * activity, use only those; otherwise fall back to the default scheme's rules.
- */
-export const selectRulesForScheme = (rules, schemeId) => {
-  if (!Array.isArray(rules) || rules.length === 0) return [];
-  const own = rules.filter(r => Number(r.scheme_id) === Number(schemeId));
-  return own.length > 0 ? own : rules.filter(r => Number(r.scheme_id) === 1 || r.scheme_id == null);
-};
-
 export const calculateBestMarks = (rawCount, rules, activityType, unit, activityName) => {
   if (!rules || rules.length === 0) return null;
   console.log("calculation best marks", rawCount, rules, activityType, unit, activityName);
@@ -1203,7 +1170,9 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
 
       if (masterId && Number(masterId) > 0) {
         // Resolve Scheme ID instantly from parallel joined result
-        const schemeId = resolveEffectiveSchemeId(studentAssignment?.label_scheme_id, studentAssignment?.center_scheme_id);
+        const schemeId = studentAssignment?.label_scheme_id 
+          || studentAssignment?.center_scheme_id 
+          || 1;
 
         // Fetch scoring rules for resolved scheme ID (with system default fallback)
         const [fetchedRules] = await db.execute(
@@ -1218,7 +1187,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
         );
 
         if (fetchedRules.length > 0) {
-          achievedMarks = calculateBestMarks(storedCount, selectRulesForScheme(fetchedRules, schemeId), activityInfo.activity_type, unit);
+          achievedMarks = calculateBestMarks(storedCount, fetchedRules, activityInfo.activity_type, unit);
         } else {
           achievedMarks = 0;
         }
@@ -2517,7 +2486,7 @@ export const studentExportReport = asyncHandler(async (req, res) => {
              (SELECT MAX(mr.marks) FROM marking_rules mr
                WHERE mr.master_activity_id = fa.master_activity_id
                  AND mr.status = 1 AND mr.frequency = 'daily'
-                 AND mr.scheme_id = COALESCE(NULLIF(l.marking_scheme_id, 1), cl.marking_scheme_id, 1)),
+                 AND mr.scheme_id = COALESCE(l.marking_scheme_id, cl.marking_scheme_id, 1)),
              (SELECT MAX(mr2.marks) FROM marking_rules mr2
                WHERE mr2.master_activity_id = fa.master_activity_id
                  AND mr2.status = 1 AND mr2.frequency = 'daily' AND mr2.scheme_id = 1),
@@ -3704,7 +3673,7 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
     [student.user_id]
   );
 
-  const schemeId = resolveEffectiveSchemeId(studentAssignment?.label_scheme_id, studentAssignment?.center_scheme_id);
+  const schemeId = studentAssignment?.label_scheme_id || studentAssignment?.center_scheme_id || 1;
 
   // Fetch available activities for student
   const [studentActivities] = await db.execute(
@@ -3788,7 +3757,7 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
       );
 
       if (fetchedRules.length > 0) {
-        achievedMarks = calculateBestMarks(countVal, selectRulesForScheme(fetchedRules, schemeId), matchedAct.activity_type, matchedAct.unit, matchedAct.name);
+        achievedMarks = calculateBestMarks(countVal, fetchedRules, matchedAct.activity_type, matchedAct.unit, matchedAct.name);
       } else {
         achievedMarks = 0;
       }

@@ -1,5 +1,12 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-04, 7:42 PM IST - Revert
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: On the developer's request, ALL of today's afternoon changes were undone with new "revert" changes (history was not rewritten): the custom-marking-scheme marks fix, recalculating today's marks when a scheme is allotted, the add-activity pick-list (fixed list, own counsellor's customs, alternate-name check), and the "marks use the same scheme shown to the student" fix. The code is back to how it was before these changes. The earlier entries below are kept for the record. The unpublished "Book Distribution Time" change was dropped (it had not been pushed).
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js` (removed), `SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js`, `SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js` (removed), `SadhanaGPT/Mentors/CounslerController.js`, `SadhanaGPT/Student/Controllers/StudentController.js`, `routes/Routes.js`, `CHANGELOG.md`
+- **Frontend**: the pick-list screen needs its own revert (the `/addable-activities` calls would fail otherwise). No database change. Marks already saved while the fixes were live are not changed back.
+
 ## 2026-10-04, 4:45 PM IST - Fix
 
 - **Developer**: Manvatar Prabhu Ji
