@@ -1,5 +1,12 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-04, 5:30 PM IST - Fix
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The "Add custom activity" pick-list now offers ONLY this fixed list of 14 standard activities (names matched ignoring capitals, spaces and punctuation): Sleep Time, wake up time, Chanting Completion Time, chanting, Mangal Aarti Attended, day rest(min), hearing(min), reading(min), Reading Misc. Books, hearing spiritual master, hearing srila prabhupada, menial services, Shloka Memorisation, Study Hours(MIN). Anything else (other counsellors' custom activities, Hearing Miscellaneous, etc.) is never shown or added, even if its id is sent directly. Each name appears once (a built-in wins over a custom copy of the same name) and the list is in a fixed order. Activities the person already has are still left out. "Chanting" is treated as the "Japa Number of Rounds" activity of the marking scheme, so there is no second Japa entry.
+- **Files touched**: `SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js`, `CHANGELOG.md`
+- **Frontend**: no change needed. No database structure change.
+
 ## 2026-10-04, 4:30 PM IST - New feature
 
 - **Developer**: Manvatar Prabhu Ji
