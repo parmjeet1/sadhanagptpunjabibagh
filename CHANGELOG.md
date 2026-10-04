@@ -1,5 +1,12 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-04, 12:30 PM IST - Fix
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Marks are now worked out only from the marking scheme that applies to the student (their sub-group's scheme, else their group's scheme). Before, the student's custom scheme and the default scheme were mixed and the HIGHEST matching mark won, so a custom scheme that gave fewer marks than the default was ignored. The default scheme is still used as a fallback only when the custom scheme has no rules at all for that activity. Applies when a student logs sadhana in the app and when it is logged through WhatsApp.
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Frontend**: no change needed. No database structure change. Marks already saved for past/today's entries are not changed by this fix (they only recalculate when the activity is saved again).
+
 ## 2026-10-04, 10:50 AM IST - Fix
 
 - **Developer**: Manvatar Prabhu Ji
