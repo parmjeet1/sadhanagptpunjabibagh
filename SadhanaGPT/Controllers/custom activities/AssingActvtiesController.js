@@ -25,21 +25,27 @@ export const buildGroupActivityDelete = (centerId, activityIds, labelId) => {
 
 // SQL for "is this activity already added for this group / sub-group?" (assignment_status).
 // - Built-in activities (activities.status = 1) are no longer always "added". They count
-//   as added only while at least one student of the group (or of the chosen sub-group)
-//   really has the activity. Once a counsellor removes it, the students' copies are gone,
-//   so it drops out of "Already added" and shows under "Available" again.
+//   as added only while EVERY student of the group (or of the chosen sub-group) has the
+//   activity. Once a counsellor removes it, the students' copies are gone, so it drops out
+//   of "Already added" and shows under "Available" again. A single student adding it for
+//   themselves does not make the whole group look added.
 //   A group with no students at all keeps built-ins as added (nothing to judge by).
 // - Every other activity is added when a counselor_added_activities row exists for the group
 //   (any sub-group when "All Subgroups", otherwise this sub-group or a group-wide row).
 // safeCenterId / safeLabelId must already be escaped with db.escape (label may be null).
 export const buildAssignmentStatusSql = ({ safeCenterId, safeLabelId, groupHasStudents }) => {
+  // "Added" only when NO student of the group (or sub-group) is missing the activity.
+  // One student adding it for themselves therefore never makes the whole group look added.
   const builtInAdded = groupHasStudents
     ? `CASE WHEN EXISTS (
-          SELECT 1 FROM fix_activities fa
-          JOIN user_assignments ua ON ua.user_id = fa.user_id
-          WHERE fa.master_activity_id = activities.id
-            AND ua.center_id = ${safeCenterId} ${safeLabelId ? `AND ua.label_id = ${safeLabelId}` : ""}
-        ) THEN 1 ELSE 0 END`
+          SELECT 1 FROM user_assignments ua
+          WHERE ua.center_id = ${safeCenterId} ${safeLabelId ? `AND ua.label_id = ${safeLabelId}` : ""}
+            AND ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = ua.user_id)
+            AND NOT EXISTS (
+              SELECT 1 FROM fix_activities fa
+              WHERE fa.user_id = ua.user_id AND fa.master_activity_id = activities.id
+            )
+        ) THEN 0 ELSE 1 END`
     : `1`;
   return `CASE
           WHEN activities.status = 1 THEN ${builtInAdded}
