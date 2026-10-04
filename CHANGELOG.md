@@ -1,5 +1,12 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-04, 5:40 PM IST - Change
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The "Add custom activity" pick-list now also shows the custom activities made by the person's OWN counsellor (their primary counsellor; a counsellor sees the ones they made themselves), after the fixed standard activities and in A to Z order. Customs of any other counsellor are still never shown or added, even if their id is sent directly. Activities the person already has are still left out.
+- **Files touched**: `SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js`, `CHANGELOG.md`
+- **Frontend**: no change needed. No database structure change.
+
 ## 2026-10-04, 5:30 PM IST - Fix
 
 - **Developer**: Manvatar Prabhu Ji

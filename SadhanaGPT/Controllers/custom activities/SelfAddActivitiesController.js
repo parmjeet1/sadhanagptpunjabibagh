@@ -5,11 +5,11 @@ import db from "../../../config/database.js";
  * "Add custom activity" pick-list for students AND counsellors (for their own
  * list only).
  *
- * The pick-list offers ONLY the fixed set of standard activities below (the
- * Daily Sadhana Marking Scheme activities), never anything else, so it is never
- * random. Activities the person already has (same master activity, or the same
- * name) are left out, so what remains is exactly the standard activities missing
- * from their dashboard.
+ * The pick-list offers ONLY (1) the fixed set of standard activities below (the Daily
+ * Sadhana Marking Scheme activities) and (2) custom activities made by the person's OWN
+ * counsellor (a counsellor sees their own), never anything else, so it is never random.
+ * Activities the person already has (same master activity, or the same name) are left
+ * out, so what remains is what is missing from their dashboard.
  *
  * Adding an activity here only changes the person's OWN list. It never writes to
  * counselor_added_activities, so a personal pick never makes a group look as if
@@ -42,27 +42,62 @@ export const normalizeActivityName = (name) =>
 
 const ALLOWED_ORDER = new Map(STANDARD_ACTIVITY_NAMES.map((n, i) => [normalizeActivityName(n), i]));
 
-// Active activities (1 = built-in, 3 = counsellor custom). Only those whose name is in
-// the fixed list above are ever shown or added.
+// Active activities (1 = built-in, 3 = counsellor custom).
 const CANDIDATE_STATUSES = [1, 3];
 
+const betterRow = (x, cur) => {
+  const rank = (r) => [Number(r.status ?? r.original_status) === 1 ? 0 : 1, Number(r.id ?? r.master_activity_id)];
+  const [xa, xb] = rank(x);
+  const [ca, cb] = rank(cur);
+  return xa < ca || (xa === ca && xb < cb);
+};
+
 /**
- * Keeps only the fixed standard activities, one row per name (a built-in row wins over a
- * counsellor's custom copy of the same name, then the lowest id), in the fixed order.
+ * Keeps what may be shown or added:
+ *  - the fixed standard activities (one row per name; a built-in wins over a custom copy
+ *    of the same name, then the lowest id), in the fixed order, then
+ *  - custom activities (status 3) made by one of `counsellorIds` (the person's own
+ *    counsellor, or themselves if they are a counsellor), one row per name, A to Z.
+ * Everything else (other counsellors' customs, other built-ins) is dropped.
  * Exported for testing.
  */
-export const filterStandardActivities = (rows) => {
-  const best = new Map();
+export const filterStandardActivities = (rows, { counsellorIds = [] } = {}) => {
+  const mine = new Set(counsellorIds.filter(v => v !== undefined && v !== null && v !== "").map(String));
+  const standard = new Map();
+  const customs = new Map();
   for (const r of rows || []) {
     const key = normalizeActivityName(r.name);
-    if (!ALLOWED_ORDER.has(key)) continue;
-    const cur = best.get(key);
-    const rank = (x) => [Number(x.status ?? x.original_status) === 1 ? 0 : 1, Number(x.id ?? x.master_activity_id)];
-    if (!cur || rank(r)[0] < rank(cur)[0] || (rank(r)[0] === rank(cur)[0] && rank(r)[1] < rank(cur)[1])) best.set(key, r);
+    if (!key) continue;
+    const isCustom = Number(r.status ?? r.original_status) === 3;
+    if (ALLOWED_ORDER.has(key)) {
+      const cur = standard.get(key);
+      if (!cur || betterRow(r, cur)) standard.set(key, r);
+    } else if (isCustom && mine.has(String(r.counsellor_id))) {
+      const cur = customs.get(key);
+      if (!cur || betterRow(r, cur)) customs.set(key, r);
+    }
   }
-  return [...best.entries()]
+  const standardRows = [...standard.entries()]
     .sort((x, y) => ALLOWED_ORDER.get(x[0]) - ALLOWED_ORDER.get(y[0]))
     .map(([, r]) => r);
+  const customRows = [...customs.values()]
+    .sort((x, y) => String(x.name).localeCompare(String(y.name)));
+  return [...standardRows, ...customRows];
+};
+
+/** Counsellors whose custom activities this person may pick: their primary counsellor and themselves. */
+export const getPickCounsellorIds = async (userId) => {
+  const ids = [userId];
+  try {
+    const [rows] = await db.query(
+      `SELECT counsller_id FROM user_counsellors WHERE user_id = ? AND counsllor_type = 'primary'`,
+      [userId]
+    );
+    rows.forEach(r => { if (r.counsller_id) ids.push(r.counsller_id); });
+  } catch (error) {
+    console.error("Error reading the person's counsellor:", error?.message || error);
+  }
+  return ids;
 };
 
 /** Builds the SQL + params for the candidates the person does not have yet. Exported for testing. */
@@ -89,7 +124,8 @@ export const getAddableActivities = asyncHandler(async (req, resp) => {
     const { query, params } = buildAddableActivitiesQuery({ userId });
     const [candidates] = await db.query(query, params);
     const text = String(search_text || "").trim().toLowerCase();
-    const rows = filterStandardActivities(candidates).filter(r =>
+    const counsellorIds = await getPickCounsellorIds(userId);
+    const rows = filterStandardActivities(candidates, { counsellorIds }).filter(r =>
       !text || `${r.name} ${r.description || ""}`.toLowerCase().includes(text)
     );
 
@@ -137,8 +173,10 @@ export const addSelectedActivities = asyncHandler(async (req, resp) => {
          AND NOT EXISTS (SELECT 1 FROM fix_activities f2 WHERE f2.user_id = ? AND LOWER(TRIM(f2.name)) = LOWER(TRIM(a.name)))`,
       [...ids, userId, userId]
     );
-    // Only the fixed standard activities can be added, whatever ids are sent.
-    const candidates = filterStandardActivities(found);
+    // Only the standard activities and the person's own counsellor's customs can be added,
+    // whatever ids are sent.
+    const counsellorIds = await getPickCounsellorIds(userId);
+    const candidates = filterStandardActivities(found, { counsellorIds });
 
     if (candidates.length === 0) {
       return resp.json({
