@@ -23,6 +23,31 @@ export const buildGroupActivityDelete = (centerId, activityIds, labelId) => {
   return { query, params };
 };
 
+// SQL for "is this activity already added for this group / sub-group?" (assignment_status).
+// - Built-in activities (activities.status = 1) are no longer always "added". They count
+//   as added only while at least one student of the group (or of the chosen sub-group)
+//   really has the activity. Once a counsellor removes it, the students' copies are gone,
+//   so it drops out of "Already added" and shows under "Available" again.
+//   A group with no students at all keeps built-ins as added (nothing to judge by).
+// - Every other activity is added when a counselor_added_activities row exists for the group
+//   (any sub-group when "All Subgroups", otherwise this sub-group or a group-wide row).
+// safeCenterId / safeLabelId must already be escaped with db.escape (label may be null).
+export const buildAssignmentStatusSql = ({ safeCenterId, safeLabelId, groupHasStudents }) => {
+  const builtInAdded = groupHasStudents
+    ? `CASE WHEN EXISTS (
+          SELECT 1 FROM fix_activities fa
+          JOIN user_assignments ua ON ua.user_id = fa.user_id
+          WHERE fa.master_activity_id = activities.id
+            AND ua.center_id = ${safeCenterId} ${safeLabelId ? `AND ua.label_id = ${safeLabelId}` : ""}
+        ) THEN 1 ELSE 0 END`
+    : `1`;
+  return `CASE
+          WHEN activities.status = 1 THEN ${builtInAdded}
+          WHEN (SELECT COUNT(*) FROM counselor_added_activities caa WHERE caa.master_activity_id = activities.id AND caa.center_id = ${safeCenterId} ${safeLabelId ? `AND (caa.label_id = ${safeLabelId} OR caa.label_id IS NULL)` : ""}) > 0 THEN 1
+          ELSE 0
+        END`;
+};
+
 export const getMentorSelectableActivities = asyncHandler(async (req, resp) => {
   try {
     const {
@@ -45,14 +70,22 @@ export const getMentorSelectableActivities = asyncHandler(async (req, resp) => {
     const safeLabelId = (label_id && label_id !== "0" && label_id !== 0) ? db.escape(label_id) : null;
     const safeUserId = db.escape(user_id);
 
+    // Does this group (or chosen sub-group) have any students? Needed to decide whether
+    // built-in activities can be judged by what the students actually have.
+    let groupHasStudents = false;
+    if (center_id) {
+      const [studentRows] = await db.query(
+        `SELECT 1 FROM user_assignments WHERE center_id = ? ${safeLabelId ? "AND label_id = ?" : ""} LIMIT 1`,
+        safeLabelId ? [center_id, label_id] : [center_id]
+      );
+      groupHasStudents = studentRows.length > 0;
+    }
+    const assignmentStatusSql = buildAssignmentStatusSql({ safeCenterId, safeLabelId, groupHasStudents });
+
     const params = {
       tableName: `(
         SELECT *, id AS master_activity_id,
-        CASE
-          WHEN activities.status = 1 THEN 1
-          WHEN (SELECT COUNT(*) FROM counselor_added_activities caa WHERE caa.master_activity_id = activities.id AND caa.center_id = ${safeCenterId} ${safeLabelId ? `AND (caa.label_id = ${safeLabelId} OR caa.label_id IS NULL)` : ""}) > 0 THEN 1
-          ELSE 0
-        END AS assignment_status
+        ${assignmentStatusSql} AS assignment_status
         FROM activities 
         WHERE (counsellor_id IS NULL OR counsellor_id = ${safeUserId})
       ) AS activities`,
