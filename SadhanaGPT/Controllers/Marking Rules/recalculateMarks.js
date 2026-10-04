@@ -1,6 +1,6 @@
 import moment from "moment";
 import db from "../../../config/database.js";
-import { calculateBestMarks, selectRulesForScheme } from "../../Student/Controllers/StudentController.js";
+import { calculateBestMarks, selectRulesForScheme, resolveEffectiveSchemeId } from "../../Student/Controllers/StudentController.js";
 import { dailyStudentSummary } from "../SummaryData/summary-report.js";
 
 /**
@@ -9,8 +9,8 @@ import { dailyStudentSummary } from "../SummaryData/summary-report.js";
  * recalculated with the scheme that now applies to each student, so the new
  * scheme counts straight away. Earlier days are never touched.
  *
- * Scheme resolution matches saveActivityEntry(): sub-group scheme, else group
- * scheme, else default (1). Rules come from that scheme only; the default
+ * Scheme resolution is the shared resolveEffectiveSchemeId() rule (custom sub-group scheme,
+ * else group scheme, else default 1). Rules come from that scheme only; the default
  * scheme is used just for activities the scheme has no rule for.
  *
  * Never throws: a failure here must not break saving the scheme itself.
@@ -52,7 +52,7 @@ export const recalculateTodayMarks = async ({ centerIds = [], labelIds = [] } = 
          ORDER BY ua.id DESC LIMIT 1`,
         [user_id]
       );
-      const schemeId = assignment?.label_scheme_id || assignment?.center_scheme_id || 1;
+      const schemeId = resolveEffectiveSchemeId(assignment?.label_scheme_id, assignment?.center_scheme_id);
 
       const [entries] = await db.query(
         `SELECT dr.activity_id, dr.count, fa.master_activity_id, fa.activity_type, fa.unit, fa.name
