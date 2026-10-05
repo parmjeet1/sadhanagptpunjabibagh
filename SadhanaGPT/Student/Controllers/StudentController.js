@@ -24,6 +24,7 @@ import db from "../../../config/database.js";
 import emailQueue from "../../../utils/emails/emailQueue.js";
 import { Console } from "console";
 import { dailyStudentSummary } from '../../Controllers/SummaryData/summary-report.js';
+import { getDailyMaxByUser, rankByPercentage } from '../../Controllers/SummaryData/rankingPercent.js';
 
 
 export const parseTimeToMinutes = (val) => {
@@ -66,6 +67,39 @@ const parseValToNumber = (val, isTime = false, isYesNo = false) => {
 
   if (!isNaN(Number(str))) return Number(str);
   return parseFloat(str);
+};
+
+/**
+ * The ONE rule for which marking scheme applies to a student, used everywhere marks or
+ * possible marks are worked out (it matches the "Applied Marking Scheme" screen):
+ *  - the sub-group's own scheme, if it has a custom one (anything other than the default, 1);
+ *  - otherwise the group's scheme (a sub-group that only carries the default scheme
+ *    inherits the group's custom scheme);
+ *  - otherwise the default scheme (1).
+ * Before, saving marks used "sub-group scheme || group scheme", so a sub-group holding the
+ * default id hid the group's custom scheme and marks came from the default scheme while the
+ * screen showed the custom one.
+ */
+export const resolveEffectiveSchemeId = (labelSchemeId, centerSchemeId) => {
+  const label = Number(labelSchemeId);
+  if (label > 0 && label !== 1) return label;
+  const center = Number(centerSchemeId);
+  if (center > 0) return center;
+  return 1;
+};
+
+/**
+ * The rules query returns rules from the student's own scheme AND from the
+ * default scheme (id 1) so the default can act as a fallback. The two must not
+ * be mixed: calculateBestMarks() takes the HIGHEST matching mark, so a default
+ * rule worth more than the custom one would always win and the custom scheme
+ * would never take effect. If the student's scheme has rules for this
+ * activity, use only those; otherwise fall back to the default scheme's rules.
+ */
+export const selectRulesForScheme = (rules, schemeId) => {
+  if (!Array.isArray(rules) || rules.length === 0) return [];
+  const own = rules.filter(r => Number(r.scheme_id) === Number(schemeId));
+  return own.length > 0 ? own : rules.filter(r => Number(r.scheme_id) === 1 || r.scheme_id == null);
 };
 
 export const calculateBestMarks = (rawCount, rules, activityType, unit, activityName) => {
@@ -1170,9 +1204,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
 
       if (masterId && Number(masterId) > 0) {
         // Resolve Scheme ID instantly from parallel joined result
-        const schemeId = studentAssignment?.label_scheme_id 
-          || studentAssignment?.center_scheme_id 
-          || 1;
+        const schemeId = resolveEffectiveSchemeId(studentAssignment?.label_scheme_id, studentAssignment?.center_scheme_id);
 
         // Fetch scoring rules for resolved scheme ID (with system default fallback)
         const [fetchedRules] = await db.execute(
@@ -1187,7 +1219,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
         );
 
         if (fetchedRules.length > 0) {
-          achievedMarks = calculateBestMarks(storedCount, fetchedRules, activityInfo.activity_type, unit);
+          achievedMarks = calculateBestMarks(storedCount, selectRulesForScheme(fetchedRules, schemeId), activityInfo.activity_type, unit);
         } else {
           achievedMarks = 0;
         }
@@ -2486,7 +2518,7 @@ export const studentExportReport = asyncHandler(async (req, res) => {
              (SELECT MAX(mr.marks) FROM marking_rules mr
                WHERE mr.master_activity_id = fa.master_activity_id
                  AND mr.status = 1 AND mr.frequency = 'daily'
-                 AND mr.scheme_id = COALESCE(l.marking_scheme_id, cl.marking_scheme_id, 1)),
+                 AND mr.scheme_id = COALESCE(NULLIF(l.marking_scheme_id, 1), cl.marking_scheme_id, 1)),
              (SELECT MAX(mr2.marks) FROM marking_rules mr2
                WHERE mr2.master_activity_id = fa.master_activity_id
                  AND mr2.status = 1 AND mr2.frequency = 'daily' AND mr2.scheme_id = 1),
@@ -3211,7 +3243,7 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
                  (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND scheme_id = ?),
                  (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND scheme_id = 1)
                ) as max_marks
-        FROM fix_activities f
+        FROM (SELECT DISTINCT user_id, master_activity_id FROM fix_activities) f
         WHERE f.user_id = ? AND f.master_activity_id IS NOT NULL AND f.master_activity_id > 0
       ) temp
     `, [scheme_id, user_id]);
@@ -3306,64 +3338,50 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
         [user_id]
       );
       if (centerRows.length > 0 && centerRows[0].center_id) {
-        centerCondition = "AND ua.center_id = ?";
+        centerCondition = "AND u.user_id IN (SELECT user_id FROM user_assignments WHERE center_id = ?)";
         centerId = centerRows[0].center_id;
       }
     }
 
-    const mainParams = [...dateParams];
-    if (centerId) mainParams.push(centerId);
-    mainParams.push(String(limit), String(offset));
+    // Everyone who is ranked: all active students (so students with no entries sit at the bottom),
+    // plus anyone else (e.g. a counsellor) who has entries in the period.
+    const poolParams = [...dateParams];
+    if (centerId) poolParams.push(centerId);
+    const [pool] = await db.query(
+      `SELECT u.user_id, u.name, u.profile, COALESCE(e.total_marks, 0) AS total_marks
+       FROM users u
+       LEFT JOIN (
+         SELECT dr.user_id, SUM(dr.marks) AS total_marks
+         FROM daily_report dr
+         WHERE ${dateCondition}
+         GROUP BY dr.user_id
+       ) e ON e.user_id = u.user_id
+       WHERE u.status = 1
+         AND (u.user_type = 'student' OR e.user_id IS NOT NULL)
+         ${centerCondition}`,
+      poolParams
+    );
 
-    const query = `
-      SELECT 
-        u.user_id, 
-        u.name, 
-        u.profile,
-        SUM(dr.marks) as total_marks
-      FROM users u
-      JOIN daily_report dr ON u.user_id = dr.user_id
-      LEFT JOIN user_assignments ua ON u.user_id = ua.user_id
-      WHERE u.status = 1 
-        AND ${dateCondition}
-        ${centerCondition}
-      GROUP BY u.user_id
-      ORDER BY total_marks DESC, u.name ASC
-      LIMIT ? OFFSET ?
-    `;
+    // Percentage = marks earned / (the student's own daily maximum x days in the period).
+    const daysInPeriod = time_filter === 'weekly' ? 7 : 1;
+    const dailyMax = await getDailyMaxByUser(db, pool.map(r => r.user_id));
+    const rankedAll = rankByPercentage(pool.map(r => ({
+      user_id: r.user_id,
+      name: r.name,
+      profile: r.profile,
+      total_marks: Number(r.total_marks) || 0,
+      max_marks: (dailyMax.get(String(r.user_id)) || 0) * daysInPeriod,
+    })));
 
-
-    const [rankingList] = await db.execute(query, mainParams);
-
-    // Get current user's specific rank
-    let currentUserRank = null;
-    if (rankingList.some(r => String(r.user_id) === String(user_id))) {
-      currentUserRank = rankingList.findIndex(r => String(r.user_id) === String(user_id)) + 1 + offset;
-    } else {
-      // If not in this page, find their absolute rank
-      const rankDateCondition = dateCondition.replace(/dr\./g, 'dr2.');
-      const rankQuery = `
-        SELECT user_rank FROM (
-          SELECT dr2.user_id, RANK() OVER (ORDER BY SUM(dr2.marks) DESC) as user_rank
-          FROM daily_report dr2
-          LEFT JOIN user_assignments ua2 ON dr2.user_id = ua2.user_id
-          WHERE ${rankDateCondition}
-          ${centerCondition ? "AND ua2.center_id = ?" : ""}
-          GROUP BY dr2.user_id
-        ) sub
-        WHERE user_id = ?
-      `;
-      const rankParams = [...dateParams];
-      if (centerId) rankParams.push(centerId);
-      rankParams.push(user_id);
-
-      const [rankRes] = await db.execute(rankQuery, rankParams);
-      if (rankRes.length > 0) currentUserRank = rankRes[0].user_rank;
-    }
+    const rankingList = rankedAll.slice(offset, offset + Number(limit));
+    const me = rankedAll.find(r => String(r.user_id) === String(user_id));
+    const currentUserRank = me ? me.rank : null;
+    // Being "rank 1" with nothing entered (everyone tied at 0) is not a top rank.
+    const isFirstWithMarks = currentUserRank === 1 && Number(me?.total_marks) > 0;
 
     // If user is #1 today, upsert top_ranker_from / top_ranker_to
     let topRankerDates = null;
-    if (currentUserRank === 1 && time_filter === 'today') {
+    if (isFirstWithMarks && time_filter === 'today') {
       const [existingRows] = await db.execute(
         `SELECT top_ranker_from, top_ranker_to FROM users WHERE user_id = ? LIMIT 1`,
         [user_id]
@@ -3393,7 +3411,7 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
       data: {
         ranking: rankingList,
         currentUserRank: currentUserRank,
-        isTopRanker: currentUserRank === 1 && time_filter === 'today',
+        isTopRanker: isFirstWithMarks && time_filter === 'today',
         topRankerDates: topRankerDates
       }
     });
@@ -3673,7 +3691,7 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
     [student.user_id]
   );
 
-  const schemeId = studentAssignment?.label_scheme_id || studentAssignment?.center_scheme_id || 1;
+  const schemeId = resolveEffectiveSchemeId(studentAssignment?.label_scheme_id, studentAssignment?.center_scheme_id);
 
   // Fetch available activities for student
   const [studentActivities] = await db.execute(
@@ -3757,7 +3775,7 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
       );
 
       if (fetchedRules.length > 0) {
-        achievedMarks = calculateBestMarks(countVal, fetchedRules, matchedAct.activity_type, matchedAct.unit, matchedAct.name);
+        achievedMarks = calculateBestMarks(countVal, selectRulesForScheme(fetchedRules, schemeId), matchedAct.activity_type, matchedAct.unit, matchedAct.name);
       } else {
         achievedMarks = 0;
       }

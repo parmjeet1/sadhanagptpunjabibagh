@@ -9,6 +9,7 @@ import { handleFileUpload } from "../utils/fileUpload.js";
 import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 import { irregularMenteesList, toggleMenteeNotification } from "../SadhanaGPT/Mentors/NotificationController.js";
 import { assignActivitiesToStudents, getMentorSelectableActivities, createCustomActivity, assignActivitiesToGroup, deassignActivitiesFromGroup, deleteCustomActivity, deleteAssignedCustomActivity, getGroupSubgroupList } from "../SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js";
+import { getAddableActivities, addSelectedActivities } from "../SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js";
 import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
 import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
 import { getFollowUpStudents } from '../SadhanaGPT/Controllers/SummaryData/followUpStudents.js';
@@ -92,6 +93,9 @@ const LoggedinRoute = [
     { method: 'post', path: '/edit-acitivity', handler: editActivity, role: "student" },
     { method: 'post', path: '/delete-acitivity', handler: deleteActivity, role: "student" },
     { method: 'get', path: '/activity-list', handler: listActivities, role: "student" },
+    // "Add custom activity" pick-list (students and counsellors, own list only)
+    { method: 'get', path: '/addable-activities', handler: getAddableActivities, role: "student" },
+    { method: 'post', path: '/add-selected-activities', handler: addSelectedActivities, role: "student" },
 
     { method: 'post', path: '/add-daily-report', handler: addSadhna, role: "student" },
 
