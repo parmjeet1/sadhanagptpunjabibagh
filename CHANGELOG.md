@@ -1,5 +1,27 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 10:31 AM IST - Database (migration files, NOT yet run)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Analysed the mirror copy of the production database (structure first; the data is test data) and wrote migration files for the developer to run by hand. Nothing was run by Claude. Main findings: (1) activities.status has four values (0 off, 1 built-in, 2 mentor selectable, 3 counsellor custom) but the old pick-list only read 1 and 3, so the six status-2 activities (Mangal Aarti Attended, Reading Misc. Books, Hearing Spiritual Master, Hearing Srila Prabhupada, Menial Services, Shloka Memorisation) could never be offered; (2) marking rule 2191 (scheme "New2", Chanting) was saved corrupted (frequency empty, value ">= "), so the marks code ignored it and fell back to the default scheme's 25 marks instead of 20; (3) activity id 8 has an empty-text owner, hiding it from every counsellor list; (4) no foreign keys and some leftover rows: 67 daily entries with no activity, 17 with no user, 19 same-day duplicates, 14 students with a duplicate activity copy, 15 of 34 group assignments pointing at a deleted sub-group; (5) the activity-code trigger builds codes from MAX(id)+1, so codes can be re-used and can race.
+- **Migration 001 (safe, adds only, repeatable)** - ALTER queries logged here:
+  `CREATE TABLE IF NOT EXISTS schema_migrations (...)` (a log table inside the database)
+  `ALTER TABLE daily_report ADD INDEX idx_dr_user_date (user_id, activity_date), ADD INDEX idx_dr_user_activity_date (user_id, activity_id, activity_date)`
+  `ALTER TABLE fix_activities ADD INDEX idx_fa_user_master (user_id, master_activity_id)`
+  `ALTER TABLE user_assignments ADD INDEX idx_ua_center (center_id), ADD INDEX idx_ua_label (label_id)`
+  `ALTER TABLE user_counsellors ADD INDEX idx_uc_counsellor (counsller_id)`
+  `ALTER TABLE notifications ADD INDEX idx_notif_panel_receive_status (panel_to, receive_id, status)`
+  `ALTER TABLE push_subscriptions ADD INDEX idx_ps_user (user_id)`
+  `ALTER TABLE labels_list ADD INDEX idx_labels_center (center_id), ADD INDEX idx_labels_counsellor (counsellor_id)`
+  `ALTER TABLE center_list ADD INDEX idx_center_counsellor (counsller_id)`
+  `ALTER TABLE users ADD INDEX idx_users_center (center_id), ADD INDEX idx_users_type (user_type)`
+  `ALTER TABLE activities MODIFY status TINYINT(4) DEFAULT 1 COMMENT '0=disabled,1=built-in (all students),2=mentor_selectable,3=counsellor custom'` (comment only)
+- **Migration 002 (review first, run one step at a time)** - read-only checks, then: `UPDATE marking_rules` (repair id 2191), `UPDATE activities SET counsellor_id = NULL WHERE id = 8`, `ALTER TABLE marking_rules ADD CONSTRAINT chk_rule_frequency / chk_rule_value_clean (CHECK)`, `ALTER TABLE fix_activities ADD UNIQUE KEY uk_fa_activity_id (activity_id)`. Optional and commented out: unique keys on fix_activities and daily_report (after duplicates are cleaned), a safer activity-code trigger, and changing counselor_added_activities.master_activity_id to BIGINT.
+- **Each migration also writes one row to the new `schema_migrations` table**, so the database keeps its own record of structure changes.
+- **Files touched**: `migrations/2026-10-05_001_safe_indexes_and_migration_log.sql`, `migrations/2026-10-05_001_rollback.sql`, `migrations/2026-10-05_002_review_first_data_fixes_and_constraints.sql`, `CHANGELOG.md`
+- **Frontend**: no change needed for these files. Note for later work: the pick-list must also read activities with status 2.
+- **Tested**: logic replayed against the dump data (the new CHECK rules pass every rule once row 2191 is repaired, activity codes are unique). Not run on a real MariaDB server (none available here), so run on the TEST database first.
+
 ## 2026-10-04, 7:42 PM IST - Revert
 
 - **Developer**: Manvatar Prabhu Ji
