@@ -12,8 +12,6 @@
 /** Rounds to 2 decimals (kept as a number). */
 const round2 = (n) => Math.round(n * 100) / 100;
 
-import { effectiveSchemeSql } from "../Marking Rules/effectiveScheme.js";
-
 /**
  * Daily maximum marks per student.
  * Same rule as calculateDailySadhanaScore (own scheme's highest daily rule for an activity, else the
@@ -29,7 +27,6 @@ export const getDailyMaxByUser = async (db, userIds) => {
   if (ids.length === 0) return result;
 
   const placeholders = ids.map(() => "?").join(",");
-  const schemeExpr = await effectiveSchemeSql({ label: "l", center: "c", user: "u" });
   const [rows] = await db.query(
     `SELECT t.user_id, SUM(t.max_marks) AS daily_max
      FROM (
@@ -46,7 +43,12 @@ export const getDailyMaxByUser = async (db, userIds) => {
                FROM fix_activities
               WHERE user_id IN (${placeholders}) AND master_activity_id IS NOT NULL AND master_activity_id > 0) x
        JOIN (
-         SELECT u.user_id, ${schemeExpr} AS scheme_id
+         SELECT u.user_id,
+                CASE
+                  WHEN l.marking_scheme_id IS NOT NULL AND l.marking_scheme_id <> 1 THEN l.marking_scheme_id
+                  WHEN c.marking_scheme_id IS NOT NULL AND c.marking_scheme_id > 0 THEN c.marking_scheme_id
+                  ELSE 1
+                END AS scheme_id
          FROM users u
          LEFT JOIN user_assignments ua
                 ON ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = u.user_id)

@@ -1,71 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
-## 2026-10-05, 5:40 PM IST - Fix (re-scoring after a scheme save no longer overwrites a fresh entry)
+## 2026-10-05, 7:30 PM IST - Revert (everything made after 1:10 PM IST today)
 
 - **Developer**: Manvatar Prabhu Ji
-- **What changed**: After a marking scheme is saved, today's entries of everyone using it are re-scored in the background. It read an entry's value, worked out marks, and wrote them back later; if the student saved a new value in between, marks worked out from the OLD value overwrote the new, correct ones. The write now only happens if the value is still the one that was read; otherwise the student's own save, which already scored it, is kept.
-- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js`, `CHANGELOG.md`
-- **Tested**: with the 5:03 PM export copy: a rule edit still re-scores (Chanting 30 to 40); a save injected between the read and the write keeps the new marks (and the same test fails without the fix); later re-scoring stays consistent. Earlier scenario checks (own scheme, editor, chanting) still behave as before. Not run on the real server.
-- **Database**: none.
-- **Frontend**: nothing needed.
-
-## 2026-10-05, 5:30 PM IST - Fix (the day's score no longer shows a false 0% when something goes wrong)
-
-- **Developer**: Manvatar Prabhu Ji
-- **What changed**: When the server could not work out the day's score (for example a short database hiccup) it answered "0 of 0 marks" as if that were the score, so the marks circle on the student's screen showed 0% until the page was reloaded. Now a hiccup is retried once, and if it still fails the server answers an error instead of fake zeros (the screen keeps the last good score). The score answer also tells browsers and proxies never to keep an old copy. The assistant chat, which only needs a number to show, still gets zeros on failure and never crashes.
-- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
-- **Tested**: replayed a student from the 5:03 PM database export with a copy of the real code: normal score 80/175; one simulated database error is retried and still gives 80/175; a lasting error gives an error answer (not 0%) while the assistant helper still returns zeros; the success answer carries "Cache-Control: no-store". Not run on the real server.
-- **Database**: none.
-- **Frontend**: the screen must ignore failed score answers and keep the last good score (done in `sadhanagptreactweb`, same day).
-
-## 2026-10-05, 4:35 PM IST - Test change (automation self-test, test server only)
-
-- **Developer**: Manvatar Prabhu Ji
-- **What changed**: Added DB-003, a throwaway change to test the after-deploy automation end to end: it creates one table `db_dependency_selftest` with the same 17 columns as the app's real `db_dependency` table, under another name, and puts ONE mock row in it (the About / story text supplied for testing; phone and email are placeholders, the payment key is a placeholder, and the two JSON columns were rebuilt as valid JSON because the spreadsheet export had broken them). It never touches or drops `db_dependency`, never drops anything, and is skipped if the table already has its row; a table that exists with no rows is reported as a failure (drop and redeploy). After the test the developer drops the table by hand and the script file is retired (otherwise every deploy would create it again). Logged in `DBnew.md` as DB-003 (PENDING).
-- **Files touched**: `scripts/db-changes/DB-003-automation-selftest.js` (new), `DBnew.md`, `CHANGELOG.md`
-- **Tested**: with a fake database (14 checks: table and row created once, second run does nothing, create error, insert error, half-done state, wrong column count, valid JSON in both JSON columns, real emojis, no real contact details in the file, no DROP and the real table never named, runner order DB-002 then DB-003) plus the earlier checks, all passing. Not run on a real database.
-- **Database**: nothing run by Claude. The change happens when the after-deploy step runs on the test server.
-
-## 2026-10-05, 4:20 PM IST - Change (result email follows the app's own email setup)
-
-- **Developer**: Manvatar Prabhu Ji
-- **What changed**: The database-change result email now uses the same sender rule as the app's own emails (`utils/emails/emailQueue.js`): `GMAIL_USER` first, then `MAIL_FROM`, then `MAIL_USERNAME` (only a value that looks like an email address). It still sends through the same shared mail connection (`utils/emails/mailer.js`) but directly, not through the email queue, because the queue only logs errors and a short script could exit before it sends, so a failure would go unnoticed. The email is now an HTML card in the same style as the app's feedback email (green = applied, red = failed; the failed card shows the step, the plain-English meaning and the technical message), with a plain-text copy; text from the database is escaped.
-- **Files touched**: `scripts/db-changes/_helper.js`, `CHANGELOG.md`
-- **Tested**: with a fake mailer (sender order, HTML for success and failure, escaping, plain-text copy) plus the earlier checks, all passing. Not tested with the real mail server.
-
-## 2026-10-05, 4:05 PM IST - Fix (result email sender, test server)
-
-- **Developer**: Manvatar Prabhu Ji
-- **What changed**: The first run of the after-deploy database step on the test server applied DB-002 correctly, but its result email was refused by the mail server ("501 Invalid MAIL FROM address provided"): the sender address was taken from `MAIL_USERNAME`, which is a login name, not an email address. The sender is now `MAIL_FROM`, else `GMAIL_USER` (what the app's own emails already use), else `MAIL_USERNAME`, and only a value that really looks like an email address is used; if none does, the screen says so clearly. Added `node scripts/db-changes/run-all.js --test-mail`, which only sends a test email through the same code and touches no database (DB-002 is already applied, so it will not send a result email again).
-- **Files touched**: `scripts/db-changes/_helper.js`, `scripts/db-changes/run-all.js`, `CHANGELOG.md`
-- **Tested**: with a fake mailer (sender choice, no valid sender, recipient) plus the earlier 21 checks, all passing. Not tested with the real mail server.
-- **Database**: DB-002 was applied on the test server at 3:31 PM IST (users column and foreign key created, all values empty, 386 users). Still to confirm: that database is the test one, and the DBnew.md status.
-
-## 2026-10-05, 3:55 PM IST - Tooling (after-deploy database changes, test server only)
-
-- **Developer**: Manvatar Prabhu Ji
-- **What changed**: Replaced the single DB-002 script with a small system for the test server. One fixed file, `scripts/after-deploy-test.sh`, is set up once in `deploy.sh` and never edited again. It runs only inside a folder named `test-backend` and runs every numbered change in `scripts/db-changes/` in order (`DB-NNN-short-words.js`). A new database change is just a new file with the next number; the naming rules are in `DBnew.md`. Each change checks first (safe to run twice), runs, verifies, and emails `md.gkg.sp@gmail.com` on success or failure (a failure email explains the error in plain English and names the database that was targeted); a failure stops later changes. DB-002 moved to `scripts/db-changes/DB-002-personal-marking-scheme.js` (the earlier `scripts/apply-db-002.js` is removed). Shared code is in `scripts/db-changes/_helper.js`, the runner is `scripts/db-changes/run-all.js`. Claude did not run anything and has no database access.
-- **Files touched**: `scripts/after-deploy-test.sh` (new), `scripts/db-changes/_helper.js` (new), `scripts/db-changes/run-all.js` (new), `scripts/db-changes/DB-002-personal-marking-scheme.js` (new, replaces `scripts/apply-db-002.js`), `DBnew.md`, `CHANGELOG.md`
-- **Tested**: with a fake database and fake mailer (21 checks: number order, only new files run, failure stops the rest, bad name / duplicate number / wrong id are refused with an email, DB-002 cases, mail content) and the shell file in throwaway folders (refuses a wrong folder name, a missing `.env`, a missing runner). Not run on the real server or a real MariaDB; no real email sent.
-- **Server setup**: one line in `deploy.sh` (see `DBnew.md`, "Automatic run after deploy"). Not done by Claude.
-
-## 2026-10-05, 3:25 PM IST - Tooling (one-time database script, test only)
-
-- **Developer**: Manvatar Prabhu Ji
-- **What changed**: Added a one-time script that applies DB-002 (the new empty column for the own marking scheme) on the TEST database, so it can be run right after a deploy with one command: `node scripts/apply-db-002.js --confirm-test`. It checks first, runs the single ALTER, checks the result, prints it and emails "applied" or "FAILED" to `md.gkg.sp@gmail.com` (can be changed with `DB_MIGRATION_NOTIFY_EMAIL` in the server's `.env`; it reuses the existing mail settings). A FAILED email explains the error in plain English (which step, what it usually means, what to do) plus the technical message; it is also sent if the database cannot be reached. Running it again changes nothing. It refuses to run without `--confirm-test`. Claude did not run it and has no database access. Also fixed an outdated line in `DBnew.md` that said the SQL must be run before deploying (the code is safe either way).
-- **Files touched**: `scripts/apply-db-002.js` (new), `DBnew.md`, `CHANGELOG.md`
-- **Tested**: with a fake database object (20 checks: first run, second run, half-applied state, missing primary key, ALTER error, unexpected values, database unreachable, mails to md.gkg.sp@gmail.com for success and failure, error explanations, mail failure). Not run on a real MariaDB and no real email was sent.
-- **Database**: this script is the way to run DB-002 on test; DB-002 itself is still PENDING until it has run.
-
-## 2026-10-05, 2:10 PM IST - New feature (own marking scheme, backend)
-
-- **Developer**: Manvatar Prabhu Ji
-- **What changed**: Students and counsellors can now have their OWN marking scheme. Which scheme applies to a person: 1) a custom scheme a counsellor gave their sub-group, else 2) a custom scheme a counsellor gave their group, else 3) the person's own scheme, else 4) the default scheme. A counsellor's allotment overrides the personal scheme without deleting it (it applies again if the allotment is removed); a group that only has the default scheme counts as "nothing allotted". The rule lives in one place (`effectiveScheme.js`) and is used when marks are saved (app and WhatsApp), when today's marks are recalculated, for the daily score, the ranking percentages, the max-marks columns of the reports and the "Applied Marking Scheme" screen (which now also returns `applied_source`, `personal_scheme_id`, `personal_scheme_name`, `personal_overridden`). New routes for any logged-in person (the owner always comes from the login token and every scheme / rule is checked to belong to that person): `/my-scheme-list`, `/my-scheme-activities`, `/my-marking-rules`, `/my-create-scheme`, `/my-save-scheme`, `/my-delete-scheme`, `/my-delete-rule`, `/my-delete-activity-rules`, `/use-my-marking-scheme` (scheme_id, or empty to stop using it). Creating a scheme accepts `use_for_self` ("Make for Self"); the scheme list returns `isUsedForSelf` per scheme and `personalSchemeId`. Today's marks are recalculated when someone picks, changes or clears their own scheme. The new code is safe to deploy before the database column exists: until DB-002 is run, a personal scheme is simply ignored and `/use-my-marking-scheme` answers "not switched on yet".
-- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/effectiveScheme.js` (new), `SadhanaGPT/Controllers/Marking Rules/PersonalSchemeController.js` (new), `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js`, `SadhanaGPT/Controllers/SummaryData/rankingPercent.js`, `SadhanaGPT/Student/Controllers/StudentController.js`, `SadhanaGPT/Mentors/CounslerController.js`, `routes/Routes.js`, `CHANGELOG.md`
-- **Database**: needs DB-002 (one new empty column `users.personal_marking_scheme_id`, see `DBnew.md`); run it by hand. Not run by Claude.
-- **Tested**: with the mock database copy (SQLite stand-in, not a real MariaDB) and stubbed controllers: 25 checks (rule order, default-on-group counts as nothing, override and "applies again", column missing is harmless, own / foreign / counsellor / default scheme choice, owner taken from token, foreign schemes and rules refused, ranking maximum follows the own scheme). The full marks-saving path was only syntax-checked, not run. Not tested on a real MariaDB or in the apps.
-- **Frontend**: needs the matching screens (marks circle button, "Make My Own Marking Scheme", "Make for Self"), done in the frontend repo.
-- **Known, not changed**: the older counsellor routes `/save-marking-scheme`, `/delete-marking-rule` and `/delete-activity-rules` do not check that the scheme belongs to the caller (any counsellor could change another counsellor's scheme by id). The new routes do check.
+- **What changed**: Undone on request: all 11 commits made after 1:10 PM IST on 2026-10-05, with new "revert" commits (history is kept, nothing rewritten). That removes: the own (personal) marking scheme feature for students and counsellors (`e75c8aa`), the one-time DB-002 apply script and the after-deploy database-change system with its result email (`8cc1bff`, `8bd48c2`, `ca40e28`, `8e3cbcd`, `c0b044a`, `8796b21`), the DB-003 self-test (`d6fcbab`, `92f028e`), the score retry / error answer (`5f06b00`) and the re-scoring race guard (`935e44d`). The code is back exactly as it was at 1:02 PM IST (`5b653ea`); checked by comparing the files.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/` (`MarkingController.js`, `recalculateMarks.js`, `PersonalSchemeController.js` and `effectiveScheme.js` removed), `SadhanaGPT/Controllers/SummaryData/rankingPercent.js`, `SadhanaGPT/Mentors/CounslerController.js`, `SadhanaGPT/Student/Controllers/StudentController.js`, `routes/Routes.js`, `scripts/after-deploy-test.sh` and `scripts/db-changes/*` (removed), `DBnew.md` (note on DB-002), `CHANGELOG.md`
+- **Tested**: file-by-file comparison with the 1:02 PM state (identical apart from the DBnew.md note and this entry); syntax check of the changed backend files. Not run on a server.
+- **Database**: nothing run by Claude. DB-002 had already been applied on the TEST database (about 3:31 PM IST): the extra column `users.personal_marking_scheme_id`, its index and foreign key stay there, unused and harmless (two accounts hold a value that the code now ignores). Nothing needs to be dropped.
+- **Frontend**: reverted the same way in `sadhanagptreactweb` (own-scheme screens, marks circle and slider fixes, editor warning).
 
 ## 2026-10-05, 1:25 PM IST - Plan (database log only)
 
