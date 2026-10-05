@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 10:58 AM IST - Fix
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: "Reading Srila Prabhupada Book" (activity 8) was also missing from the marking-scheme editor, for the same reason as the Custom Activities list: its owner field holds an empty text and the editor's list only accepted "nothing", the word "null", or the counsellor's own id. The editor's list now also accepts the empty text, so counsellors can see and edit that activity's marking rules (rules for it already exist in the default scheme and the custom schemes). Other counsellors' custom activities stay hidden. No database change.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `CHANGELOG.md`
+- **Tested**: on the mirror database's activity list the old condition hides activity 8 and the new one shows it (15 rows instead of 14); another counsellor's custom activity is still hidden. Not run against a live server.
+- **Frontend**: no change needed.
+
 ## 2026-10-05, 10:57 AM IST - Change
 
 - **Developer**: Manvatar Prabhu Ji

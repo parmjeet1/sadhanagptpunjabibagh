@@ -474,7 +474,7 @@ export const getSchemeActivitiesList = asyncHandler(async (req, resp) => {
     const query = `
       SELECT id, name, description, unit, target, activity_type, counsellor_id, status
       FROM activities
-      WHERE (counsellor_id = ? OR counsellor_id IS NULL OR counsellor_id = 'null')
+      WHERE (counsellor_id = ? OR counsellor_id IS NULL OR counsellor_id = 'null' OR counsellor_id = '')
       AND status IN (1, 2, 3)
       ORDER BY id ASC
     `;
