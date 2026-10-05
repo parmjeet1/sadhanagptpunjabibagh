@@ -64,14 +64,15 @@ Status values: `PENDING` (written, not run) | `DONE-TEST` | `DONE-PROD` | `SKIPP
 - **Automatic way (TEST database only)**: runs by itself after each test deploy through `scripts/after-deploy-test.sh` (see "Automatic run after deploy" below). Its change script is `scripts/db-changes/DB-002-personal-marking-scheme.js`. It checks first, runs the one ALTER above, checks the result and emails `md.gkg.sp@gmail.com` "applied" or "FAILED" (with a plain-English explanation of the error). Safe to run twice (second time: "already applied", no email). For production keep running the SQL by hand.
 - **Run on / Result**: _(developer to fill in)_
 
-## DB-003 | 2026-10-05 | Automation self-test table (TEST database only, throwaway)
+## DB-003 | 2026-10-05 | Automation self-test table with one mock row (TEST database only, throwaway)
 
 - **Status**: PENDING (a test of the after-deploy automation; not needed by any feature)
-- **Type**: structure change, creates ONE new empty table `db_dependency_selftest`. No existing table or data is touched.
-- **Why**: DB-002 is already applied, so it cannot show the full chain again. This is a harmless new numbered change to prove that a new file is picked up after a deploy, created, and reported by email. It has the same 17 columns as the app's real `db_dependency` table (story / book price / developer contact / payment key settings) but under another name, so the real table is never touched or dropped.
-- **Query** (run by `scripts/db-changes/DB-003-automation-selftest.js`; the script skips it if the table already exists, and never drops anything): `CREATE TABLE db_dependency_selftest (...)`, same columns as `db_dependency`, see the script.
-- **Expected result**: one new empty table with 17 columns; an email "DB-003 applied successfully" to md.gkg.sp@gmail.com.
-- **Risk**: very low. New unused table, no data.
+- **Type**: structure change, creates ONE new table `db_dependency_selftest` and inserts ONE mock row into it. No existing table or data is touched.
+- **Why**: DB-002 is already applied, so it cannot show the full chain again. This is a harmless new numbered change to prove that a new file is picked up after a deploy, created, and reported by email. The table has the same 17 columns as the app's real `db_dependency` table (story / book price / developer contact / payment key settings) but under another name, so the real table is never touched or dropped.
+- **Mock row**: the "About / story" text supplied by the developer for testing (title "Technology in the service of devotion", the story, the two project lists). Changes made to it: the phone and email are placeholders (`0000000000`, `test@example.com`), the payment key is the placeholder "tested by claude", and the two JSON columns (`tech_seva`, `what_we_build`) were rebuilt as valid JSON, because the spreadsheet export had lost their quotes and commas (the typo `projct_name` is now `project_name`).
+- **Query** (run by `scripts/db-changes/DB-003-automation-selftest.js`; it checks first and never drops anything): `CREATE TABLE db_dependency_selftest (...)` with the same columns as `db_dependency`, then one `INSERT` of the mock row; see the script.
+- **Expected result**: a new table with 17 columns and exactly 1 row; an email "DB-003 applied successfully" to md.gkg.sp@gmail.com. If the table gets created but the insert fails, the email says FAILED and the next run reports "exists but has no rows"; fix with the Undo below and deploy again.
+- **Risk**: very low. New unused table.
 - **Undo** (do this when the test is finished):
   ```sql
   DROP TABLE db_dependency_selftest;
