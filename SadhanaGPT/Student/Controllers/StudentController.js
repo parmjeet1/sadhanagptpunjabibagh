@@ -24,6 +24,7 @@ import db from "../../../config/database.js";
 import emailQueue from "../../../utils/emails/emailQueue.js";
 import { Console } from "console";
 import { dailyStudentSummary } from '../../Controllers/SummaryData/summary-report.js';
+import { getDailyMaxByUser, rankByPercentage } from '../../Controllers/SummaryData/rankingPercent.js';
 
 
 export const parseTimeToMinutes = (val) => {
@@ -3242,7 +3243,7 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
                  (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND scheme_id = ?),
                  (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND scheme_id = 1)
                ) as max_marks
-        FROM fix_activities f
+        FROM (SELECT DISTINCT user_id, master_activity_id FROM fix_activities) f
         WHERE f.user_id = ? AND f.master_activity_id IS NOT NULL AND f.master_activity_id > 0
       ) temp
     `, [scheme_id, user_id]);
@@ -3337,64 +3338,50 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
         [user_id]
       );
       if (centerRows.length > 0 && centerRows[0].center_id) {
-        centerCondition = "AND ua.center_id = ?";
+        centerCondition = "AND u.user_id IN (SELECT user_id FROM user_assignments WHERE center_id = ?)";
         centerId = centerRows[0].center_id;
       }
     }
 
-    const mainParams = [...dateParams];
-    if (centerId) mainParams.push(centerId);
-    mainParams.push(String(limit), String(offset));
+    // Everyone who is ranked: all active students (so students with no entries sit at the bottom),
+    // plus anyone else (e.g. a counsellor) who has entries in the period.
+    const poolParams = [...dateParams];
+    if (centerId) poolParams.push(centerId);
+    const [pool] = await db.query(
+      `SELECT u.user_id, u.name, u.profile, COALESCE(e.total_marks, 0) AS total_marks
+       FROM users u
+       LEFT JOIN (
+         SELECT dr.user_id, SUM(dr.marks) AS total_marks
+         FROM daily_report dr
+         WHERE ${dateCondition}
+         GROUP BY dr.user_id
+       ) e ON e.user_id = u.user_id
+       WHERE u.status = 1
+         AND (u.user_type = 'student' OR e.user_id IS NOT NULL)
+         ${centerCondition}`,
+      poolParams
+    );
 
-    const query = `
-      SELECT 
-        u.user_id, 
-        u.name, 
-        u.profile,
-        SUM(dr.marks) as total_marks
-      FROM users u
-      JOIN daily_report dr ON u.user_id = dr.user_id
-      LEFT JOIN user_assignments ua ON u.user_id = ua.user_id
-      WHERE u.status = 1 
-        AND ${dateCondition}
-        ${centerCondition}
-      GROUP BY u.user_id
-      ORDER BY total_marks DESC, u.name ASC
-      LIMIT ? OFFSET ?
-    `;
+    // Percentage = marks earned / (the student's own daily maximum x days in the period).
+    const daysInPeriod = time_filter === 'weekly' ? 7 : 1;
+    const dailyMax = await getDailyMaxByUser(db, pool.map(r => r.user_id));
+    const rankedAll = rankByPercentage(pool.map(r => ({
+      user_id: r.user_id,
+      name: r.name,
+      profile: r.profile,
+      total_marks: Number(r.total_marks) || 0,
+      max_marks: (dailyMax.get(String(r.user_id)) || 0) * daysInPeriod,
+    })));
 
-
-    const [rankingList] = await db.execute(query, mainParams);
-
-    // Get current user's specific rank
-    let currentUserRank = null;
-    if (rankingList.some(r => String(r.user_id) === String(user_id))) {
-      currentUserRank = rankingList.findIndex(r => String(r.user_id) === String(user_id)) + 1 + offset;
-    } else {
-      // If not in this page, find their absolute rank
-      const rankDateCondition = dateCondition.replace(/dr\./g, 'dr2.');
-      const rankQuery = `
-        SELECT user_rank FROM (
-          SELECT dr2.user_id, RANK() OVER (ORDER BY SUM(dr2.marks) DESC) as user_rank
-          FROM daily_report dr2
-          LEFT JOIN user_assignments ua2 ON dr2.user_id = ua2.user_id
-          WHERE ${rankDateCondition}
-          ${centerCondition ? "AND ua2.center_id = ?" : ""}
-          GROUP BY dr2.user_id
-        ) sub
-        WHERE user_id = ?
-      `;
-      const rankParams = [...dateParams];
-      if (centerId) rankParams.push(centerId);
-      rankParams.push(user_id);
-
-      const [rankRes] = await db.execute(rankQuery, rankParams);
-      if (rankRes.length > 0) currentUserRank = rankRes[0].user_rank;
-    }
+    const rankingList = rankedAll.slice(offset, offset + Number(limit));
+    const me = rankedAll.find(r => String(r.user_id) === String(user_id));
+    const currentUserRank = me ? me.rank : null;
+    // Being "rank 1" with nothing entered (everyone tied at 0) is not a top rank.
+    const isFirstWithMarks = currentUserRank === 1 && Number(me?.total_marks) > 0;
 
     // If user is #1 today, upsert top_ranker_from / top_ranker_to
     let topRankerDates = null;
-    if (currentUserRank === 1 && time_filter === 'today') {
+    if (isFirstWithMarks && time_filter === 'today') {
       const [existingRows] = await db.execute(
         `SELECT top_ranker_from, top_ranker_to FROM users WHERE user_id = ? LIMIT 1`,
         [user_id]
@@ -3424,7 +3411,7 @@ export const getWeeklyRanking = asyncHandler(async (req, resp) => {
       data: {
         ranking: rankingList,
         currentUserRank: currentUserRank,
-        isTopRanker: currentUserRank === 1 && time_filter === 'today',
+        isTopRanker: isFirstWithMarks && time_filter === 'today',
         topRankerDates: topRankerDates
       }
     });

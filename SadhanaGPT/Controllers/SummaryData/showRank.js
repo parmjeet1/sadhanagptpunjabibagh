@@ -2,6 +2,7 @@ import db from '../../../config/database.js';
 
 import moment from 'moment';
 import { asyncHandler, mergeParam } from "../../../utils/utils.js";
+import { getDailyMaxByUser, rankByPercentage } from './rankingPercent.js';
 
 /**
  * API to fetch students rank for the last week (Monday to Sunday)
@@ -26,8 +27,7 @@ export const getStudentRank = asyncHandler(async (req, res) => {
             SELECT 
                 u.user_id AS student_id,
                 u.name AS student_name,
-                COALESCE(SUM(sr.total_marks), 0) AS total_marks,
-                COALESCE(MAX(sr.max_possible_marks), 0) AS daily_max_marks
+                COALESCE(SUM(sr.total_marks), 0) AS total_marks
             FROM users u
             LEFT JOIN summary_report sr ON u.user_id = sr.user_id AND sr.activity_date BETWEEN ? AND ?
         `;
@@ -61,37 +61,15 @@ export const getStudentRank = asyncHandler(async (req, res) => {
 
        
 
-        let studentsList = rows.map(student => {
-            const numericMarks = Number(student.total_marks);
-            const dailyMaxMarks = Number(student.daily_max_marks);
-            const maxMarks = dailyMaxMarks * daysInPeriod;
-            const percentage = maxMarks > 0 ? Math.round((numericMarks / maxMarks) * 100) : 0;
-            return {
-                student_id: student.student_id,
-                student_name: student.student_name,
-                total_marks: numericMarks,
-                percentage: percentage
-            };
-        });
-
-        // Sort by total_marks descending to compute ranks (Rank #1 = highest marks)
-        studentsList.sort((a, b) => b.total_marks - a.total_marks || b.percentage - a.percentage || a.student_name.localeCompare(b.student_name));
-
-        let currentRank = 1;
-        let previousMarks = null;
-
-        // Assign rank numbers based on total_marks
-        let rankedStudents = studentsList.map((student, index) => {
-            if (previousMarks !== null && student.total_marks < previousMarks) {
-                currentRank = index + 1;
-            }
-            previousMarks = student.total_marks;
-
-            return {
-                ...student,
-                rank: currentRank
-            };
-        });
+        // Percentage = marks / (the student's own daily maximum x days in the period), ranked by
+        // percentage (then marks, then name); same percentage and marks = same rank.
+        const dailyMax = await getDailyMaxByUser(db, rows.map(r => r.student_id));
+        let rankedStudents = rankByPercentage(rows.map(student => ({
+            student_id: student.student_id,
+            student_name: student.student_name,
+            total_marks: Number(student.total_marks),
+            max_marks: (dailyMax.get(String(student.student_id)) || 0) * daysInPeriod
+        }))).map(({ max_marks, ...student }) => student);
 
         // Apply display sorting for output page:
         // - sort === 'asc' (Students Need Follow-up): Lowest rank / worst students first (rank DESC)

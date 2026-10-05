@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 1:05 PM IST - Change (rankings by percentage)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: All ranking screens now rank by PERCENTAGE instead of raw marks. Percentage = marks earned / (the student's own daily maximum x days in the period). The daily maximum comes from the student's own marking scheme (sub-group scheme, else group scheme, else default) and counts each activity the student has once. The days stay as they were: Daily = today, Previous day = yesterday, Weekly = last 7 days including today (student ranking); last Monday to Sunday (counsellor weekly rank and follow-up list). Order: percentage, then total marks, then name; same percentage and same marks share a rank. Students with no entries are kept at the bottom (all active students are now listed, not only those with entries). "Top ranker" is only given to a first place with marks above 0. The student's daily score percentage (`getDailyScore`) now also counts a doubled activity once, so it matches the ranking percentage. New fields in the `/weekly-ranking` list: `rank`, `percentage`, `max_marks`. The old counsellor percentage used the highest value in `summary_report.max_possible_marks`, which is inflated (it adds rules of several schemes); it is no longer used for ranking. No database change.
+- **Files touched**: `SadhanaGPT/Controllers/SummaryData/rankingPercent.js` (new), `SadhanaGPT/Student/Controllers/StudentController.js`, `SadhanaGPT/Controllers/SummaryData/showRank.js`, `SadhanaGPT/Controllers/SummaryData/followUpStudents.js`, `CHANGELOG.md`
+- **Tested**: with the mock database copy (SQLite stand-in, not a real MariaDB): daily maximums match the old calculation for 55 of 63 students; the other 8 are lower only because they hold the same activity twice (now counted once). Ranking, ties, zero-entry students at the bottom, page 2+, own rank, yesterday/weekly/group filters and the counsellor lists all ran and gave sensible output. Not tested on the live database or in the apps.
+- **Frontend**: `NotificationsPanel.jsx` and `Inspiration.jsx` show `#idx+1` as the rank and only marks; they should show `user.rank` (ties) and `user.percentage`. Counsellor screens already receive `percentage` and `rank`.
+
 ## 2026-10-05, 11:38 AM IST - Fix
 
 - **Developer**: Manvatar Prabhu Ji
