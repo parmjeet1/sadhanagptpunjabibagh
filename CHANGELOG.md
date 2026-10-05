@@ -1,5 +1,12 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 4:20 PM IST - Change (result email follows the app's own email setup)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The database-change result email now uses the same sender rule as the app's own emails (`utils/emails/emailQueue.js`): `GMAIL_USER` first, then `MAIL_FROM`, then `MAIL_USERNAME` (only a value that looks like an email address). It still sends through the same shared mail connection (`utils/emails/mailer.js`) but directly, not through the email queue, because the queue only logs errors and a short script could exit before it sends, so a failure would go unnoticed. The email is now an HTML card in the same style as the app's feedback email (green = applied, red = failed; the failed card shows the step, the plain-English meaning and the technical message), with a plain-text copy; text from the database is escaped.
+- **Files touched**: `scripts/db-changes/_helper.js`, `CHANGELOG.md`
+- **Tested**: with a fake mailer (sender order, HTML for success and failure, escaping, plain-text copy) plus the earlier checks, all passing. Not tested with the real mail server.
+
 ## 2026-10-05, 4:05 PM IST - Fix (result email sender, test server)
 
 - **Developer**: Manvatar Prabhu Ji

@@ -72,13 +72,42 @@ export const runChange = async (db, change) => {
 };
 
 /**
- * The "from" address: MAIL_FROM, else GMAIL_USER (what the app's own emails use), else MAIL_USERNAME.
+ * The "from" address: GMAIL_USER (exactly what the app's own emails use in utils/emails/emailQueue.js),
+ * else MAIL_FROM, else MAIL_USERNAME.
  * Only a value that really looks like an email address is used (MAIL_USERNAME is often just a login name).
  */
 export const pickSender = (env = process.env) =>
-  [env.MAIL_FROM, env.GMAIL_USER, env.MAIL_USERNAME]
+  [env.GMAIL_USER, env.MAIL_FROM, env.MAIL_USERNAME]
     .map((v) => String(v || "").trim().replace(/^.*<(.+)>$/, "$1"))
     .find((v) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v)) || null;
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/** HTML body in the same simple card style as the app's other notification emails. */
+export const buildHtml = ({ ok, change, result, env, when }) => {
+  const color = ok ? "#16a34a" : "#dc2626";
+  const row = (label, value) => `<p style="margin: 6px 0;"><strong>${label}:</strong> ${esc(value)}</p>`;
+  const block = (text) => `<div style="background-color: #f8fafc; border-left: 4px solid ${color}; padding: 14px; margin-top: 6px; border-radius: 4px; font-size: 14px; line-height: 1.5; color: #334155; white-space: pre-wrap;">${esc(text)}</div>`;
+  return `
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; background-color: #ffffff;">
+    <div style="background-color: ${color}; padding: 16px; border-radius: 8px; text-align: center;">
+      <h2 style="color: #ffffff; margin: 0; font-size: 20px;">${ok ? "Database change applied" : "Database change FAILED"}</h2>
+    </div>
+    <div style="padding: 20px 0; color: #1e293b;">
+      ${row("Change", `${change.id} - ${change.title}`)}
+      ${row("Database", env.DB_NAME || "(DB_NAME not set)")}
+      ${row("Time", `${when} IST`)}
+      <p style="margin: 16px 0 6px 0;"><strong>Result:</strong></p>
+      ${block(result.message)}
+      ${ok ? "" : `
+      <p style="margin: 16px 0 6px 0;"><strong>What went wrong:</strong></p>
+      ${block(`Step: ${result.step || "checks before the change"}\nWhat it means: ${result.explanation || "The script stopped before changing anything; see the result above."}${result.technical ? `\nTechnical message (for the developer): ${result.technical}` : ""}\nLater DB changes were NOT run after this failure.`)}`}
+      <p style="margin: 16px 0 6px 0;"><strong>Next:</strong> ${ok ? "check the feature on the test site and update DBnew.md (DONE-TEST)." : `a developer should cross-check the database (see ${esc(change.id)} in DBnew.md), fix the cause above and run the deploy step again. Use the Undo statement only if the change was made by mistake.`}</p>
+    </div>
+    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+    <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">Sent automatically from the SadhanaGPT test server (Developer: Manvatar Prabhu Ji)</p>
+  </div>`;
+};
 
 /** Sends the result mail. Never throws; returns a short text for the screen. "already applied" sends nothing. */
 export const sendResultMail = async (transporter, change, result, env = process.env, now = new Date()) => {
@@ -92,6 +121,7 @@ export const sendResultMail = async (transporter, change, result, env = process.
     await transporter.sendMail({
       from: `SadhanaGPT <${sender}>`,
       to,
+      html: buildHtml({ ok, change, result, env, when }),
       subject: ok ? `[SadhanaGPT TEST] ${change.id} applied successfully` : `[SadhanaGPT TEST] ${change.id} FAILED - developer please check`,
       text: [
         ok ? `${change.id} (${change.title}) was applied successfully on the TEST database.` : `${change.id} (${change.title}) FAILED on the TEST database.`,
