@@ -1,5 +1,16 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 11:15 AM IST - Fix
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: A new marking scheme now copies ALL rules of the default scheme. It used to copy only rules whose owner label was 'system', and the 5 default Chanting rules (ids 1846 to 1851) have no owner label, so Chanting was never copied: scheme "New scheme" (id 9) has no Chanting rules and "New2" (id 17) had one hand-added (corrupted) row. The copy now finds the rules through the default scheme itself (the scheme owned by 'system'), so the owner label of each rule no longer matters. Existing schemes are not changed by this (the counsellor fills Chanting in the editor).
+- **Database query (data only, NOT run by Claude, to be run by the developer, optional safety net)**: gives the 5 default Chanting rules the same owner label as the other 67 default rules, so they also match anything that looks for 'system' rules. Only the clone query used the label, so nothing else changes.
+  `UPDATE marking_rules SET counsellor_id = 'system' WHERE scheme_id = 1 AND master_activity_id = 1 AND counsellor_id IS NULL;`
+  Expected: 5 rows changed. Check before: `SELECT id, counsellor_id FROM marking_rules WHERE scheme_id = 1 AND master_activity_id = 1;` (5 rows, counsellor_id NULL). Undo: `UPDATE marking_rules SET counsellor_id = NULL WHERE id IN (1846,1847,1848,1849,1851);`
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `CHANGELOG.md`
+- **Tested**: on the mirror database's rules the old query copies 67 rules (0 Chanting) and the new one copies 72 (5 Chanting) with the same per-activity counts as the default scheme. Not run against a live server.
+- **Frontend**: no change needed.
+
 ## 2026-10-05, 11:08 AM IST - Fix
 
 - **Developer**: Manvatar Prabhu Ji

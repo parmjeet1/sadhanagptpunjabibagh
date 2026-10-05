@@ -385,8 +385,15 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
     );
     const schemeId = insertRes.insertId;
 
-    // 2. Clone/copy rules of system default scheme to the new scheme in marking_rules table
-    const [defaultRules] = await db.query("SELECT * FROM marking_rules WHERE counsellor_id = 'system' AND status = 1");
+    // 2. Clone/copy rules of system default scheme to the new scheme in marking_rules table.
+    //    The rules are found through the default SCHEME (owned by 'system'), not by the owner
+    //    label on each rule: some default rules (the 5 Chanting rules) have no owner label and
+    //    used to be left out of every new scheme.
+    const [defaultRules] = await db.query(
+      `SELECT * FROM marking_rules
+       WHERE status = 1
+         AND scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' ORDER BY id LIMIT 1)`
+    );
     
     if (defaultRules && defaultRules.length > 0) {
       const columns = [
