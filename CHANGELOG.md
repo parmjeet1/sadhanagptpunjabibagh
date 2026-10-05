@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 5:40 PM IST - Fix (re-scoring after a scheme save no longer overwrites a fresh entry)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: After a marking scheme is saved, today's entries of everyone using it are re-scored in the background. It read an entry's value, worked out marks, and wrote them back later; if the student saved a new value in between, marks worked out from the OLD value overwrote the new, correct ones. The write now only happens if the value is still the one that was read; otherwise the student's own save, which already scored it, is kept.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js`, `CHANGELOG.md`
+- **Tested**: with the 5:03 PM export copy: a rule edit still re-scores (Chanting 30 to 40); a save injected between the read and the write keeps the new marks (and the same test fails without the fix); later re-scoring stays consistent. Earlier scenario checks (own scheme, editor, chanting) still behave as before. Not run on the real server.
+- **Database**: none.
+- **Frontend**: nothing needed.
+
 ## 2026-10-05, 5:30 PM IST - Fix (the day's score no longer shows a false 0% when something goes wrong)
 
 - **Developer**: Manvatar Prabhu Ji

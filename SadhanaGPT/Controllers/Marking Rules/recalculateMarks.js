@@ -84,10 +84,14 @@ export const recalculateTodayMarks = async ({ centerIds = [], labelIds = [], use
           ? calculateBestMarks(e.count, rules, e.activity_type, e.unit, e.name)
           : 0;
 
-        await db.query(
-          `UPDATE daily_report SET marks = ? WHERE activity_id = ? AND user_id = ? AND DATE(activity_date) = ?`,
-          [marks, e.activity_id, user_id, today]
+        // Only touch the entry if the student has not saved a new value since we read it: otherwise
+        // marks worked out from the OLD count would overwrite the fresh, correct ones.
+        const sameCount = e.count === null || e.count === undefined ? "count IS NULL" : "count = ?";
+        const [upd] = await db.query(
+          `UPDATE daily_report SET marks = ? WHERE activity_id = ? AND user_id = ? AND DATE(activity_date) = ? AND ${sameCount}`,
+          [marks, e.activity_id, user_id, today, ...(sameCount === "count IS NULL" ? [] : [e.count])]
         );
+        if (upd && Number(upd.affectedRows) === 0) continue; // changed meanwhile; its own save already scored it
         result.entries++;
         changed = true;
       }
