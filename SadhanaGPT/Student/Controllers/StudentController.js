@@ -2995,23 +2995,47 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
     );
     const center_id = centerRows.length > 0 && centerRows[0].center_id !== null ? centerRows[0].center_id : 0;
 
-    // 2. Get Max Possible Marks (Handles name-fallback and Center precedence in pure SQL)
+    // DEBUG: Check what fix_activities this student has
+    const [debugActivities] = await db.execute(
+      `SELECT activity_id, name, master_activity_id FROM fix_activities WHERE user_id = ?`,
+      [user_id]
+    );
+    console.log(`[DailyScore DEBUG] Student: ${user_id}, Center: ${center_id}, Date: ${targetDateIST}`);
+    console.log(`[DailyScore DEBUG] fix_activities:`, JSON.stringify(debugActivities));
+
+    // DEBUG: Check marking_rules for these master_activity_ids
+    const masterIds = debugActivities.map(a => a.master_activity_id).filter(id => id != null);
+    if (masterIds.length > 0) {
+      const placeholders = masterIds.map(() => '?').join(',');
+      const [debugRules] = await db.execute(
+        `SELECT master_activity_id, center_id, marks, frequency, status FROM marking_rules WHERE master_activity_id IN (${placeholders}) AND status = 1`,
+        masterIds
+      );
+      console.log(`[DailyScore DEBUG] marking_rules for these activities:`, JSON.stringify(debugRules));
+    } else {
+      console.log(`[DailyScore DEBUG] No master_activity_ids found! All are NULL.`);
+    }
+
+    // 2. Get Max Possible Marks from CURRENTLY assigned activities.
+    //    Fallback order: student's center rules → global rules (center_id=0) → any available rule
     const [maxMarksResult] = await db.execute(`
-      SELECT SUM(COALESCE(specific_rule.marks, global_rule.marks)) as max_marks
-      FROM fix_activities f
-      LEFT JOIN marking_rules specific_rule 
-        ON specific_rule.master_activity_id = f.master_activity_id
-        AND specific_rule.status = 1 
-        AND specific_rule.frequency = 'daily' 
-        AND specific_rule.is_max_marks = 1 
-        AND specific_rule.center_id = ?
-      LEFT JOIN marking_rules global_rule 
-        ON global_rule.master_activity_id = f.master_activity_id 
-        AND global_rule.status = 1 
-        AND global_rule.frequency = 'daily' 
-        AND global_rule.is_max_marks = 1 
-        AND global_rule.center_id = 0
-      WHERE f.user_id = ?
+      SELECT SUM(activity_max) as max_marks FROM (
+        SELECT 
+          f.master_activity_id,
+          COALESCE(
+            MAX(CASE WHEN mr.center_id = ? THEN mr.marks END),
+            MAX(CASE WHEN mr.center_id = 0 THEN mr.marks END),
+            MAX(mr.marks),
+            0
+          ) as activity_max
+        FROM fix_activities f
+        LEFT JOIN marking_rules mr 
+          ON mr.master_activity_id = f.master_activity_id
+          AND mr.status = 1 
+          AND mr.frequency = 'daily'
+        WHERE f.user_id = ? AND f.master_activity_id IS NOT NULL
+        GROUP BY f.master_activity_id
+      ) per_activity
     `, [center_id, user_id]);
 
     // 3. Fetch Today's Total Earned Marks
@@ -3021,8 +3045,18 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
       WHERE user_id = ? AND DATE(activity_date) = ?
     `, [user_id, targetDateIST]);
 
-    // 4. Calculate Percentage and Return
-    const totalPossibleMarks = Number(maxMarksResult[0]?.max_marks) || 0;
+    // 4. Handle orphaned daily_report entries
+    const [orphanedMarks] = await db.execute(`
+      SELECT COALESCE(SUM(dr.marks), 0) as orphaned_marks
+      FROM daily_report dr
+      LEFT JOIN fix_activities f ON f.activity_id = dr.activity_id AND f.user_id = dr.user_id
+      WHERE dr.user_id = ? AND DATE(dr.activity_date) = ? AND f.activity_id IS NULL
+    `, [user_id, targetDateIST]);
+
+    // 5. Calculate Percentage and Return
+    const maxFromRules = Number(maxMarksResult[0]?.max_marks) || 0;
+    const orphanedMax = Number(orphanedMarks[0]?.orphaned_marks) || 0;
+    const totalPossibleMarks = maxFromRules + orphanedMax;
     const totalEarnedMarks = Number(earnedMarksResult[0]?.earned_marks) || 0;
 
     let percentage = 0;
@@ -3031,7 +3065,7 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
       if (percentage > 100) percentage = 100;
     }
 
-    console.log(`Center: ${center_id}, Earned: ${totalEarnedMarks}, Max: ${totalPossibleMarks}, %: ${percentage}`);
+    console.log(`[DailyScore] Earned: ${totalEarnedMarks}, Max(rules): ${maxFromRules}, Max(orphaned): ${orphanedMax}, Total Max: ${totalPossibleMarks}, %: ${percentage}`);
 
     return { totalEarnedMarks, totalPossibleMarks, percentage };
 
@@ -3040,7 +3074,6 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
     return { totalEarnedMarks: 0, totalPossibleMarks: 0, percentage: 0 };
   }
 };
-
 
 export const getDailyScore = asyncHandler(async (req, resp) => {
   const { user_id, activity_date } = mergeParam(req);
