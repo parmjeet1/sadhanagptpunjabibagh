@@ -2,6 +2,7 @@
  * Runs every numbered database change in scripts/db-changes/ in number order (TEST database only).
  *
  *     node scripts/db-changes/run-all.js --confirm-test        (normally started by scripts/after-deploy-test.sh)
+ *     node scripts/db-changes/run-all.js --test-mail           (only sends a test email, no database access)
  *
  * File rules (see "Rules for database change scripts" in DBnew.md):
  *   - name:  DB-<3+ digit number>-<short-words-with-dashes>.js   e.g. DB-003-add-xyz-column.js
@@ -72,6 +73,14 @@ export const runAll = async (db, transporter, { dir = DIR, log = console.log, en
 };
 
 const main = async () => {
+  // Mail check only: sends a test email through the same code, touches no database.
+  if (process.argv.includes("--test-mail")) {
+    const { default: transporter } = await import("../../utils/emails/mailer.js");
+    const change = { id: "DB-test", title: "mail test (no database change)" };
+    const text = await sendResultMail(transporter, change, { state: "applied", message: "This is only a test of the result email. No database was changed." });
+    console.log(`[DB] ${text}`);
+    process.exit(text.startsWith("Email sent") ? 0 : 1);
+  }
   if (!process.argv.includes("--confirm-test")) {
     console.error("Refusing to run: add --confirm-test to confirm this is the TEST database.");
     process.exit(1);

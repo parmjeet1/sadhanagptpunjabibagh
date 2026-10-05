@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 4:05 PM IST - Fix (result email sender, test server)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The first run of the after-deploy database step on the test server applied DB-002 correctly, but its result email was refused by the mail server ("501 Invalid MAIL FROM address provided"): the sender address was taken from `MAIL_USERNAME`, which is a login name, not an email address. The sender is now `MAIL_FROM`, else `GMAIL_USER` (what the app's own emails already use), else `MAIL_USERNAME`, and only a value that really looks like an email address is used; if none does, the screen says so clearly. Added `node scripts/db-changes/run-all.js --test-mail`, which only sends a test email through the same code and touches no database (DB-002 is already applied, so it will not send a result email again).
+- **Files touched**: `scripts/db-changes/_helper.js`, `scripts/db-changes/run-all.js`, `CHANGELOG.md`
+- **Tested**: with a fake mailer (sender choice, no valid sender, recipient) plus the earlier 21 checks, all passing. Not tested with the real mail server.
+- **Database**: DB-002 was applied on the test server at 3:31 PM IST (users column and foreign key created, all values empty, 386 users). Still to confirm: that database is the test one, and the DBnew.md status.
+
 ## 2026-10-05, 3:55 PM IST - Tooling (after-deploy database changes, test server only)
 
 - **Developer**: Manvatar Prabhu Ji

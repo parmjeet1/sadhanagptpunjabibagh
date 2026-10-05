@@ -71,15 +71,26 @@ export const runChange = async (db, change) => {
   }
 };
 
+/**
+ * The "from" address: MAIL_FROM, else GMAIL_USER (what the app's own emails use), else MAIL_USERNAME.
+ * Only a value that really looks like an email address is used (MAIL_USERNAME is often just a login name).
+ */
+export const pickSender = (env = process.env) =>
+  [env.MAIL_FROM, env.GMAIL_USER, env.MAIL_USERNAME]
+    .map((v) => String(v || "").trim().replace(/^.*<(.+)>$/, "$1"))
+    .find((v) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v)) || null;
+
 /** Sends the result mail. Never throws; returns a short text for the screen. "already applied" sends nothing. */
 export const sendResultMail = async (transporter, change, result, env = process.env, now = new Date()) => {
   const to = env.DB_MIGRATION_NOTIFY_EMAIL || DEFAULT_NOTIFY_EMAIL;
   if (result.state === "already") return "No email sent (nothing changed this time).";
+  const sender = pickSender(env);
+  if (!sender) return "Email could NOT be sent (no valid sender address: set MAIL_FROM=name@domain in .env). The result above is still valid.";
   try {
     const ok = result.state === "applied";
     const when = now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: true });
     await transporter.sendMail({
-      from: `SadhanaGPT <${env.MAIL_USERNAME || env.GMAIL_USER || ""}>`,
+      from: `SadhanaGPT <${sender}>`,
       to,
       subject: ok ? `[SadhanaGPT TEST] ${change.id} applied successfully` : `[SadhanaGPT TEST] ${change.id} FAILED - developer please check`,
       text: [
