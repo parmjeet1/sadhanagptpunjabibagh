@@ -64,6 +64,21 @@ Status values: `PENDING` (written, not run) | `DONE-TEST` | `DONE-PROD` | `SKIPP
 - **Automatic way (TEST database only)**: runs by itself after each test deploy through `scripts/after-deploy-test.sh` (see "Automatic run after deploy" below). Its change script is `scripts/db-changes/DB-002-personal-marking-scheme.js`. It checks first, runs the one ALTER above, checks the result and emails `md.gkg.sp@gmail.com` "applied" or "FAILED" (with a plain-English explanation of the error). Safe to run twice (second time: "already applied", no email). For production keep running the SQL by hand.
 - **Run on / Result**: _(developer to fill in)_
 
+## DB-003 | 2026-10-05 | Automation self-test table (TEST database only, throwaway)
+
+- **Status**: PENDING (a test of the after-deploy automation; not needed by any feature)
+- **Type**: structure change, creates ONE new empty table `db_dependency_selftest`. No existing table or data is touched.
+- **Why**: DB-002 is already applied, so it cannot show the full chain again. This is a harmless new numbered change to prove that a new file is picked up after a deploy, created, and reported by email. It has the same 17 columns as the app's real `db_dependency` table (story / book price / developer contact / payment key settings) but under another name, so the real table is never touched or dropped.
+- **Query** (run by `scripts/db-changes/DB-003-automation-selftest.js`; the script skips it if the table already exists, and never drops anything): `CREATE TABLE db_dependency_selftest (...)`, same columns as `db_dependency`, see the script.
+- **Expected result**: one new empty table with 17 columns; an email "DB-003 applied successfully" to md.gkg.sp@gmail.com.
+- **Risk**: very low. New unused table, no data.
+- **Undo** (do this when the test is finished):
+  ```sql
+  DROP TABLE db_dependency_selftest;
+  ```
+  Then retire the script: delete `scripts/db-changes/DB-003-automation-selftest.js` in a new commit (the number DB-003 stays used here and is never reused). If it is left in place, the next deploy would create the table again.
+- **Run on / Result**: _(developer to fill in)_
+
 ## Automatic run after deploy (TEST server only)
 
 One fixed file does it: `scripts/after-deploy-test.sh`. It is set up ONCE in `deploy.sh` on the server and is never edited again. It runs only inside a folder named `test-backend` (refuses anywhere else), needs `.env` and `node`, runs every change in `scripts/db-changes/` in number order, and logs to `~/db-changes.log`. Exit 0 = fine, 1 = a change failed (email explains), 2 = wrong place / setup problem.

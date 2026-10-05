@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 4:35 PM IST - Test change (automation self-test, test server only)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Added DB-003, a throwaway change to test the after-deploy automation end to end: it creates one EMPTY table `db_dependency_selftest` with the same 17 columns as the app's real `db_dependency` table, under another name. It never touches or drops `db_dependency`, never drops anything, and is skipped if the table exists. After the test the developer drops the table by hand and the script file is retired (otherwise every deploy would create it again). Logged in `DBnew.md` as DB-003 (PENDING).
+- **Files touched**: `scripts/db-changes/DB-003-automation-selftest.js` (new), `DBnew.md`, `CHANGELOG.md`
+- **Tested**: with a fake database (7 checks: created once, second run does nothing, create error, wrong column count, no DROP and the real table never named, 17 columns, runner order DB-002 then DB-003) plus the earlier checks, all passing. Not run on a real database.
+- **Database**: nothing run by Claude. The change happens when the after-deploy step runs on the test server.
+
 ## 2026-10-05, 4:20 PM IST - Change (result email follows the app's own email setup)
 
 - **Developer**: Manvatar Prabhu Ji
