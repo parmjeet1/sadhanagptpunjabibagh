@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 10:56 AM IST - Fix
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: "Reading Srila Prabhupada Book" (activity 8, a built-in) was missing from every counsellor's Custom Activities list (both "Already added" and "Available"). Its owner field holds an empty text instead of nothing, and the list only accepted "nothing" or the counsellor's own id. The list now also accepts the empty text. Other counsellors' custom activities stay hidden. No database change.
+- **Files touched**: `SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js`, `CHANGELOG.md`
+- **Tested**: on the mirror database's activity list the old condition hides activity 8 and the new one shows it (15 rows instead of 14); another counsellor's custom activity is still hidden. Not run against a live server.
+- **Frontend**: no change needed. Not changed: the marking-scheme editor's activity list has the same empty-owner problem (`getSchemeActivitiesList`).
+
 ## 2026-10-05, 10:48 AM IST - New (redo of the reverted pick-list)
 
 - **Developer**: Manvatar Prabhu Ji
