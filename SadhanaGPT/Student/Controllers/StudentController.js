@@ -68,6 +68,20 @@ const parseValToNumber = (val, isTime = false, isYesNo = false) => {
   return parseFloat(str);
 };
 
+/**
+ * The rules query returns rules from the student's own scheme AND from the
+ * default scheme (id 1) so the default can act as a fallback. The two must not
+ * be mixed: calculateBestMarks() takes the HIGHEST matching mark, so a default
+ * rule worth more than the custom one would always win and the custom scheme
+ * would never take effect. If the student's scheme has rules for this
+ * activity, use only those; otherwise fall back to the default scheme's rules.
+ */
+export const selectRulesForScheme = (rules, schemeId) => {
+  if (!Array.isArray(rules) || rules.length === 0) return [];
+  const own = rules.filter(r => Number(r.scheme_id) === Number(schemeId));
+  return own.length > 0 ? own : rules.filter(r => Number(r.scheme_id) === 1 || r.scheme_id == null);
+};
+
 export const calculateBestMarks = (rawCount, rules, activityType, unit, activityName) => {
   if (!rules || rules.length === 0) return null;
   console.log("calculation best marks", rawCount, rules, activityType, unit, activityName);
@@ -1187,7 +1201,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
         );
 
         if (fetchedRules.length > 0) {
-          achievedMarks = calculateBestMarks(storedCount, fetchedRules, activityInfo.activity_type, unit);
+          achievedMarks = calculateBestMarks(storedCount, selectRulesForScheme(fetchedRules, schemeId), activityInfo.activity_type, unit);
         } else {
           achievedMarks = 0;
         }
@@ -3757,7 +3771,7 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
       );
 
       if (fetchedRules.length > 0) {
-        achievedMarks = calculateBestMarks(countVal, fetchedRules, matchedAct.activity_type, matchedAct.unit, matchedAct.name);
+        achievedMarks = calculateBestMarks(countVal, selectRulesForScheme(fetchedRules, schemeId), matchedAct.activity_type, matchedAct.unit, matchedAct.name);
       } else {
         achievedMarks = 0;
       }

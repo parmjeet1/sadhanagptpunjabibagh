@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 11:28 AM IST - Fix (marks, part 1 of 3)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Marks now follow the student's custom scheme. The marks code fetched the rules of the student's scheme AND the default scheme together and awarded the HIGHEST matching mark, so a default rule worth more always won: with scheme "new3" saying 16+ rounds = 20 marks and the default saying 16+ = 25, Chanting still earned 25. Now only the student's own scheme rules are used for an activity; the default scheme's rules are used only for an activity the scheme has no rule for. Applies to saving an entry in the app/assistant and to WhatsApp logging. No database change. (This restores the part of the earlier reverted fix that is still needed. The corrupted-rule cause is fixed separately.)
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: ran the real marks functions on the default Chanting rules from the mirror database against a scheme with 16+ = 20: 16 rounds gave 25 with the old code and 20 with the new; a scheme with no Chanting rules still falls back to the default (25). Not run against a live server.
+- **Important**: marks are worked out when an entry is SAVED, so entries already saved today still show 25 until they are saved again or recalculated (part 2 of 3 does the recalculation when a scheme is allotted).
+- **Frontend**: no change needed.
+
 ## 2026-10-05, 11:17 AM IST - Log file
 
 - **Developer**: Manvatar Prabhu Ji
