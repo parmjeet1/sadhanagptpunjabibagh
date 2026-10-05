@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 11:17 AM IST - Log file
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: New log file `DBnew.md` for every database change (query, reason, risk, undo, status, and a place for the developer to record when and where it was run). It lists DB-001 (label the 5 default Chanting rules as 'system', PENDING, to be run by the developer) and the earlier migration files as "not required now". Claude does not run database changes.
+- **Files touched**: `DBnew.md` (new), `CHANGELOG.md`
+- **Database query**: none run. DB-001 is written in `DBnew.md` for the developer to run.
+- **Frontend**: no change needed.
+
 ## 2026-10-05, 11:15 AM IST - Fix
 
 - **Developer**: Manvatar Prabhu Ji
