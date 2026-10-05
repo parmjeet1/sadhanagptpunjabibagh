@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 3:55 PM IST - Tooling (after-deploy database changes, test server only)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Replaced the single DB-002 script with a small system for the test server. One fixed file, `scripts/after-deploy-test.sh`, is set up once in `deploy.sh` and never edited again. It runs only inside a folder named `test-backend` and runs every numbered change in `scripts/db-changes/` in order (`DB-NNN-short-words.js`). A new database change is just a new file with the next number; the naming rules are in `DBnew.md`. Each change checks first (safe to run twice), runs, verifies, and emails `md.gkg.sp@gmail.com` on success or failure (a failure email explains the error in plain English and names the database that was targeted); a failure stops later changes. DB-002 moved to `scripts/db-changes/DB-002-personal-marking-scheme.js` (the earlier `scripts/apply-db-002.js` is removed). Shared code is in `scripts/db-changes/_helper.js`, the runner is `scripts/db-changes/run-all.js`. Claude did not run anything and has no database access.
+- **Files touched**: `scripts/after-deploy-test.sh` (new), `scripts/db-changes/_helper.js` (new), `scripts/db-changes/run-all.js` (new), `scripts/db-changes/DB-002-personal-marking-scheme.js` (new, replaces `scripts/apply-db-002.js`), `DBnew.md`, `CHANGELOG.md`
+- **Tested**: with a fake database and fake mailer (21 checks: number order, only new files run, failure stops the rest, bad name / duplicate number / wrong id are refused with an email, DB-002 cases, mail content) and the shell file in throwaway folders (refuses a wrong folder name, a missing `.env`, a missing runner). Not run on the real server or a real MariaDB; no real email sent.
+- **Server setup**: one line in `deploy.sh` (see `DBnew.md`, "Automatic run after deploy"). Not done by Claude.
+
 ## 2026-10-05, 3:25 PM IST - Tooling (one-time database script, test only)
 
 - **Developer**: Manvatar Prabhu Ji

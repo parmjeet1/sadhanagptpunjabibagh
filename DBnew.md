@@ -61,8 +61,28 @@ Status values: `PENDING` (written, not run) | `DONE-TEST` | `DONE-PROD` | `SKIPP
     DROP COLUMN `personal_marking_scheme_id`;
   ```
 - **Code that needs it**: the new backend code is safe to deploy before OR after this change (until the column exists, a personal scheme is simply ignored and "Use for me" answers "not switched on yet"). The feature switches on by itself within about a minute of the column existing, no restart.
-- **Automatic way (TEST database only)**: after deploying the backend, run once on the server: `node scripts/apply-db-002.js --confirm-test`. It checks first, runs the one ALTER above, checks the result, prints it, and emails "applied" or "FAILED" to `md.gkg.sp@gmail.com` (nothing to set up; `DB_MIGRATION_NOTIFY_EMAIL` in the server's `.env` can change the address). A FAILED email says in plain English which step failed, what it usually means and what to do, plus the technical database message. Safe to run twice (second run says "already applied"). It refuses to run without `--confirm-test`. On FAILED, nothing half-done is left by the script; a developer cross-checks and uses the Undo above only if needed. For production keep running the SQL by hand.
+- **Automatic way (TEST database only)**: runs by itself after each test deploy through `scripts/after-deploy-test.sh` (see "Automatic run after deploy" below). Its change script is `scripts/db-changes/DB-002-personal-marking-scheme.js`. It checks first, runs the one ALTER above, checks the result and emails `md.gkg.sp@gmail.com` "applied" or "FAILED" (with a plain-English explanation of the error). Safe to run twice (second time: "already applied", no email). For production keep running the SQL by hand.
 - **Run on / Result**: _(developer to fill in)_
+
+## Automatic run after deploy (TEST server only)
+
+One fixed file does it: `scripts/after-deploy-test.sh`. It is set up ONCE in `deploy.sh` on the server and is never edited again. It runs only inside a folder named `test-backend` (refuses anywhere else), needs `.env` and `node`, runs every change in `scripts/db-changes/` in number order, and logs to `~/db-changes.log`. Exit 0 = fine, 1 = a change failed (email explains), 2 = wrong place / setup problem.
+
+**One-time setup** (add after the line in `deploy.sh` that restarts the test backend):
+```bash
+bash ~/test-backend/scripts/after-deploy-test.sh || echo "DB changes need a developer: see email and ~/db-changes.log"
+```
+The `|| echo ...` keeps a failed database change from stopping the deploy (the new code works without the new database changes).
+
+### Rules for database change scripts (every new change)
+1. **Name**: `DB-<3+ digit number>-<short-words-with-dashes>.js` in `scripts/db-changes/`, e.g. `DB-003-add-xyz-column.js`. Lowercase letters, digits and dashes only.
+2. **Number**: the next free number, the same number as its entry in this file (`DB-003`). Numbers only go up and are never reused. They run in number order.
+3. **Content**: copy `DB-002-personal-marking-scheme.js` and change only the change itself. It exports `change` with `id` (same as the number in the file name), `title`, `check`, `apply`, `verify` (and optional `precheck`). `check` must say "already applied" when the change is already there, so running twice is harmless.
+4. **Never edit or rename a script after it has run anywhere.** To fix a mistake, add a new, higher-numbered script.
+5. **One change per script**, one statement where possible (a single ALTER either fully works or changes nothing).
+6. **Log it here first**: write the DB entry (what, why, expected result, risk, undo) in this file, then add the script. Fill in "Run on / Result" afterwards.
+7. **If one fails**: it emails the explained error and stops; later changes do not run until a developer fixes it. A wrong name, a duplicate number or an id that does not match the file name also stops the run with an email.
+8. **Production**: these scripts are for the TEST database only. Production changes stay manual (SQL run by the developer).
 
 ---
 
