@@ -6,7 +6,7 @@ import db from "../../../config/database.js";
  * list only).
  *
  * The pick-list offers ONLY (1) the fixed set of standard activities below (the Daily
- * Sadhana Marking Scheme activities) and (2) custom activities made by the person's OWN
+ * Sadhana Marking Scheme activities, plus Reading Srila Prabhupada Book) and (2) custom activities made by the person's OWN
  * counsellor (a counsellor sees their own), never anything else, so it is never random.
  * Activities the person already has (same master activity, or the same name) are left
  * out, so what remains is what is missing from their dashboard.
@@ -29,6 +29,7 @@ export const STANDARD_ACTIVITY_NAMES = [
   "day rest(min)",
   "hearing(min)",
   "reading(min)",
+  "Reading Srila Prabhupada Book",
   "Reading Misc. Books",
   "hearing spiritual master",
   "hearing srila prabhupada",
@@ -56,6 +57,7 @@ const STANDARD_FAMILIES = [
   ["hearingsrilaprabhupada", /^hearing(srila|prabhupada)/],
   ["hearing",            /^hearing(?!misc)/],
   ["readingmiscbooks",   /^readingmisc/],
+  ["readingsrilaprabhupadabook", /^readingsrila/],
   ["reading",            /^(book)?reading(?!misc|srila)/],
   ["menialservices",     /^menial/],
   ["shlokamemorisation", /^shloka/],

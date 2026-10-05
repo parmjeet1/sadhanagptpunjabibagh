@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 10:57 AM IST - Change
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: "Reading Srila Prabhupada Book" is added to the student/counsellor pick-list (the fixed list is now 15 activities). It is listed right after "Reading(MIN)". It counts as a different activity from "Reading(MIN)", so having one never hides the other, and someone who already has it (by activity or by name) is not offered it again. No database change.
+- **Files touched**: `SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js`, `CHANGELOG.md`
+- **Tested**: ran the pick-list filtering on all 64 students of the mirror database: it is offered to 59 of them (the 5 who already have it are skipped), nobody is offered a standard activity they already have under another spelling. Not run against a live server.
+- **Frontend**: no change needed.
+
 ## 2026-10-05, 10:56 AM IST - Fix
 
 - **Developer**: Manvatar Prabhu Ji
