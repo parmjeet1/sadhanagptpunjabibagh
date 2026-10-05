@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 10:48 AM IST - New (redo of the reverted pick-list)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The "Add custom activity" pick-list API is back (`GET /addable-activities`, `POST /add-selected-activities`) with the problems found in the mirror database fixed. (1) It now reads activities with status 1, 2 AND 3. Before it skipped status 2, so Mangal Aarti Attended, Reading Misc. Books, Hearing Spiritual Master, Hearing Srila Prabhupada, Menial Services and Shloka Memorisation could never be offered. (2) "Already has it" now also recognises the other spellings people really use ("Wakeup time", "Sleeping time", "Mangal Arti", "Study Hours(Hrs)", "Book Reading" and similar) for the standard activities only; a counsellor's custom activity is hidden only on an exact name match. (3) "Book Distribution Time" is NOT added (it would need a database insert; a custom "Book distribution" already exists and is offered through the counsellor's custom list). The list is the 14 standard activities in a fixed order, then the person's own counsellor's custom activities. Adding writes only to the person's own list (`fix_activities`), never to the group's list. No database change.
+- **Tested**: ran the same filtering on all 64 students of the mirror database: Hearing Spiritual Master is offered to 54 of them, no student is offered a standard activity they already have under another spelling, a custom "Reading Club" is not hidden by "Reading". Not run against a live server (no database server here).
+- **Files touched**: `SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js` (new), `routes/Routes.js`, `CHANGELOG.md`
+- **Frontend**: the matching pick-list screen is committed in the frontend repo (no logic change there). Not touched here: the counsellor's "Already added" list rule (next task).
+
 ## 2026-10-05, 10:31 AM IST - Database (migration files, NOT yet run)
 
 - **Developer**: Manvatar Prabhu Ji
