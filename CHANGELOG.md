@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 1:25 PM IST - Plan (database log only)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Wrote the proposed database change for the "my own marking scheme" feature into the database log as DB-002 (one new empty column `users.personal_marking_scheme_id`). Nothing was run and no code changed; the feature code waits until the developer has run the query on the test database.
+- **Files touched**: `DBnew.md`, `CHANGELOG.md`
+- **Tested**: not applicable (text only).
+- **Frontend**: nothing yet; a student "My marking scheme" screen and a "Use for me" switch for counsellors will follow.
+
 ## 2026-10-05, 1:05 PM IST - Change (rankings by percentage)
 
 - **Developer**: Manvatar Prabhu Ji

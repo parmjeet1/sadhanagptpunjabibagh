@@ -33,6 +33,36 @@ Status values: `PENDING` (written, not run) | `DONE-TEST` | `DONE-PROD` | `SKIPP
   ```
 - **Run on / Result**: _(developer to fill in)_
 
+## DB-002 | 2026-10-05 | A person's own (personal) marking scheme
+
+- **Status**: PENDING (needed only for the "my own marking scheme" feature, for students AND counsellors)
+- **Type**: structure change, one new nullable column on `users` (no existing data changes)
+- **Why**: today a scheme can only be allotted to a group or sub-group (`center_list.marking_scheme_id`, `labels_list.marking_scheme_id`). There is nowhere to say "use THIS scheme for me alone". The scheme itself is stored in the existing `marking_schemes` / `marking_rules` tables (owner = the person's user_id), so only the pointer is new. Rule used by the app: sub-group scheme set by a counsellor, else group scheme set by a counsellor, else the person's own scheme, else the default scheme. A counsellor's allotment therefore overrides the personal scheme without deleting it.
+- **Check first** (expect 0 rows, and `marking_schemes` must show a PRIMARY KEY on `id`):
+  ```sql
+  SHOW COLUMNS FROM users LIKE 'personal_marking_scheme_id';
+  SHOW CREATE TABLE marking_schemes;
+  ```
+- **Query**:
+  ```sql
+  ALTER TABLE `users`
+    ADD COLUMN `personal_marking_scheme_id` BIGINT(20) NULL DEFAULT NULL AFTER `top_ranker_to`,
+    ADD KEY `idx_users_personal_scheme` (`personal_marking_scheme_id`),
+    ADD CONSTRAINT `fk_users_personal_scheme` FOREIGN KEY (`personal_marking_scheme_id`)
+      REFERENCES `marking_schemes` (`id`) ON DELETE SET NULL;
+  ```
+- **Expected result**: 416 rows (all users) kept, new column NULL everywhere. Nothing changes for anyone until a person picks a scheme for themselves.
+- **Risk**: low. Nullable column, no default value to fill, table is small. The foreign key makes deleting a scheme automatically clear it from the people using it (same style as the existing `fk_user_label`). Run on the test database first.
+- **Undo**:
+  ```sql
+  ALTER TABLE `users`
+    DROP FOREIGN KEY `fk_users_personal_scheme`,
+    DROP KEY `idx_users_personal_scheme`,
+    DROP COLUMN `personal_marking_scheme_id`;
+  ```
+- **Code that needs it**: the new backend code reads this column, so run this SQL BEFORE deploying that backend code.
+- **Run on / Result**: _(developer to fill in)_
+
 ---
 
 ## Written earlier, NOT required now (kept for reference only)
