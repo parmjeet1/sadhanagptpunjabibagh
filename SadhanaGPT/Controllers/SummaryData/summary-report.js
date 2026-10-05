@@ -1,6 +1,7 @@
-import db from '../../config/database.js';
+import db from '../../../config/database.js';
 import cron from 'node-cron';
 import moment from 'moment';
+import { createNotification } from '../../../utils/utils.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -211,20 +212,34 @@ const weeklySummaryUpdate = async () => {
                     let aggregatedValue = 0;
 
                     if (activity_type === 'time') {
-                        // duration-based: sum all minutes (stored as "HH:MM" or numeric)
+                        // duration-based: sum all minutes (stored as "HH:MM", "8:20 AM", or numeric)
                         for (const r of rows) {
                             const raw = r.count;
-                            if (typeof raw === 'string' && raw.includes(':')) {
-                                const [h, m] = raw.split(':').map(Number);
-                                aggregatedValue += (h * 60) + m;
+                            if (raw === null || raw === undefined || raw === '') continue;
+                            if (typeof raw === 'number') {
+                                aggregatedValue += raw;
                             } else {
-                                aggregatedValue += Number(raw) || 0;
+                                const str = String(raw).trim();
+                                if (!isNaN(Number(str))) {
+                                    aggregatedValue += Number(str);
+                                } else {
+                                    const match = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+                                    if (match) {
+                                        let hours = parseInt(match[1], 10);
+                                        const mins = parseInt(match[2], 10);
+                                        const ampm = match[3] ? match[3].toUpperCase() : null;
+                                        if (ampm === 'PM' && hours < 12) hours += 12;
+                                        if (ampm === 'AM' && hours === 12) hours = 0;
+                                        aggregatedValue += (hours * 60) + mins;
+                                    }
+                                }
                             }
                         }
                     } else if (activity_type === 'yes_no' || activity_type === 'boolean') {
-                        // yes/no: count entries where count == 1
+                        // yes/no: count entries where count is 1, 'yes', or 'true'
                         for (const r of rows) {
-                            if (Number(r.count) === 1 || String(r.count).toLowerCase() === 'yes') {
+                            const valStr = String(r.count).toLowerCase().trim();
+                            if (Number(r.count) === 1 || valStr === 'yes' || valStr === 'true' || r.count === true) {
                                 aggregatedValue += 1;
                             }
                         }
@@ -251,7 +266,15 @@ const weeklySummaryUpdate = async () => {
                     // ── Step 7: Compare aggregated value against rules ─────────
                     let bestMarks = 0;
                     for (const rule of rules) {
-                        let ruleVal  = Number(rule.condition_value);
+                        let ruleVal;
+                        const condLower = String(rule.condition_value).toLowerCase().trim();
+                        if (condLower === 'yes' || condLower === 'true') {
+                            ruleVal = 1;
+                        } else if (condLower === 'no' || condLower === 'false') {
+                            ruleVal = 0;
+                        } else {
+                            ruleVal = parseFloat(rule.condition_value);
+                        }
                         let cCount   = aggregatedValue;
                         let matched  = false;
 
@@ -300,6 +323,18 @@ const weeklySummaryUpdate = async () => {
                 ]);
 
                 console.log(`[WeeklyJob] ✅ User ${user_id} → marks: ${totalMarks}/${maxPossibleMarks} saved on ${summaryDate}`);
+
+                // Send notification to check ranking
+                await createNotification(
+                    "Weekly Ranking Available!",
+                    "Your weekly ranking has been calculated. Check out how you performed last week on the Inspiration board!",
+                    "weekly_ranking",
+                    "student",
+                    "system",
+                    0,
+                    user_id,
+                    "/student/inspiration"
+                );
 
             } catch (userErr) {
                 console.error(`[WeeklyJob] ❌ Error processing user ${user_id}:`, userErr.message);

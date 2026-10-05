@@ -21,8 +21,7 @@
       import { processInactivityReminders,dispatchWeeklyCounsellorReports } from './SadhanaGPT/cronjobs/Email-notificatiion.js';
       import { sendSadhanaWhatsappReminders } from './SadhanaGPT/cronjobs/WhatsAppMessage.js';
 import { freqSadhnaCronjob, sendSadhanaPushReminders } from './SadhanaGPT/cronjobs/WebPushNotification.js';
-import { WeeklyJob } from './SadhanaGPT/SummaryData/summary-report.js';
-import { runWeeklyRankJob } from './SadhanaGPT/cronjobs/weeklyRankJob.js';
+import { WeeklyJob } from './SadhanaGPT/Controllers/SummaryData/summary-report.js';
 import TripaRoutes from './tripa-app/src/routes/Routes.js';
 import crypto from 'crypto';
 if (typeof globalThis.crypto === 'undefined') {
@@ -76,9 +75,13 @@ process.on("warning", (warning) => {
       //   }
       //   next();
       // });
+      //Mvd
       app.use(express.urlencoded({ extended: true }));
       app.use(express.json());
       app.use(bodyParser.json());
+      
+      //app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+      //app.use(express.json({ limit: "15mb" }));
       app.use(cookieParser());
     
 
@@ -127,41 +130,7 @@ process.on("warning", (warning) => {
        
       const server = http.createServer(app);
       server.listen(PORT, '0.0.0.0', () => {
-        // ── Startup info ────────────────────────────────────────────────────
-        import('os').then((osModule) => {
-          const os = osModule.default;
-          const nets = os.networkInterfaces();
-          const localIPs = [];
-          for (const iface of Object.values(nets)) {
-            for (const net of iface) {
-              if (net.family === 'IPv4' && !net.internal) localIPs.push(net.address);
-            }
-          }
-          console.log(`\n✅ Server is running on port ${PORT}`);
-          console.log(`   Local:   http://localhost:${PORT}`);
-          localIPs.forEach(ip => console.log(`   Network: http://${ip}:${PORT}  \u2190 use this on mobile`));
-
-          // ── Print all registered routes ──────────────────────────────────
-          console.log('\n\ud83d\udccb Registered routes:');
-          app._router.stack.forEach((layer) => {
-            if (layer.route) {
-              const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase()).join(',');
-              console.log(`   ${methods.padEnd(8)} ${layer.route.path}`);
-            } else if (layer.name === 'router' && layer.handle.stack) {
-              const prefix = layer.regexp.source
-                .replace('^\\\/','/')
-                .replace('\\/?(?=\\\/|$)','');
-              layer.handle.stack.forEach((r) => {
-                if (r.route) {
-                  const methods = Object.keys(r.route.methods).map(m => m.toUpperCase()).join(',');
-                  console.log(`   ${methods.padEnd(8)} ${prefix}${r.route.path}`);
-                }
-              });
-            }
-          });
-          console.log('');
-          // ────────────────────────────────────────────────────────────────
-        }); // end import('os').then()
+        // ── Startup info ───────────────
       }); // end server.listen
 
 
@@ -190,17 +159,4 @@ process.on("warning", (warning) => {
      
        freqSadhnaCronjob();
 WeeklyJob();
-
-// Run at 3:00 AM every day to ensure 1AM and 2AM data syncing is complete
-cron.schedule(
-  '30 3 * * *',
-  async () => {
-    console.log('Running runWeeklyRankJob:', new Date());
-    await runWeeklyRankJob();
-  },
-  {
-    timezone: 'Asia/Kolkata',
-  }
-);
-
 app.use(errorHandler)

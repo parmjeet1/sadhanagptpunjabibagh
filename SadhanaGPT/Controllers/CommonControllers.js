@@ -187,29 +187,50 @@ export const downloadErrorLog = asyncHandler(async (req, res) => {
 
 export const saveSubscription = async (req, res) => {
     try {
-        const { user_id, subscription } = req.body;
-        const { endpoint, keys } = subscription;
-        const updateQuery = `UPDATE users SET reminder_enabled = 1, reminder_days = 3 WHERE user_id = ?`;
-        await db.query(updateQuery, [user_id]);
-        // 1. Check if this exact browser endpoint is already in the database
-        const [existing] = await db.execute(`SELECT id FROM push_subscriptions WHERE endpoint = ?`, [endpoint]);
-        
-        if (existing.length > 0) {
-            // The browser is already subscribed! Do nothing and return success.
-            return res.status(200).json({ status: 1, message: "Push notifications  enabled!" });
+        const params = mergeParam(req);
+        const { user_id, subscription } = params;
+        const { endpoint, keys } = subscription || {};
+        const rawFcmToken = params.fcm_token || params.fcmToken || params.token || params.fcm;
+
+        let tokenToSave = rawFcmToken;
+        if (!tokenToSave && endpoint) {
+            if (endpoint.includes('/fcm/send/')) {
+                tokenToSave = endpoint.split('/fcm/send/')[1];
+            } else {
+                tokenToSave = endpoint;
+            }
+        }
+        if (tokenToSave && tokenToSave.length > 100) {
+            tokenToSave = tokenToSave.substring(0, 100);
         }
 
-        // 2. If it is NOT in the database, insert it
-        // (The ON DUPLICATE KEY UPDATE protects you from any rare 'auth' clashes)
-        await db.execute(`
-            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) 
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE 
-                user_id = VALUES(user_id),
-                endpoint = VALUES(endpoint),
-                p256dh = VALUES(p256dh),
-                created_at = CURRENT_TIMESTAMP
-        `, [user_id, endpoint, keys.p256dh, keys.auth]);
+        if (tokenToSave) {
+          await db.query(
+            `UPDATE users SET reminder_enabled = 1, fcm_token = ? WHERE user_id = ?`,
+            [tokenToSave, user_id]
+          );
+        } else {
+          await db.query(
+            `UPDATE users SET reminder_enabled = 1 WHERE user_id = ?`,
+            [user_id]
+          );
+        }
+        // 1. Check if this exact browser endpoint is already in the database
+        if (endpoint) {
+            const [existing] = await db.execute(`SELECT id FROM push_subscriptions WHERE endpoint = ?`, [endpoint]);
+            
+            if (existing.length === 0) {
+                await db.execute(`
+                    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) 
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                        user_id = VALUES(user_id),
+                        endpoint = VALUES(endpoint),
+                        p256dh = VALUES(p256dh),
+                        created_at = CURRENT_TIMESTAMP
+                `, [user_id, endpoint, keys?.p256dh, keys?.auth]);
+            }
+        }
        
         return res.status(200).json({ status: 1, message: "Push notifications enabled!" });
     } catch (error) {
@@ -233,9 +254,9 @@ export const removeSubscription = async (req, res) => {
         );
         console.log(`Deleted ${deleteResult.affectedRows} push subscription(s) for user_id: ${user_id}`);
 
-        // 2. Set reminder_enabled = 0 in the users table
+        // 2. Set reminder_enabled = 0 and clear fcm_token in the users table
         await db.query(
-            `UPDATE users SET reminder_enabled = 0 WHERE user_id = ?`,
+            `UPDATE users SET reminder_enabled = 0, fcm_token = NULL WHERE user_id = ?`,
             [user_id]
         );
 
@@ -249,49 +270,107 @@ export const removeSubscription = async (req, res) => {
         return res.status(500).json({ status: 0, message: "Failed to remove subscription" });
     }
 };
+
+export const updateFcmToken = async (req, res) => {
+  try {
+    const params = mergeParam(req);
+    const { user_id } = params;
+    const tokenToSave = params.fcm_token || params.fcmToken || params.token || params.fcm;
+
+    if (!user_id) {
+      return res.status(400).json({ status: 0, message: "user_id is required." });
+    }
+
+    if (!tokenToSave) {
+      return res.status(400).json({ status: 0, message: "fcm_token is required." });
+    }
+
+    await db.query(
+      `UPDATE users SET fcm_token = ? WHERE user_id = ?`,
+      [tokenToSave, user_id]
+    );
+
+    return res.status(200).json({
+      status: 1,
+      message: "FCM token updated successfully.",
+      fcm_token: tokenToSave
+    });
+  } catch (error) {
+    console.error("Error in updateFcmToken:", error);
+    return res.status(500).json({ status: 0, message: "Internal server error while updating FCM token." });
+  }
+};
+
 export const updateReminderPreferences = async (req, res) => {
   try {
-    const { user_id, reminder_enabled=false, reminder_days=3 } = mergeParam(req);
+    const params = mergeParam(req);
+    const { user_id, reminder_enabled, reminder_days=3, report_frequency_days } = params;
+    const fcmTokenToUse = params.fcm_token || params.fcmToken || params.token || params.fcm;
 
     // 1. Basic Validation
-    const { isValid, errors } = validateFields(mergeParam(req), {
-      user_id: ["required"],
-      // reminder_enabled: ["required"],
-      reminder_days: ["required"]
+    const { isValid, errors } = validateFields(params, {
+      user_id: ["required"]
     });
 
     if (!isValid) {
-        // Handle validation errors...
-        return res.status(400).json({ status: 0, errors });
+      return res.status(400).json({ status: 0, errors });
     }
 
     // Default values if not provided in the request
-    const isEnabled = reminder_enabled === true || reminder_enabled === 1 ? 1 : 0;
-    const days = parseInt(reminder_days) > 0 ? parseInt(reminder_days) : 3;
+    const isEnabled = reminder_enabled === true || reminder_enabled === 1 || reminder_enabled === '1' || reminder_enabled === 'true' ? 1 : 0;
+    const rDays = parseInt(reminder_days) > 0 ? parseInt(reminder_days) : (parseInt(report_frequency_days) > 0 ? parseInt(report_frequency_days) : 3);
+    const repDays = report_frequency_days !== undefined ? (parseInt(report_frequency_days) > 0 ? parseInt(report_frequency_days) : 7) : null;
 
-    // 2. MySQL Update Query
-    const updateQuery = `
-      UPDATE users 
-      SET reminder_enabled = ?, reminder_days = ? 
-      WHERE user_id = ?
-    `;
-    
-    // Execute the query
-    await db.query(updateQuery, [isEnabled, days, user_id]);
+    if (isEnabled === 0) {
+      if (repDays !== null) {
+        await db.query(
+          `UPDATE users SET reminder_enabled = 0, reminder_days = ?, report_frequency_days = ?, fcm_token = NULL WHERE user_id = ?`,
+          [rDays, repDays, user_id]
+        );
+      } else {
+        await db.query(
+          `UPDATE users SET reminder_enabled = 0, reminder_days = ?, fcm_token = NULL WHERE user_id = ?`,
+          [rDays, user_id]
+        );
+      }
+      await db.execute(`DELETE FROM push_subscriptions WHERE user_id = ?`, [user_id]);
+    } else {
+      if (repDays !== null) {
+        if (fcmTokenToUse) {
+          await db.query(
+            `UPDATE users SET reminder_enabled = 1, reminder_days = ?, report_frequency_days = ?, fcm_token = ? WHERE user_id = ?`,
+            [rDays, repDays, fcmTokenToUse, user_id]
+          );
+        } else {
+          await db.query(
+            `UPDATE users SET reminder_enabled = 1, reminder_days = ?, report_frequency_days = ? WHERE user_id = ?`,
+            [rDays, repDays, user_id]
+          );
+        }
+      } else {
+        if (fcmTokenToUse) {
+          await db.query(
+            `UPDATE users SET reminder_enabled = 1, reminder_days = ?, fcm_token = ? WHERE user_id = ?`,
+            [rDays, fcmTokenToUse, user_id]
+          );
+        } else {
+          await db.query(
+            `UPDATE users SET reminder_enabled = 1, reminder_days = ? WHERE user_id = ?`,
+            [rDays, user_id]
+          );
+        }
+      }
+    }
 
-    // 3. 🧹 CLEANUP: If disabled, delete the old "dead" push subscriptions!
-    // if (isEnabled === 0) {
-    //   const deletePushQuery = `DELETE FROM push_subscriptions WHERE user_id = ?`;
-    //   await db.query(deletePushQuery, [user_id]);
-    // }
-
-    // 4. Return Success Response
+    // 3. Return Success Response
     return res.status(200).json({
       status: 1,
       message: 'Notification preferences updated successfully.',
       data: {
         reminder_enabled: isEnabled,
-        reminder_days: days
+        reminder_days: rDays,
+        report_frequency_days: repDays,
+        fcm_token: isEnabled ? (fcmTokenToUse || null) : null
       }
     });
   } catch (error) {
@@ -317,21 +396,29 @@ export const checkPushNotificationStatus = async (req, res) => {
         errors 
       });
     }
-    // 2. Query the push_subscriptions table
+
+    // 1. Check reminder status in users table
+    const [userRows] = await db.query(
+      `SELECT reminder_enabled FROM users WHERE user_id = ?`,
+      [user_id]
+    );
+    const uRow = Array.isArray(userRows) ? (Array.isArray(userRows[0]) ? userRows[0][0] : userRows[0]) : userRows;
+    const userReminderEnabled = uRow ? (uRow.reminder_enabled === 1 || uRow.reminder_enabled === true) : false;
+
+    // 2. Check push subscriptions table
     const query = `
       SELECT id 
       FROM push_subscriptions 
       WHERE user_id = ? 
       LIMIT 1
     `;
-    
     const [result] = await db.query(query, [user_id]);
-    
-    // Handle the array format depending on your DB wrapper (extracting rows)
     const rows = Array.isArray(result) && Array.isArray(result[0]) ? result[0] : result;
-    // 3. If a row exists, they are subscribed
-    const isSubscribed = rows && rows.length > 0;
-    // 4. Return Success Response
+    const hasSub = rows && rows.length > 0;
+
+    const isSubscribed = userReminderEnabled || hasSub;
+
+    // 3. Return Success Response
     return res.status(200).json({
       status: 1,
       message: 'Subscription status fetched successfully.',
@@ -342,7 +429,7 @@ export const checkPushNotificationStatus = async (req, res) => {
     return res.status(500).json({ 
       status: 0, 
       message: 'Internal server error while checking push status.',
-      isSubscribed: false // Safely default to false on error
+      isSubscribed: false
     });
   }
 };

@@ -1,18 +1,30 @@
-
 import { Router } from "express";
 
-import { checkPushNotificationStatus, downloadErrorLog, Register, removeSubscription, saveSubscription, sendEmailOtp, updateReminderPreferences, verifyEmailOtp } from "../SadhanaGPT/Controllers/CommonControllers.js";
+import { checkPushNotificationStatus, downloadErrorLog, Register, removeSubscription, saveSubscription, sendEmailOtp, updateReminderPreferences, updateFcmToken, verifyEmailOtp } from "../SadhanaGPT/Controllers/CommonControllers.js";
 import { Authorization } from "../middleware/AuthorizationMiddleware.js";
-import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getStudentMarkingRules } from "../SadhanaGPT/Student/Controllers/StudentController.js";
+import { addactivity, addSadhna, deleteActivity, detailReport, editActivity, forgetPassword, listActivities, login, logout, studentRegister, todayReportlist, verifyOTP, Registertest, addTemple, templeList, listCounsellor, updateStudentDetails, onBoarding, userProfile, UsernotificationList, StudentActivitiesAnalytics, studentExportReport, editProfile, uploadProfileImage, removeProfileImage, addCounsellor, removeCounsellor, contentListStudent, verifyCounsellor, submitAppFeedback, getDailyScore, rangeReportColors, getWeeklyRanking, getTopRankerBadge, getStudentAppliedMarkingScheme, whatsappWebhookActivityLog, createRazorpayOrder, verifyRazorpayPayment, submitProjectInquiry } from "../SadhanaGPT/Student/Controllers/StudentController.js";
 import { apiAuthentication, checkCounsellor } from "../middleware/apiAuthenticationMiddleware.js";
-import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, studentAnalysisPreview, generateAIAnalysis, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentNotesList, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings, getStudentAiAnalysisHistory, getSingleAiAnalysisReport, aiChatHandler, aiHealthHandler, aiTestHandler, aiDebugAuthHandler, exportBulkStudentReports } from "../SadhanaGPT/Mentors/CounslerController.js";
+import { addCenter, addContent, addLable, addNote, addRewardRules, aiReport, assignStudentToCenter, bulkaiReport, studentAnalysisPreview, generateAIAnalysis, bulkAssignLabel, bulkAssignStudents, centerlist, contentListCounsellor, CustomNotification, deleteCenter, deleteLable, deleteNote, downloadUserReport, editCenter, editLable, editNote, LableList, sadhanReportlist, studentActivityDetail, studentDetails, studentlist, studentNotesList, studentsadhnalist, subCounslorCenterlist, suCounslorList, updateReportSettings, getStudentAiAnalysisHistory, getSingleAiAnalysisReport, aiChatHandler, aiHealthHandler, aiTestHandler, aiDebugAuthHandler, exportBulkStudentReports, removeMentee, updateMenteeName } from "../SadhanaGPT/Mentors/CounslerController.js";
 import { handleFileUpload } from "../utils/fileUpload.js";
 import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 import { irregularMenteesList, toggleMenteeNotification } from "../SadhanaGPT/Mentors/NotificationController.js";
-import { assignActivitiesToStudents, getMentorSelectableActivities, createCustomActivity, assignActivitiesToGroup, deassignActivitiesFromGroup } from "../SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js";
-import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
-import { getStudentRank } from '../SadhanaGPT/SummaryData/showRank.js';
-import { getFollowUpStudents } from '../SadhanaGPT/SummaryData/followUpStudents.js';
+import { assignActivitiesToStudents, getMentorSelectableActivities, createCustomActivity, assignActivitiesToGroup, deassignActivitiesFromGroup, deleteCustomActivity, deleteAssignedCustomActivity, getGroupSubgroupList } from "../SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js";
+import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
+import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
+import { getFollowUpStudents } from '../SadhanaGPT/Controllers/SummaryData/followUpStudents.js';
+import {
+  assistantGetActivities,
+  assistantGetTodayActivities,
+  assistantGetYesterdayActivities,
+  assistantUpdateActivity,
+  assistantGetActivitiesForDate,
+  assistantUpdateActivityForDate,
+  assistantUpdateActivitiesForDates,
+  assistantGetTodayMarks,
+  assistantGetLast7DaysMarks,
+  assistantInterpretNL,
+  assistantTranscribeVoiceNote,
+} from '../SadhanaGPT/Student/Controllers/AssistantController.js';
 
 
 const router = Router();
@@ -35,6 +47,9 @@ const authzAndAuthRoutes = [
 
     { method: 'post', path: '/verify-counsellor', handler: verifyCounsellor, role: "student" },
 
+    // WhatsApp Webhook API routes (Public / Webhook integration)
+    { method: 'post', path: '/whatsapp-webhook', handler: whatsappWebhookActivityLog },
+    { method: 'get', path: '/whatsapp-webhook', handler: whatsappWebhookActivityLog },
 ];
 authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     const middlewares = [];
@@ -49,16 +64,22 @@ const LoggedinRoute = [
     { method: 'get', path: '/check-push-status', handler: checkPushNotificationStatus, role: "student" },
 
     { method: 'post', path: '/update-reminder-preferences', handler: updateReminderPreferences, role: "student" },
+    { method: 'post', path: '/update-fcm-token', handler: updateFcmToken, role: "student" },
 
     { method: 'post', path: '/notifications-subscribe', handler: saveSubscription, role: "student" },
     { method: 'post', path: '/notifications-unsubscribe', handler: removeSubscription, role: "student" },
     { method: 'post', path: '/app-feedback', handler: submitAppFeedback, role: "student" },
+    { method: 'post', path: '/create-razorpay-order', handler: createRazorpayOrder, role: "student" },
+    { method: 'post', path: '/verify-razorpay-payment', handler: verifyRazorpayPayment, role: "student" },
+    { method: 'post', path: '/submit-project-inquiry', handler: submitProjectInquiry, role: "student" },
 
     //studnet apis
     { method: 'post', path: '/add-temple', handler: addTemple, role: "student" },
 
     { method: 'post', path: '/update-student-profile', handler: updateStudentDetails, role: "student" },
     { method: 'post', path: '/add-counsllor', handler: addCounsellor, role: "student" },
+    { method: 'post', path: '/remove-counsllor', handler: removeCounsellor, role: "student" },
+    { method: 'post', path: '/remove-counsellor', handler: removeCounsellor, role: "student" },
     { method: 'get', path: '/student-notification-list', handler: UsernotificationList, role: "student" },
 
     { method: 'get', path: '/user-profile', handler: userProfile, role: "student" },
@@ -71,14 +92,18 @@ const LoggedinRoute = [
     { method: 'post', path: '/edit-acitivity', handler: editActivity, role: "student" },
     { method: 'post', path: '/delete-acitivity', handler: deleteActivity, role: "student" },
     { method: 'get', path: '/activity-list', handler: listActivities, role: "student" },
-    { method: 'get', path: '/student-marking-rules', handler: getStudentMarkingRules, role: "student" },
 
     { method: 'post', path: '/add-daily-report', handler: addSadhna, role: "student" },
 
     { method: 'post', path: '/report-as-per-date', handler: todayReportlist, role: "student" },
     { method: 'post', path: '/report-colors-range', handler: rangeReportColors, role: "student" },
+    { method: 'post', path: '/range-report-colors', handler: rangeReportColors, role: "student" },
     { method: 'get', path: '/daily-score', handler: getDailyScore, role: "student" },
+    { method: 'get', path: '/weekly-ranking', handler: getWeeklyRanking, role: "both" },
+    { method: 'get', path: '/top-ranker-badge', handler: getTopRankerBadge, role: "student" },
+    { method: 'get', path: '/applied-marking-scheme', handler: getStudentAppliedMarkingScheme, role: "student" },
     { method: 'get', path: '/student-activities-analytics', handler: StudentActivitiesAnalytics, role: "student" },
+    { method: 'get', path: '/student-export-report', handler: studentExportReport, role: "student" },
 
     { method: 'get', path: '/detail-report', handler: detailReport, role: "student" },
 
@@ -86,6 +111,19 @@ const LoggedinRoute = [
     { method: 'post', path: '/verify-otp', handler: verifyOTP, role: "student" },
 
     { method: 'get', path: '/student-content-list', handler: contentListStudent, role: "student" },
+
+    // SadhnaAssistant chatbot integration (see SadhanaGPT/Student/Controllers/AssistantController.js)
+    { method: 'get', path: '/assistant/activities', handler: assistantGetActivities, role: "student" },
+    { method: 'get', path: '/assistant/activities/today', handler: assistantGetTodayActivities, role: "student" },
+    { method: 'get', path: '/assistant/activities/yesterday', handler: assistantGetYesterdayActivities, role: "student" },
+    { method: 'post', path: '/assistant/activities/update', handler: assistantUpdateActivity, role: "student" },
+    { method: 'get', path: '/assistant/activities/by-date/:date', handler: assistantGetActivitiesForDate, role: "student" },
+    { method: 'post', path: '/assistant/activities/update-for-date', handler: assistantUpdateActivityForDate, role: "student" },
+    { method: 'post', path: '/assistant/activities/update-for-dates', handler: assistantUpdateActivitiesForDates, role: "student" },
+    { method: 'get', path: '/assistant/marks/today', handler: assistantGetTodayMarks, role: "student" },
+    { method: 'get', path: '/assistant/marks/last7days', handler: assistantGetLast7DaysMarks, role: "student" },
+    { method: 'post', path: '/assistant/nlp/interpret', handler: assistantInterpretNL, role: "student" },
+    { method: 'post', path: '/assistant/nlp/transcribe', handler: assistantTranscribeVoiceNote, role: "student" },
 
 
     // notes 
@@ -115,7 +153,6 @@ const LoggedinRoute = [
 
 
     { method: 'get', path: '/student-list', handler: studentlist, role: "counsellor" },
-    { method: 'post', path: '/export-bulk-student-reports', handler: exportBulkStudentReports, role: "both" },
 
     { method: 'get', path: '/student-details', handler: studentDetails, role: "counsellor" },
 
@@ -153,6 +190,9 @@ const LoggedinRoute = [
     { method: 'get', path: '/group-list-sub-counslor', handler: subCounslorCenterlist, role: "counsellor" },
 
     { method: 'post', path: '/assign-student-center-label', handler: bulkAssignStudents, role: "counsellor" },
+    { method: 'post', path: '/export-bulk-student-reports', handler: exportBulkStudentReports, role: "counsellor" },
+    { method: 'post', path: '/remove-mentee', handler: removeMentee, role: "counsellor" },
+    { method: 'post', path: '/edit-mentee-name', handler: updateMenteeName, role: "counsellor" },
 
     // {method: 'get', path: '/chart-details', handler: chartdetail},
     // {method: 'get', path: '/user-activity-details', handler: activitydetail},
@@ -168,11 +208,20 @@ const LoggedinRoute = [
     { method: 'post', path: '/assign-group-activities', handler: assignActivitiesToGroup, role: "counsellor" },
     { method: 'post', path: '/deassign-group-activities', handler: deassignActivitiesFromGroup, role: "counsellor" },
     { method: 'post', path: '/create-custom-activity', handler: createCustomActivity, role: "counsellor" },
+    { method: 'post', path: '/delete-custom-activity', handler: deleteCustomActivity, role: "counsellor" },
+    { method: 'post', path: '/delete-assigned-custom-activity', handler: deleteAssignedCustomActivity, role: "counsellor" },
+    { method: 'get', path: '/group-subgroup-list', handler: getGroupSubgroupList, role: "counsellor" },
     { method: 'post', path: '/add-marking-rule', handler: addMarkingRule, role: "counsellor" },
     { method: 'post', path: '/save-marking-scheme', handler: saveMarkingSchemeBatch , role: "counsellor" },
     { method: 'post', path: '/marking-rules', handler: getMarkingRules , role: "counsellor" },
-    
-    { method: 'get', path: '/student-rank', handler: getStudentRank },
+    { method: 'post', path: '/scheme-list', handler: getSchemesList , role: "counsellor" },
+    { method: 'post', path: '/create-marking-scheme', handler: createMarkingScheme, role: "counsellor" },
+    { method: 'post', path: '/scheme-activities-list', handler: getSchemeActivitiesList, role: "counsellor" },
+    { method: 'post', path: '/delete-marking-scheme', handler: deleteMarkingScheme, role: "counsellor" },
+    { method: 'post', path: '/update-marking-scheme', handler: updateMarkingScheme, role: "counsellor" },
+    { method: 'post', path: '/delete-marking-rule', handler: deleteMarkingRule, role: "counsellor" },
+    { method: 'post', path: '/delete-activity-rules', handler: deleteActivityRules, role: "counsellor" },
+    { method: 'get', path: '/student-rank', handler: getStudentRank, role: "counsellor" },
     { method: 'get', path: '/student-followup', handler: getFollowUpStudents, role: "counsellor" },
     { method: 'post', path: '/create-custom-activity', handler: createCustomActivity }
 
@@ -185,7 +234,7 @@ const LoggedinRoute = [
 const uploadRules = {
     // 
     '/add-new-content': { folder: 'content', fields: ['image'], maxCount: 1, condition: (req) => req.body?.content_type === 'image' },
-    '/upload-profile-image': { folder: 'profiles', fields: ['profile'], maxCount: 1 },
+    '/upload-profile-image': { folder: 'profile', fields: ['profile'], maxCount: 1 },
 }
 LoggedinRoute.forEach(({ method, path, handler, role }) => {
     const middlewares = [Authorization];  // rateLimit

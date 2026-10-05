@@ -1,14 +1,17 @@
-import db from '../../config/database.js';
+import db from '../../../config/database.js';
+
 import moment from 'moment';
-import { asyncHandler, mergeParam } from "../../utils/utils.js";
+import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 
 /**
- * API to fetch students needing follow-up for the last week (Monday to Sunday).
- * Ordered by minimum marks on top.
+ * API to fetch students rank for the last week (Monday to Sunday)
  */
-export const getFollowUpStudents = asyncHandler(async (req, res) => {
+export const getStudentRank = asyncHandler(async (req, res) => {
     try {
         const { center_id, user_id } = mergeParam(req);
+        const limit = parseInt(req.query.limit) || null;
+        const page = parseInt(req.query.page) || 1;
+        const sort = req.query.sort || 'desc';
         
         // Date range: last Monday → last Sunday (matching weeklySummaryUpdate)
         const lastSunday = moment().day(0).startOf('day'); // Most recent Sunday
@@ -54,7 +57,9 @@ export const getFollowUpStudents = asyncHandler(async (req, res) => {
         `;
 
         const [rows] = await db.execute(query, params);
-        console.log(`[FollowUp] Fetched for user_id ${user_id}:`, rows.length, "rows");
+        console.log("(query, params)",query, params);
+
+       
 
         let studentsList = rows.map(student => {
             const numericMarks = Number(student.total_marks);
@@ -69,21 +74,18 @@ export const getFollowUpStudents = asyncHandler(async (req, res) => {
             };
         });
 
-        // Only include students who have less than 50% marks for follow-up
-        studentsList = studentsList.filter(student => student.percentage < 50);
-
-        // Sort by percentage ascending for FollowUp (lowest on top)
-        studentsList.sort((a, b) => a.percentage - b.percentage);
+        // Sort by total_marks descending to compute ranks (Rank #1 = highest marks)
+        studentsList.sort((a, b) => b.total_marks - a.total_marks || b.percentage - a.percentage || a.student_name.localeCompare(b.student_name));
 
         let currentRank = 1;
-        let previousPercentage = null;
+        let previousMarks = null;
 
-        // Assign numbers based on percentage
-        const followUpStudents = studentsList.map((student, index) => {
-            if (previousPercentage !== null && student.percentage > previousPercentage) {
+        // Assign rank numbers based on total_marks
+        let rankedStudents = studentsList.map((student, index) => {
+            if (previousMarks !== null && student.total_marks < previousMarks) {
                 currentRank = index + 1;
             }
-            previousPercentage = student.percentage;
+            previousMarks = student.total_marks;
 
             return {
                 ...student,
@@ -91,22 +93,43 @@ export const getFollowUpStudents = asyncHandler(async (req, res) => {
             };
         });
 
+        // Apply display sorting for output page:
+        // - sort === 'asc' (Students Need Follow-up): Lowest rank / worst students first (rank DESC)
+        // - sort === 'desc' (Top Ranks): Highest rank / best students first (rank ASC)
+        if (sort === 'asc') {
+            rankedStudents.sort((a, b) => b.rank - a.rank || a.student_name.localeCompare(b.student_name));
+        } else {
+            rankedStudents.sort((a, b) => a.rank - b.rank || a.student_name.localeCompare(b.student_name));
+        }
+
+        const total = rankedStudents.length;
+        let total_page = 1;
+        
+        if (limit) {
+            total_page = Math.ceil(total / limit);
+            const startIndex = (page - 1) * limit;
+            rankedStudents = rankedStudents.slice(startIndex, startIndex + limit);
+        }
+
         return res.json({
             status: 1,
             code: 200,
-            message: ["Follow-up students fetched successfully"],
+            message: ["Student ranks fetched successfully"],
+            total: total,
+            page: page,
+            total_page: total_page,
             data: {
                 period: `${fromDate} to ${toDate}`,
-                students: followUpStudents
+                ranks: rankedStudents
             }
         });
 
     } catch (error) {
-        console.error("[FollowUp] Error fetching follow-up students:", error);
+        console.error("[Rank] Error fetching student ranks:", error);
         return res.json({
             status: 0,
             code: 500,
-            message: ["Failed to fetch follow-up students"]
+            message: ["Failed to fetch student ranks"]
         });
     }
 });

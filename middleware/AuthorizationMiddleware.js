@@ -2,6 +2,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const Authorization = (req, resp, next) => {
+  if (req.path === '/whatsapp-webhook' || req.originalUrl?.includes('/whatsapp-webhook')) {
+    return next();
+  }
   
   const apiKey = req?.headers?.['authorization'] || req?.query?.Authorization || req?.body?.Authorization;
   const token = process.env.API_AUTH_KEY;

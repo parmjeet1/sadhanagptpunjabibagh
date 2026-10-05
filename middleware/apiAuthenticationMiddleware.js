@@ -5,7 +5,7 @@ export const apiAuthentication = async (req, resp, next) => {
   try{  
 
     const token = req.headers["accesstoken"];
-    console.log("[Auth] Request Received, payload:", mergeParam(req));
+    console.log(req.url,", payload:", mergeParam(req));
 
     if (!token) {
       return resp.status(401).json({ message: 'Access Token key is missing', code: 400, data: {}, status: 0 });
