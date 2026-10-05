@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 11:38 AM IST - Fix
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Saving, creating, changing or deleting a marking scheme could answer "failed" although the scheme was already stored. After the scheme is written, the server recalculates today's marks for the students on it and used to WAIT for that (up to 8 seconds) before answering; finding the affected groups was also outside any safety net. A slow or failing recalculation therefore turned a successful save into a "failed" message (this step arrived with the earlier marks changes). The recalculation now runs in the background (`recalculateTodayMarksInBackground`): the answer is sent as soon as the scheme is saved, and any problem in the recalculation is only logged. Marks of today's entries are updated a few seconds after saving. No database change.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js`, `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `CHANGELOG.md`
+- **Tested**: helper returns at once, recalculation still finishes in the background (marks 20 / 15 / 25 as before), a failing lookup is swallowed and logged. I could not see the server log, so the exact error that showed on the test site is not confirmed; if "failed" still appears, the toast text after "Failed to save scheme:" (or the server log line "Error saving marking scheme") shows the real reason.
+- **Frontend**: no change needed.
+
 ## 2026-10-05, 11:29 AM IST - Fix (marks, part 3 of 3)
 
 - **Developer**: Manvatar Prabhu Ji

@@ -3,7 +3,7 @@ import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 import validateFields from "../../../utils/validation.js";
 import db from "../../../config/database.js";
 import { parseRuleFrequency, buildRuleCondition, findInvalidRuleMessage } from "./ruleInput.js";
-import { recalculateTodayMarksSoon, getTargetsUsingScheme, targetsFromAssignments, mergeTargets } from "./recalculateMarks.js";
+import { recalculateTodayMarksInBackground, getTargetsUsingScheme, targetsFromAssignments, mergeTargets } from "./recalculateMarks.js";
 
 export const addMarkingRule = asyncHandler(async (req, resp) => {
   try {
@@ -227,10 +227,11 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
 
     // Today's entries of the students on this scheme follow the saved rules straight away.
     // (The built-in default scheme is never recalculated here: it covers everyone.)
-    const [[savedScheme]] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [schemeIdToUse]);
-    if (savedScheme && savedScheme.counsellor_id !== 'system') {
-      await recalculateTodayMarksSoon(await getTargetsUsingScheme(schemeIdToUse));
-    }
+    // Runs in the background: the rules are already saved, so this can never turn the save into a "failed".
+    recalculateTodayMarksInBackground(async () => {
+      const [[savedScheme]] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [schemeIdToUse]);
+      return savedScheme && savedScheme.counsellor_id !== 'system' ? await getTargetsUsingScheme(schemeIdToUse) : {};
+    });
 
     return resp.json({
       status: 1,
@@ -444,7 +445,7 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
     }
 
     // Allotted to groups / sub-groups: recalculate today's entries with the new scheme.
-    await recalculateTodayMarksSoon(targetsFromAssignments(assignList));
+    recalculateTodayMarksInBackground(targetsFromAssignments(assignList));
 
     return resp.json({
       status: 1,
@@ -565,7 +566,7 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
       }
     }
 
-    await recalculateTodayMarksSoon(mergeTargets(previousTargets, targetsFromAssignments(assignList)));
+    recalculateTodayMarksInBackground(mergeTargets(previousTargets, targetsFromAssignments(assignList)));
 
     return resp.json({
       status: 1,
@@ -609,7 +610,7 @@ export const deleteMarkingScheme = asyncHandler(async (req, resp) => {
     await db.query("DELETE FROM marking_schemes WHERE id = ?", [scheme_id]);
 
     // Those students are back on the default scheme: recalculate today's entries.
-    await recalculateTodayMarksSoon(previousTargets);
+    recalculateTodayMarksInBackground(previousTargets);
 
     return resp.json({
       status: 1,

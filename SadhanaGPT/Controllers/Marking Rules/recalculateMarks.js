@@ -137,3 +137,16 @@ export const recalculateTodayMarksSoon = async (targets, waitMs = 8000) => {
   clearTimeout(timer);
   return done;
 };
+
+/**
+ * Runs the recalculation in the BACKGROUND and returns at once. Used after a scheme is saved,
+ * created, changed or deleted: the scheme itself is already stored, so nothing in the
+ * recalculation (a slow query, a failure, finding the affected groups) may delay the answer
+ * or turn a successful save into a "failed" message. Failures are only logged.
+ * @param {object|(() => Promise<object>)} targets  the targets, or a function that finds them
+ */
+export const recalculateTodayMarksInBackground = (targets) => {
+  Promise.resolve()
+    .then(async () => recalculateTodayMarks(typeof targets === "function" ? await targets() : targets))
+    .catch(err => console.error("Background marks recalculation failed:", err?.message || err));
+};
