@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 11:28 AM IST - Fix (marks, part 2 of 3)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: When a marking scheme is allotted to a group or sub-group, saved, changed or removed, the marks already saved TODAY (IST) for the students on that scheme are recalculated with the scheme that now applies to each student, and their daily summary is refreshed. Earlier days are never touched. Marks are worked out when an entry is saved, so before this the new scheme only counted for entries saved afterwards. It never stops the scheme from saving (any failure is only logged), and for a very large group it waits at most 8 seconds and carries on in the background. The built-in default scheme is never recalculated this way. This restores the earlier recalculation change (new file `recalculateMarks.js` plus calls in the scheme save / create / update / delete code). No database change.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js` (new), `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `CHANGELOG.md`
+- **Tested**: syntax only so far; the final state (with part 3) is tested together before pushing.
+- **Frontend**: no change needed.
+
 ## 2026-10-05, 11:28 AM IST - Fix (marks, part 1 of 3)
 
 - **Developer**: Manvatar Prabhu Ji
