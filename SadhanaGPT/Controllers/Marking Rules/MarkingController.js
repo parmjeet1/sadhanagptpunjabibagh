@@ -3,6 +3,7 @@ import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 import validateFields from "../../../utils/validation.js";
 import db from "../../../config/database.js";
 import { parseRuleFrequency, buildRuleCondition, findInvalidRuleMessage } from "./ruleInput.js";
+import { isPersonalSchemeReady } from "./effectiveScheme.js";
 import { recalculateTodayMarksInBackground, getTargetsUsingScheme, targetsFromAssignments, mergeTargets } from "./recalculateMarks.js";
 
 export const addMarkingRule = asyncHandler(async (req, resp) => {
@@ -348,6 +349,13 @@ export const getSchemesList = asyncHandler(async (req, resp) => {
 
     const [rows] = await db.query(query, [counsellor_id, counsellor_id, counsellor_id]);
 
+    // Which scheme the person uses for themselves (own scheme), if any.
+    let personalSchemeId = null;
+    if (await isPersonalSchemeReady()) {
+      const [[me]] = await db.query("SELECT personal_marking_scheme_id FROM users WHERE user_id = ?", [counsellor_id]);
+      personalSchemeId = me?.personal_marking_scheme_id ? Number(me.personal_marking_scheme_id) : null;
+    }
+
     const schemes = rows.map(r => ({
       id: r.id,
       name: r.name,
@@ -356,14 +364,15 @@ export const getSchemesList = asyncHandler(async (req, resp) => {
       isSystemDefault: r.isSystemDefault === 1 || r.isSystemDefault === true,
       isLocked: r.isLocked === 1 || r.isLocked === true,
       appliedGroupCount: Number(r.appliedGroupCount) || 0,
-      appliedSubgroupCount: Number(r.appliedSubgroupCount) || 0
+      appliedSubgroupCount: Number(r.appliedSubgroupCount) || 0,
+      isUsedForSelf: personalSchemeId !== null && Number(r.id) === personalSchemeId
     }));
 
     return resp.json({
       status: 1,
       code: 200,
       message: ["Marking schemes fetched successfully!"],
-      data: { schemes }
+      data: { schemes, personalSchemeId }
     });
   } catch (error) {
     console.error("Error fetching marking schemes list:", error);
@@ -384,8 +393,9 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
 
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const { name, counsellor_id, assignments } = mergeParam(req);
+    const { name, counsellor_id, assignments, use_for_self } = mergeParam(req);
     const assignList = assignments || [];
+    const wantsSelf = use_for_self === true || use_for_self === 1 || use_for_self === "1" || use_for_self === "true";
 
     // 1. Insert the scheme record
     const [insertRes] = await db.query(
@@ -444,14 +454,25 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
       }
     }
 
-    // Allotted to groups / sub-groups: recalculate today's entries with the new scheme.
-    recalculateTodayMarksInBackground(targetsFromAssignments(assignList));
+    // "Make for Self": the creator uses this scheme for their own marks (a counsellor's
+    // group / sub-group scheme still overrides it, see effectiveScheme.js).
+    let usedForSelf = false;
+    if (wantsSelf && await isPersonalSchemeReady()) {
+      await db.query("UPDATE users SET personal_marking_scheme_id = ? WHERE user_id = ?", [schemeId, counsellor_id]);
+      usedForSelf = true;
+    }
+
+    // Allotted to groups / sub-groups (or to the creator): recalculate today's entries with the new scheme.
+    recalculateTodayMarksInBackground(mergeTargets(
+      targetsFromAssignments(assignList),
+      usedForSelf ? { userIds: [counsellor_id] } : {}
+    ));
 
     return resp.json({
       status: 1,
       code: 200,
       message: ["Marking scheme created successfully!"],
-      data: { id: schemeId, name, isEnabled: true, isProvisional: false }
+      data: { id: schemeId, name, isEnabled: true, isProvisional: false, usedForSelf }
     });
 
   } catch (error) {

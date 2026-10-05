@@ -25,6 +25,7 @@ import emailQueue from "../../../utils/emails/emailQueue.js";
 import { Console } from "console";
 import { dailyStudentSummary } from '../../Controllers/SummaryData/summary-report.js';
 import { getDailyMaxByUser, rankByPercentage } from '../../Controllers/SummaryData/rankingPercent.js';
+import { resolveEffectiveSchemeId, getSchemeInputs, getEffectiveScheme, effectiveSchemeSql } from '../../Controllers/Marking Rules/effectiveScheme.js';
 
 
 export const parseTimeToMinutes = (val) => {
@@ -80,13 +81,7 @@ const parseValToNumber = (val, isTime = false, isYesNo = false) => {
  * default id hid the group's custom scheme and marks came from the default scheme while the
  * screen showed the custom one.
  */
-export const resolveEffectiveSchemeId = (labelSchemeId, centerSchemeId) => {
-  const label = Number(labelSchemeId);
-  if (label > 0 && label !== 1) return label;
-  const center = Number(centerSchemeId);
-  if (center > 0) return center;
-  return 1;
-};
+export { resolveEffectiveSchemeId };
 
 /**
  * The rules query returns rules from the student's own scheme AND from the
@@ -1182,15 +1177,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
         `SELECT name, activity_type, master_activity_id FROM fix_activities WHERE activity_id = ? AND user_id = ? LIMIT 1`,
         [activity_id, user_id]
       ),
-      db.execute(
-        `SELECT ua.center_id, ua.label_id, ll.marking_scheme_id AS label_scheme_id, cl.marking_scheme_id AS center_scheme_id
-         FROM user_assignments ua
-         LEFT JOIN labels_list ll ON ua.label_id = ll.id
-         LEFT JOIN center_list cl ON ua.center_id = cl.center_id
-         WHERE ua.user_id = ? 
-         ORDER BY ua.id DESC LIMIT 1`,
-        [user_id]
-      )
+      getSchemeInputs(user_id).then(row => [[row]])
     ]);
 
     const check_today_sadhana = checkResult[0] && checkResult[0].length > 0 ? checkResult[0][0] : null;
@@ -1204,7 +1191,7 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
 
       if (masterId && Number(masterId) > 0) {
         // Resolve Scheme ID instantly from parallel joined result
-        const schemeId = resolveEffectiveSchemeId(studentAssignment?.label_scheme_id, studentAssignment?.center_scheme_id);
+        const schemeId = resolveEffectiveSchemeId(studentAssignment?.label_scheme_id, studentAssignment?.center_scheme_id, studentAssignment?.personal_scheme_id);
 
         // Fetch scoring rules for resolved scheme ID (with system default fallback)
         const [fetchedRules] = await db.execute(
@@ -2502,6 +2489,7 @@ export const studentExportReport = asyncHandler(async (req, res) => {
     }
     params.push(user_id);
 
+    const schemeExpr = await effectiveSchemeSql();
     const [rows] = await db.execute(
       `SELECT
          u.user_id AS student_id,
@@ -2518,7 +2506,7 @@ export const studentExportReport = asyncHandler(async (req, res) => {
              (SELECT MAX(mr.marks) FROM marking_rules mr
                WHERE mr.master_activity_id = fa.master_activity_id
                  AND mr.status = 1 AND mr.frequency = 'daily'
-                 AND mr.scheme_id = COALESCE(NULLIF(l.marking_scheme_id, 1), cl.marking_scheme_id, 1)),
+                 AND mr.scheme_id = ${schemeExpr}),
              (SELECT MAX(mr2.marks) FROM marking_rules mr2
                WHERE mr2.master_activity_id = fa.master_activity_id
                  AND mr2.status = 1 AND mr2.frequency = 'daily' AND mr2.scheme_id = 1),
@@ -3211,28 +3199,9 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
     : moment().utcOffset('+05:30').format("YYYY-MM-DD");
 
   try {
-    // 1. Determine student's center_id and label_id for custom rule precedence
-    const [centerRows] = await db.execute(
-      `SELECT center_id, label_id FROM user_assignments WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
-      [user_id]
-    );
-    const center_id = centerRows.length > 0 && centerRows[0].center_id !== null ? centerRows[0].center_id : 0;
-    const label_id = centerRows.length > 0 && centerRows[0].label_id !== null ? centerRows[0].label_id : 0;
-
-    // Resolve the active marking scheme ID for this user (subgroup custom scheme precedence, then group custom scheme, fallback to default 1)
-    let scheme_id = 1;
-    if (label_id > 0) {
-      const [labelDetail] = await db.query("SELECT marking_scheme_id FROM labels_list WHERE id = ?", [label_id]);
-      if (labelDetail && labelDetail[0]?.marking_scheme_id) {
-        scheme_id = labelDetail[0].marking_scheme_id;
-      }
-    }
-    if (scheme_id === 1 && center_id > 0) {
-      const [centerDetail] = await db.query("SELECT marking_scheme_id FROM center_list WHERE center_id = ?", [center_id]);
-      if (centerDetail && centerDetail[0]?.marking_scheme_id) {
-        scheme_id = centerDetail[0].marking_scheme_id;
-      }
-    }
+    // 1. Which marking scheme applies (sub-group, group, the person's own, default)
+    const { schemeId: scheme_id, center_id: centerRaw } = await getEffectiveScheme(user_id);
+    const center_id = centerRaw || 0;
 
     // 2. Get Max Possible Marks (Handles name-fallback and Center precedence in pure SQL using MAX)
     const [maxMarksResult] = await db.execute(`
@@ -3461,42 +3430,24 @@ export const getStudentAppliedMarkingScheme = asyncHandler(async (req, resp) => 
   }
 
   try {
-    // 1. Get student's assigned group (center_id) and subgroup (label_id)
-    const [userAssigned] = await db.execute(
-      `SELECT center_id, label_id FROM user_assignments WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
-      [user_id]
-    );
-    const center_id = userAssigned[0]?.center_id || 0;
-    const label_id = userAssigned[0]?.label_id || 0;
-
-    // 2. Resolve active marking scheme ID (subgroup -> group -> default)
-    let scheme_id = 1;
-    let applied_level = 'System Default';
-
-    if (label_id > 0) {
-      const [labelRow] = await db.query(
-        `SELECT marking_scheme_id, name FROM labels_list WHERE id = ?`,
-        [label_id]
-      );
-      if (labelRow[0]?.marking_scheme_id) {
-        scheme_id = labelRow[0].marking_scheme_id;
-        applied_level = 'Subgroup Custom';
-      }
-    }
-
-    if (scheme_id === 1 && center_id > 0) {
-      const [centerRow] = await db.query(
-        `SELECT marking_scheme_id, name FROM center_list WHERE center_id = ?`,
-        [center_id]
-      );
-      if (centerRow[0]?.marking_scheme_id) {
-        scheme_id = centerRow[0].marking_scheme_id;
-        applied_level = 'Group Custom';
-      }
-    }
+    // 1 + 2. Resolve the active marking scheme (sub-group -> group -> the person's own -> default)
+    const effective = await getEffectiveScheme(user_id);
+    const center_id = effective.center_id || 0;
+    const label_id = effective.label_id || 0;
+    const scheme_id = effective.schemeId;
+    const applied_source = effective.source;
+    const applied_level = {
+      subgroup: 'Subgroup Custom',
+      group: 'Group Custom',
+      personal: 'My Own Scheme',
+      default: 'System Default'
+    }[applied_source];
 
     // 3. Fetch Metadata (Scheme Name, Group Name, Subgroup Name)
     const [schemeInfo] = await db.query(`SELECT id, name FROM marking_schemes WHERE id = ?`, [scheme_id]);
+    const [personalInfo] = effective.personal_scheme_id
+      ? await db.query(`SELECT id, name FROM marking_schemes WHERE id = ?`, [effective.personal_scheme_id])
+      : [[]];
     const [groupInfo] = await db.query(`SELECT name FROM center_list WHERE center_id = ?`, [center_id]);
     const [subgroupInfo] = await db.query(`SELECT name FROM labels_list WHERE id = ?`, [label_id]);
 
@@ -3544,6 +3495,11 @@ export const getStudentAppliedMarkingScheme = asyncHandler(async (req, resp) => 
         scheme_id,
         scheme_name: schemeInfo[0]?.name || "System Default Rules",
         applied_level,
+        applied_source,
+        personal_scheme_id: effective.personal_scheme_id ? Number(effective.personal_scheme_id) : null,
+        personal_scheme_name: personalInfo[0]?.name || null,
+        // true when the person has their own scheme but a counsellor's group / sub-group scheme wins
+        personal_overridden: Boolean(effective.personal_scheme_id) && (applied_source === 'group' || applied_source === 'subgroup'),
         group_name: groupInfo[0]?.name || null,
         subgroup_name: subgroupInfo[0]?.name || null,
         rules
@@ -3681,17 +3637,9 @@ export const whatsappWebhookActivityLog = asyncHandler(async (req, resp) => {
   const final_activity_date = rawDate ? moment(rawDate).format("YYYY-MM-DD") : moment().utcOffset('+05:30').format("YYYY-MM-DD");
 
   // Fetch student assignment for scheme resolution
-  const [[studentAssignment]] = await db.execute(
-    `SELECT ua.center_id, ua.label_id, ll.marking_scheme_id AS label_scheme_id, cl.marking_scheme_id AS center_scheme_id
-     FROM user_assignments ua
-     LEFT JOIN labels_list ll ON ua.label_id = ll.id
-     LEFT JOIN center_list cl ON ua.center_id = cl.center_id
-     WHERE ua.user_id = ? 
-     ORDER BY ua.id DESC LIMIT 1`,
-    [student.user_id]
-  );
+  const studentAssignment = await getSchemeInputs(student.user_id);
 
-  const schemeId = resolveEffectiveSchemeId(studentAssignment?.label_scheme_id, studentAssignment?.center_scheme_id);
+  const schemeId = resolveEffectiveSchemeId(studentAssignment?.label_scheme_id, studentAssignment?.center_scheme_id, studentAssignment?.personal_scheme_id);
 
   // Fetch available activities for student
   const [studentActivities] = await db.execute(

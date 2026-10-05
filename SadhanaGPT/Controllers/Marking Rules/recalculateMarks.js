@@ -1,6 +1,7 @@
 import moment from "moment";
 import db from "../../../config/database.js";
-import { calculateBestMarks, selectRulesForScheme, resolveEffectiveSchemeId } from "../../Student/Controllers/StudentController.js";
+import { calculateBestMarks, selectRulesForScheme } from "../../Student/Controllers/StudentController.js";
+import { resolveEffectiveSchemeId, getSchemeInputs, isPersonalSchemeReady } from "./effectiveScheme.js";
 import { dailyStudentSummary } from "../SummaryData/summary-report.js";
 
 /**
@@ -15,44 +16,42 @@ import { dailyStudentSummary } from "../SummaryData/summary-report.js";
  *
  * Never throws: a failure here must not break saving the scheme itself.
  *
- * @param {{ centerIds?: Array<number|string>, labelIds?: Array<number|string> }} targets
+ * @param {{ centerIds?: Array<number|string>, labelIds?: Array<number|string>, userIds?: Array<string> }} targets (userIds = people picked directly, e.g. when someone sets their own scheme)
  * @returns {Promise<{ students: number, entries: number }>}
  */
-export const recalculateTodayMarks = async ({ centerIds = [], labelIds = [] } = {}) => {
+export const recalculateTodayMarks = async ({ centerIds = [], labelIds = [], userIds = [] } = {}) => {
   const result = { students: 0, entries: 0 };
   try {
     const centers = [...new Set(centerIds.filter(v => v !== undefined && v !== null && v !== ""))];
     const labels = [...new Set(labelIds.filter(v => v !== undefined && v !== null && v !== ""))];
-    if (centers.length === 0 && labels.length === 0) return result;
+    const people = [...new Set(userIds.filter(v => v !== undefined && v !== null && v !== "").map(String))];
+    if (centers.length === 0 && labels.length === 0 && people.length === 0) return result;
 
     // Students whose CURRENT assignment is in one of the affected groups / sub-groups.
+    let students = [];
     const conds = [];
     const params = [];
     if (centers.length) { conds.push(`ua.center_id IN (${centers.map(() => "?").join(",")})`); params.push(...centers); }
     if (labels.length) { conds.push(`ua.label_id IN (${labels.map(() => "?").join(",")})`); params.push(...labels); }
-
-    const [students] = await db.query(
-      `SELECT DISTINCT ua.user_id
-       FROM user_assignments ua
-       WHERE (${conds.join(" OR ")})
-         AND ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = ua.user_id)`,
-      params
-    );
+    if (conds.length) {
+      [students] = await db.query(
+        `SELECT DISTINCT ua.user_id
+         FROM user_assignments ua
+         WHERE (${conds.join(" OR ")})
+           AND ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = ua.user_id)`,
+        params
+      );
+    }
+    // People named directly (their own scheme changed).
+    const known = new Set(students.map(r => String(r.user_id)));
+    people.forEach(id => { if (!known.has(id)) students.push({ user_id: id }); });
 
     const today = moment().utcOffset("+05:30").format("YYYY-MM-DD");
     const rulesCache = new Map();
 
     for (const { user_id } of students) {
-      const [[assignment]] = await db.query(
-        `SELECT ll.marking_scheme_id AS label_scheme_id, cl.marking_scheme_id AS center_scheme_id
-         FROM user_assignments ua
-         LEFT JOIN labels_list ll ON ua.label_id = ll.id
-         LEFT JOIN center_list cl ON ua.center_id = cl.center_id
-         WHERE ua.user_id = ?
-         ORDER BY ua.id DESC LIMIT 1`,
-        [user_id]
-      );
-      const schemeId = resolveEffectiveSchemeId(assignment?.label_scheme_id, assignment?.center_scheme_id);
+      const assignment = await getSchemeInputs(user_id);
+      const schemeId = resolveEffectiveSchemeId(assignment?.label_scheme_id, assignment?.center_scheme_id, assignment?.personal_scheme_id);
 
       const [entries] = await db.query(
         `SELECT dr.activity_id, dr.count, fa.master_activity_id, fa.activity_type, fa.unit, fa.name
@@ -106,11 +105,16 @@ export const recalculateTodayMarks = async ({ centerIds = [], labelIds = [] } = 
   return result;
 };
 
-/** Groups and sub-groups that currently use the given scheme. */
+/** Groups, sub-groups and people (own scheme) that currently use the given scheme. */
 export const getTargetsUsingScheme = async (schemeId) => {
   const [centers] = await db.query("SELECT center_id FROM center_list WHERE marking_scheme_id = ?", [schemeId]);
   const [labels] = await db.query("SELECT id FROM labels_list WHERE marking_scheme_id = ?", [schemeId]);
-  return { centerIds: centers.map(c => c.center_id), labelIds: labels.map(l => l.id) };
+  let userIds = [];
+  if (await isPersonalSchemeReady()) {
+    const [people] = await db.query("SELECT user_id FROM users WHERE personal_marking_scheme_id = ?", [schemeId]);
+    userIds = people.map(p => p.user_id);
+  }
+  return { centerIds: centers.map(c => c.center_id), labelIds: labels.map(l => l.id), userIds };
 };
 
 /** Turns the {type:'group'|'subgroup', id} list the UI sends into recalculation targets. */
@@ -122,6 +126,7 @@ export const targetsFromAssignments = (assignList = []) => ({
 export const mergeTargets = (...list) => ({
   centerIds: list.flatMap(t => t?.centerIds || []),
   labelIds: list.flatMap(t => t?.labelIds || []),
+  userIds: list.flatMap(t => t?.userIds || []),
 });
 
 /**
