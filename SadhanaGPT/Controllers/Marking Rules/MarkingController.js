@@ -2,6 +2,7 @@ import { insertRecord, deleteRecord } from "../../../utils/dbUtils.js";
 import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 import validateFields from "../../../utils/validation.js";
 import db from "../../../config/database.js";
+import { parseRuleFrequency, buildRuleCondition, findInvalidRuleMessage } from "./ruleInput.js";
 
 export const addMarkingRule = asyncHandler(async (req, resp) => {
   try {
@@ -98,6 +99,12 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
       return resp.json({ status: 0, code: 422, message: ["Missing required fields or activities must be an array"] });
     }
 
+    // Refuse (before anything is saved) a rule with no target value, so a broken rule can never be stored.
+    const invalidMessage = findInvalidRuleMessage(activities);
+    if (invalidMessage) {
+      return resp.json({ status: 0, code: 422, message: [invalidMessage] });
+    }
+
     let schemeIdToUse = scheme_id;
     let needsInsert = true;
     if (scheme_id && scheme_id < 1000000000) {
@@ -148,7 +155,19 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
         master_activity_id = parseInt(master_activity_id, 10) || 1;
       }
 
-      const frequency = activity.badge || "Daily";
+      // The editor sends the frequency in "badge" for saved activities, but for a newly added
+      // activity it sends the unit ("rounds", "min"...). Only daily/weekly/monthly are valid:
+      // otherwise use the frequency the default scheme gives this activity, else daily.
+      let frequency = parseRuleFrequency(activity.badge);
+      if (!frequency) {
+        const [[defaultRule]] = await db.query(
+          `SELECT frequency FROM marking_rules
+           WHERE scheme_id = 1 AND master_activity_id = ? AND frequency IN ('daily','weekly','monthly') AND status = 1
+           LIMIT 1`,
+          [master_activity_id]
+        );
+        frequency = defaultRule?.frequency || "daily";
+      }
 
       let allRows = [];
       if (activity.subTables) {
@@ -174,54 +193,17 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
       for (let i = 0; i < allRows.length; i++) {
         const row = allRows[i];
         const is_max_marks = (i === maxMarksIdx) ? 1 : 0;
-        const conditionStr = row.condition || "";
-        let operator = row.operator;
-        let value = row.value;
-
-        if (!operator || value === undefined || value === null || value === '') {
-          operator = "=";
-          value = conditionStr;
-          
-          const rulesMap = {
-            "Before": "<=",
-            "After": ">=",
-            "Exact Time": "=",
-            "At Least": ">=",
-            "Up To": "<=",
-            "Yes": "=",
-            "No": "="
-          };
-
-          for (const [rule, op] of Object.entries(rulesMap)) {
-            if (conditionStr.toLowerCase().startsWith(rule.toLowerCase())) {
-              operator = op;
-              value = conditionStr.substring(rule.length).trim();
-              if (rule === "Yes" || rule === "No") value = rule;
-              break;
-            }
-          }
-        }
-        
-        // Clean value to remove non-numeric chars like "min", "rounds" unless it's a time or boolean
-        if (value && typeof value === 'string' && !value.includes(':') && !['yes', 'no', 'true', 'false', 'completed'].includes(value.toLowerCase())) {
-            const match = value.match(/[\d.]+/);
-            if (match) value = match[0];
-        }
-
-        // Normalize boolean / yes_no condition values to standard 'Yes' and 'No'
-        if (value !== undefined && value !== null) {
-            const valStr = String(value).trim().toLowerCase();
-            if (valStr === 'true' || valStr === 'yes') value = 'Yes';
-            if (valStr === 'false' || valStr === 'no') value = 'No';
-        }
+        const { operator, value } = buildRuleCondition(row);
 
         if (row.id) {
           const updateQuery = `
             UPDATE marking_rules
-            SET condition_operator = ?, condition_value = ?, marks = ?, is_max_marks = ?
+            SET condition_operator = ?, condition_value = ?, marks = ?, is_max_marks = ?,
+                frequency = IF(frequency IN ('daily','weekly','monthly'), frequency, ?)
             WHERE id = ? AND scheme_id = ?
           `;
-          await db.query(updateQuery, [operator, value, row.marks || 0, is_max_marks, row.id, schemeIdToUse]);
+          // (a rule saved earlier with a broken/empty frequency is repaired here; valid ones are left as they are)
+          await db.query(updateQuery, [operator, value, row.marks || 0, is_max_marks, row._subFreq, row.id, schemeIdToUse]);
           insertedCount++;
         } else {
           const values = [

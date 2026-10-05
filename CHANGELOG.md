@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 11:08 AM IST - Fix
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The marking-scheme editor can no longer save a corrupted rule. Root cause of the "chanting earns 25 although the new scheme says 20" problem: when a counsellor adds an activity to a scheme, the screen sends the activity's UNIT ("rounds") where the server expects the frequency, and starts the row with an empty target number. The server stored the unit as an empty frequency and the empty number as the operator text (">= "). The marks code ignores a rule without a valid frequency, so the scheme fell back to the default scheme's 25. Now: (1) only daily / weekly / monthly are accepted as the frequency, and for anything else the frequency the default scheme gives that activity is used (else daily); (2) before anything is saved, every row is checked and a row with no target value is refused with a message such as "Please enter the target value for Chanting (the 20 marks row) before saving." (the screen already shows the server's message); (3) when an already saved rule is saved again, an invalid frequency is repaired (valid ones are left alone). The row/value cleaning code moved to a new small file `ruleInput.js` with identical behaviour. No database change.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/ruleInput.js` (new), `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `CHANGELOG.md`
+- **Tested**: replayed all 207 rules of the mirror database through the new checks: only the one corrupted rule (id 2191, scheme "New2", Chanting) is refused, the others pass unchanged (the existing true/false to Yes/No conversion is the same as before). The frequency repair statement was checked on a stand-in database. Not run against a live server or MariaDB.
+- **Still to do (not a code change)**: the already-corrupted rule 2191 is repaired by opening the "New2" scheme, entering the Chanting target number (and the other bands if wanted) and saving; or by the one-row repair SQL in migration 002 (step 3).
+- **Frontend**: no change needed.
+
 ## 2026-10-05, 10:58 AM IST - Fix
 
 - **Developer**: Manvatar Prabhu Ji
