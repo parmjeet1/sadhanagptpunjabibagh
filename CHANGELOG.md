@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 11:29 AM IST - Fix (marks, part 3 of 3)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Marks are now worked out with the SAME scheme that the "Applied Marking Scheme" screen shows the student. That screen treats a sub-group that only carries the DEFAULT scheme as "use my group's scheme", but saving marks (in the app and by WhatsApp) let that default hide the group's custom scheme, so a student of such a sub-group saw the new scheme but earned the default scheme's marks. One shared rule (`resolveEffectiveSchemeId`) now decides: the sub-group's own custom scheme, else the group's scheme, else the default. It is used when saving marks, when recalculating today's marks after a scheme is allotted, and in the counsellor and student reports' "max possible" columns. No database change.
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js`, `SadhanaGPT/Mentors/CounslerController.js`, `CHANGELOG.md`
+- **Tested (parts 2 and 3 together)**: ran the real recalculation code against a stand-in database with three students, each with Chanting 16 rounds saved as 25 today: a student in a default sub-group under a group on a 20-marks scheme now gets 20, a student with their own sub-group scheme gets that scheme's 15, a student on the default scheme stays 25. The resolver gives the sub-group's custom scheme, else the group's, else default. Not run against a live server.
+- **Frontend**: no change needed. Marks saved before the fixes change only when the entry is saved again or a scheme is allotted / saved again (today's entries are then recalculated).
+
 ## 2026-10-05, 11:28 AM IST - Fix (marks, part 2 of 3)
 
 - **Developer**: Manvatar Prabhu Ji
