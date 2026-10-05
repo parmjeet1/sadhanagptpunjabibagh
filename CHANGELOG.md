@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-05, 8:43 PM IST - Fix (the day's score no longer shows a false 0% when something goes wrong)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Applied again (it was undone with the 1:10 PM revert) on top of the current code: when the server could not work out the day's score (for example a short database hiccup) it answered "0 of 0 marks" as if that were the score, so the marks circle showed 0% until the page was reloaded. Now a hiccup is retried once, and if it still fails the server answers an error instead of fake zeros and logs the real reason (`Daily score failed, retrying once: ...`). The score answer also tells browsers and proxies never to keep an old copy. The assistant chat, which only needs a number to show, still gets zeros on failure and never crashes. Only this fix is applied again, not the own-scheme feature or the after-deploy scripts.
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: replayed a student from the 6:08 PM database export with a copy of the real code (7 checks, all passing): normal score 80/175; one simulated database error is retried and still gives 80/175; a lasting error gives an error answer (not 0%) while the assistant helper still returns zeros; the success answer carries "Cache-Control: no-store". Not run on the real server.
+- **Database**: none.
+- **Frontend**: the screen should ignore older replies and keep the last good score (done in `sadhanagptreactweb`, same day).
+
 ## 2026-10-05, 7:30 PM IST - Revert (everything made after 1:10 PM IST today)
 
 - **Developer**: Manvatar Prabhu Ji
