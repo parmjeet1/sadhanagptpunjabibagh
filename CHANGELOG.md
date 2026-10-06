@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-06, 6:07 PM IST - Revert (score retry / error answer, again)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Undone on request, because the cause of the wrong Marks circle and jumping sliders was found on the server side: the day's score retry and the "error instead of a false 0%" answer (`10c2c80`, same change as `7577735`). The score code is back to the main version. A new "revert" commit was made (history is kept, nothing rewritten).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: file compared with the main code zip (identical); syntax check run.
+- **Database**: none.
+- **Frontend**: reverted the same way in `sadhanagptreactweb` (newest-answer-wins and circle retry / re-check).
+
 ## 2026-10-06, 4:52 PM IST - Fix (applied again: the day's score no longer shows a false 0% when something goes wrong)
 
 - **Developer**: Manvatar Prabhu Ji

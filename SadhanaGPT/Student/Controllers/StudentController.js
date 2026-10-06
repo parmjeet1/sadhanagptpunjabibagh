@@ -3205,13 +3205,12 @@ export const removeProfileImage = asyncHandler(async (req, resp) => {
   });
 });
 
-const computeDailySadhanaScore = async (user_id, activity_date) => {
+export const calculateDailySadhanaScore = async (user_id, activity_date) => {
   const targetDateIST = activity_date
     ? moment(activity_date).format("YYYY-MM-DD")
     : moment().utcOffset('+05:30').format("YYYY-MM-DD");
 
-  // (the body below throws on any database error; see calculateDailySadhanaScoreStrict)
-  {
+  try {
     // 1. Determine student's center_id and label_id for custom rule precedence
     const [centerRows] = await db.execute(
       `SELECT center_id, label_id FROM user_assignments WHERE user_id = ? ORDER BY id DESC LIMIT 1`,
@@ -3269,28 +3268,7 @@ const computeDailySadhanaScore = async (user_id, activity_date) => {
     console.log(`User: ${user_id}, Center: ${center_id}, Scheme: ${scheme_id}, Earned: ${totalEarnedMarks}, Max: ${totalPossibleMarks}, %: ${percentage}`);
 
     return { totalEarnedMarks, totalPossibleMarks, percentage };
-  }
-};
 
-/**
- * The day's score, worked out for real or not at all: a database hiccup is retried once, and if it
- * still fails the error is thrown. (It used to answer "0 of 0" as if that were the score, so the
- * marks circle showed 0% until the page was reloaded.)
- */
-export const calculateDailySadhanaScoreStrict = async (user_id, activity_date) => {
-  try {
-    return await computeDailySadhanaScore(user_id, activity_date);
-  } catch (firstError) {
-    console.error("Daily score failed, retrying once:", firstError?.message || firstError);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    return computeDailySadhanaScore(user_id, activity_date);
-  }
-};
-
-/** Same score, but never throws: callers that only want a number to show (the assistant) get zeros on failure. */
-export const calculateDailySadhanaScore = async (user_id, activity_date) => {
-  try {
-    return await calculateDailySadhanaScoreStrict(user_id, activity_date);
   } catch (error) {
     console.error("Error calculating daily score:", error);
     return { totalEarnedMarks: 0, totalPossibleMarks: 0, percentage: 0 };
@@ -3305,9 +3283,7 @@ export const getDailyScore = asyncHandler(async (req, resp) => {
   }
 
   try {
-    const scoreData = await calculateDailySadhanaScoreStrict(user_id, activity_date);
-    // The score changes every time an entry is saved: never let a browser or proxy reuse an old answer.
-    resp.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    const scoreData = await calculateDailySadhanaScore(user_id, activity_date);
     return resp.json({
       status: 1,
       code: 200,
