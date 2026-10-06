@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-06, 4:52 PM IST - Fix (applied again: the day's score no longer shows a false 0% when something goes wrong)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Applied again on request (it was undone earlier today to match the main code zip, commit `7577735`): when the server cannot work out the day's score (for example a short database hiccup), it retries once, and if it still fails it answers an error instead of "0 of 0 marks" and logs the real reason (`Daily score failed, retrying once: ...`). The score answer also tells browsers and proxies never to keep an old copy. The assistant chat still gets zeros on failure and never crashes. A new commit was made (history is kept, nothing rewritten).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: file is identical to the earlier tested commit `7577735` (7 checks passed then); syntax check run now. Not run on the real server.
+- **Database**: none.
+- **Frontend**: works together with the circle retry / newest-answer-wins commits in `sadhanagptreactweb`, applied again the same day.
+
 ## 2026-10-06, 3:44 PM IST - Revert (score retry / error answer)
 
 - **Developer**: Manvatar Prabhu Ji
