@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## ✨ [Feature] - 2026-10-06, 08:41 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: `/my-marking-scheme` now also sends the counsellor scheme that applies to the student (sub-group first, else group): its rules, its level, and the name and email of the counsellor who made it. Sent only when such a scheme applies; nothing is sent about any other scheme or person. No database change.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/PersonalSchemeController.js`, `CHANGELOG.md`
+- **Tested**: 7 local checks on a copy of the data (group scheme, sub-group wins, none -> empty, only name and email sent, no login refused). Ran on SQLite, not MySQL.
+- **Frontend**: the Marks window shows a read-only "Counsellor Scheme" tab from the new `counsellor_scheme` field.
+
 ## 2026-10-06, 8:05 PM IST - Feature (marks of the day activity by activity, for the "Today's Sadhana Score" window)
 
 - **Developer**: Manvatar Prabhu Ji

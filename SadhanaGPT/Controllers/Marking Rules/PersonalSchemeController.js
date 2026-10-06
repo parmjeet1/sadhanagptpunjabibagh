@@ -66,11 +66,27 @@ export const getMyMarkingScheme = asyncHandler(async (req, resp) => {
     const [personal, effective] = await Promise.all([getPersonalScheme(uid), getEffectiveScheme(uid)]);
     let rules = [];
     if (personal) [rules] = await db.query(RULES_SQL, [personal.id]);
+
+    // When a counsellor's group / sub-group scheme applies to me, send it too (read-only for the student),
+    // with the name and email of the counsellor who made it, so the student knows whom to ask for changes.
+    // Only the scheme that applies to this very person is sent, picked on the server.
+    let counsellor_scheme = null;
+    if (effective.source === "group" || effective.source === "subgroup") {
+      const [[row]] = await db.query("SELECT id, name, counsellor_id FROM marking_schemes WHERE id = ?", [effective.schemeId]);
+      if (row) {
+        const [schemeRules] = await db.query(RULES_SQL, [row.id]);
+        let counsellor = null;
+        const [[owner]] = await db.query("SELECT name, email FROM users WHERE user_id = ? LIMIT 1", [String(row.counsellor_id)]);
+        if (owner) counsellor = { name: owner.name || null, email: owner.email || null };
+        counsellor_scheme = { id: Number(row.id), name: row.name, level: effective.source, counsellor, rules: schemeRules };
+      }
+    }
+
     return resp.json({
       status: 1,
       code: 200,
       message: ["My marking scheme fetched successfully!"],
-      data: { ...describe(effective, personal), rules },
+      data: { ...describe(effective, personal), rules, counsellor_scheme },
     });
   } catch (error) {
     console.error("Error fetching my marking scheme:", error);
