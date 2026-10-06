@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-06, 7:30 PM IST - Feature (step 1 of "My Marking Scheme": the person's own scheme is used when marks are saved and scored)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: A student or counsellor can now have their own scheme, stored as an ordinary row of `marking_schemes` named "<user_id> My Marking Scheme" (owner = the person, `is_enabled` = 1 means "I use it", 0 means "I use the default"). Which scheme applies is now: counsellor's sub-group scheme, else counsellor's group scheme, else the person's own scheme (if switched on), else the default. A counsellor's scheme always overrides the own scheme without deleting it. The new rule lives in one shared file (`effectiveScheme.js`) and is used when an entry is saved (marks), when the day's score is worked out, on the "applied marking scheme" screen (new level "My Own Scheme"), in the student's export (maximum marks per activity) and by the assistant/WhatsApp entry. The counsellor-only weekly-ranking list also gets a `uses_own_scheme` tag.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/effectiveScheme.js` (new), `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: Replayed a student from the 11:33 UTC test-database export with a copy of the real code (31 checks, all passing, file `t008.mjs` in the scratchpad): own scheme created off, switched on and off; counsellor scheme overriding it and the own scheme applying again when the counsellor scheme is removed; saving an entry, the day score, the ranking maximum and the SQL scheme expression all agree; today recalculated while an earlier day keeps its marks; reserved name refused; own scheme hidden from scheme lists; read-only view allowed for the student's own counsellor and refused for another; the tag appears only for counsellors. Syntax check on every changed file. The repo has no automatic tests or linter. Not run on the real server.
+- **Database**: none. No column, table or setting is added; the unused `users.personal_marking_scheme_id` column on the test database is not read.
+- **Frontend**: nothing changes yet; "applied marking scheme" can now return `applied_level: "My Own Scheme"`, and the weekly ranking list for counsellors carries `uses_own_scheme`.
+
 ## 2026-10-06, 6:07 PM IST - Revert (score retry / error answer, again)
 
 - **Developer**: Manvatar Prabhu Ji
