@@ -2,6 +2,7 @@ import db from '../../../config/database.js';
 import moment from 'moment';
 import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 import { getDailyMaxByUser, percentageOf } from './rankingPercent.js';
+import { getUsersOnOwnScheme } from '../Marking Rules/effectiveScheme.js';
 
 /**
  * API to fetch students needing follow-up for the last week (Monday to Sunday).
@@ -80,6 +81,7 @@ export const getFollowUpStudents = asyncHandler(async (req, res) => {
         let previousPercentage = null;
 
         // Assign numbers based on percentage
+        const onOwnScheme = await getUsersOnOwnScheme(studentsList.map(s => s.student_id));
         const followUpStudents = studentsList.map((student, index) => {
             if (previousPercentage !== null && student.percentage > previousPercentage) {
                 currentRank = index + 1;
@@ -88,7 +90,8 @@ export const getFollowUpStudents = asyncHandler(async (req, res) => {
 
             return {
                 ...student,
-                rank: currentRank
+                rank: currentRank,
+                uses_own_scheme: onOwnScheme.has(String(student.student_id))
             };
         });
 

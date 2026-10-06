@@ -3,11 +3,14 @@
  * (daily / previous day / 7-day student ranking, counsellor weekly rank, follow-up list).
  *
  * Percentage = marks earned in the period / (the student's own daily maximum x number of days).
- * The daily maximum comes from the student's OWN marking scheme (label scheme, else group scheme,
- * else default scheme 1) and only counts the activities the student really has, once each.
+ * The daily maximum comes from the scheme that applies to the student (sub-group scheme, else group
+ * scheme, else the student's own "My Marking Scheme" if switched on, else default scheme 1) and only
+ * counts the activities the student really has, once each.
  * Rank = by percentage (highest first), then by total marks, then by name. Same percentage AND
  * same marks = same rank. Students with no entries at all are kept at the bottom.
  */
+
+import { effectiveSchemeSql } from "../Marking Rules/effectiveScheme.js";
 
 /** Rounds to 2 decimals (kept as a number). */
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -44,11 +47,7 @@ export const getDailyMaxByUser = async (db, userIds) => {
               WHERE user_id IN (${placeholders}) AND master_activity_id IS NOT NULL AND master_activity_id > 0) x
        JOIN (
          SELECT u.user_id,
-                CASE
-                  WHEN l.marking_scheme_id IS NOT NULL AND l.marking_scheme_id <> 1 THEN l.marking_scheme_id
-                  WHEN c.marking_scheme_id IS NOT NULL AND c.marking_scheme_id > 0 THEN c.marking_scheme_id
-                  ELSE 1
-                END AS scheme_id
+                ${effectiveSchemeSql({ label: "l", center: "c", userExpr: "u.user_id" })} AS scheme_id
          FROM users u
          LEFT JOIN user_assignments ua
                 ON ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = u.user_id)

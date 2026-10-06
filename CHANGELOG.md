@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-06, 7:40 PM IST - Feature (step 3 of "My Marking Scheme": rankings, follow-up list and export follow each person's scheme)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Percentages and ranks (group and global) use the daily maximum of the scheme that applies to each person, so a student on their own scheme is ranked by their own percentage, as agreed (option D). One change in the shared ranking helper covers the student rank, weekly ranking and follow-up list; the counsellor's bulk export uses the same scheme rule for the maximum per activity. The counsellor's rank list (`/student-rank`) and follow-up list (`/student-followup`) now carry `uses_own_scheme` (true only when the person is really scored with their own scheme, not when a counsellor scheme overrides it) for the "Own scheme" tag.
+- **Files touched**: `SadhanaGPT/Controllers/SummaryData/rankingPercent.js`, `showRank.js`, `followUpStudents.js`, `SadhanaGPT/Mentors/CounslerController.js`, `CHANGELOG.md`
+- **Tested**: Replayed a student from the 11:33 UTC test-database export with a copy of the real code (31 checks, all passing, file `t008.mjs` in the scratchpad): own scheme created off, switched on and off; counsellor scheme overriding it and the own scheme applying again when the counsellor scheme is removed; saving an entry, the day score, the ranking maximum and the SQL scheme expression all agree; today recalculated while an earlier day keeps its marks; reserved name refused; own scheme hidden from scheme lists; read-only view allowed for the student's own counsellor and refused for another; the tag appears only for counsellors. Syntax check on every changed file. The repo has no automatic tests or linter. Not run on the real server.
+- **Database**: none.
+- **Frontend**: on the counsellor's rankings screen show an "Own scheme" tag when `uses_own_scheme` is true and open the read-only view (`/student-own-scheme`) from it. Students' screens do not receive the tag.
+
 ## 2026-10-06, 7:35 PM IST - Feature (step 2 of "My Marking Scheme": save, switch on/off, counsellor read-only view)
 
 - **Developer**: Manvatar Prabhu Ji
