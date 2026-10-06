@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-06, 8:05 PM IST - Feature (marks of the day activity by activity, for the "Today's Sadhana Score" window)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: New route `POST /daily-marks-breakdown` with `{ "activity_date": "YYYY-MM-DD" }` (the person always comes from the login token; today if no date). It answers, for each of the person's activities that carry marks: the name, the value entered, the marks earned and the most that activity can give under the scheme that applies to the person (their own scheme's rule for the activity, else the default scheme's), plus the day's totals, the scheme id and where it comes from (`subgroup`, `group`, `personal`, `default`). The totals are worked out the same way as `/daily-score`.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/MarksBreakdownController.js` (new), `routes/Routes.js`, `CHANGELOG.md`
+- **Tested**: Replayed a student from the 11:33 UTC test-database export with a copy of the real code (6 checks, all passing, file `t009.mjs` in the scratchpad): 8 activities listed; the totals equal the day score (80/175); per-activity earned and maximum are right (Chanting 30 / 30 under the group scheme); with an own scheme switched on the chanting maximum follows it (100) and the totals still equal the day score; no login is refused. Syntax check. The repo has no automatic tests or linter. Not run on the real server.
+- **Database**: none.
+- **Frontend**: used by the new score window (arrow beside "Today's Sadhana Score") in `sadhanagptreactweb`, same day.
+
 ## 2026-10-06, 7:40 PM IST - Feature (step 3 of "My Marking Scheme": rankings, follow-up list and export follow each person's scheme)
 
 - **Developer**: Manvatar Prabhu Ji

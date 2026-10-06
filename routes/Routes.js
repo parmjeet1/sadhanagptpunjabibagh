@@ -10,6 +10,7 @@ import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 import { irregularMenteesList, toggleMenteeNotification } from "../SadhanaGPT/Mentors/NotificationController.js";
 import { assignActivitiesToStudents, getMentorSelectableActivities, createCustomActivity, assignActivitiesToGroup, deassignActivitiesFromGroup, deleteCustomActivity, deleteAssignedCustomActivity, getGroupSubgroupList } from "../SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js";
 import { getAddableActivities, addSelectedActivities } from "../SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js";
+import { getDailyMarksBreakdown } from "../SadhanaGPT/Controllers/Marking Rules/MarksBreakdownController.js";
 import { getMyMarkingScheme, mySchemeActivities, myMarkingRules, mySaveScheme, myDeleteRule, myDeleteActivityRules, useMyMarkingScheme, getStudentOwnScheme } from "../SadhanaGPT/Controllers/Marking Rules/PersonalSchemeController.js";
 import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
 import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
@@ -115,6 +116,7 @@ const LoggedinRoute = [
     { method: 'post', path: '/my-delete-rule', handler: myDeleteRule, role: "student" },
     { method: 'post', path: '/my-delete-activity-rules', handler: myDeleteActivityRules, role: "student" },
     { method: 'post', path: '/use-my-marking-scheme', handler: useMyMarkingScheme, role: "student" },
+    { method: 'post', path: '/daily-marks-breakdown', handler: getDailyMarksBreakdown, role: "student" },
     { method: 'get', path: '/student-activities-analytics', handler: StudentActivitiesAnalytics, role: "student" },
     { method: 'get', path: '/student-export-report', handler: studentExportReport, role: "student" },
 
