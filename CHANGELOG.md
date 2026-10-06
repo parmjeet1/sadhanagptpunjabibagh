@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-06, 7:35 PM IST - Feature (step 2 of "My Marking Scheme": save, switch on/off, counsellor read-only view)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: New routes so a person can manage their own scheme, all taking the owner from the login token (never from the request): `POST /my-marking-scheme` (my scheme, whether I use it, what applies to me now, my rules), `POST /my-scheme-activities` (activities I can write rules for), `POST /my-marking-rules` (rules of the default scheme or mine), `POST /my-save-scheme` (saves my rules; the scheme is created on the first save, switched OFF unless `use_for_self` is true; id, name and owner always come from the server), `POST /my-delete-rule`, `POST /my-delete-activity-rules`, `POST /use-my-marking-scheme` with `{ "use": true | false }` (own or default; today's entries are recalculated in the background, earlier days keep their marks). Counsellors: `POST /student-own-scheme` with `{ "student_id" }`, a read-only view of a student's own scheme, allowed only for that student's own counsellor. The name "... My Marking Scheme" is reserved: normal scheme create/rename is refused with it, and own schemes are hidden from scheme lists. The recalculation can now also be started for named people.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/PersonalSchemeController.js` (new), `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js`, `routes/Routes.js`, `CHANGELOG.md`
+- **Tested**: Replayed a student from the 11:33 UTC test-database export with a copy of the real code (31 checks, all passing, file `t008.mjs` in the scratchpad): own scheme created off, switched on and off; counsellor scheme overriding it and the own scheme applying again when the counsellor scheme is removed; saving an entry, the day score, the ranking maximum and the SQL scheme expression all agree; today recalculated while an earlier day keeps its marks; reserved name refused; own scheme hidden from scheme lists; read-only view allowed for the student's own counsellor and refused for another; the tag appears only for counsellors. Syntax check on every changed file. The repo has no automatic tests or linter. Not run on the real server.
+- **Database**: none.
+- **Frontend**: needs a "My Marking Scheme" window for students and counsellors (switch default / own, edit rules) using the routes above, and a read-only "student's own scheme" window for counsellors opened from the rankings screen. To be described in the next step.
+
 ## 2026-10-06, 7:30 PM IST - Feature (step 1 of "My Marking Scheme": the person's own scheme is used when marks are saved and scored)
 
 - **Developer**: Manvatar Prabhu Ji

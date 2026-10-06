@@ -1,7 +1,8 @@
 import moment from "moment";
 import db from "../../../config/database.js";
-import { calculateBestMarks, selectRulesForScheme, resolveEffectiveSchemeId } from "../../Student/Controllers/StudentController.js";
+import { calculateBestMarks, selectRulesForScheme } from "../../Student/Controllers/StudentController.js";
 import { dailyStudentSummary } from "../SummaryData/summary-report.js";
+import { getEffectiveScheme } from "./effectiveScheme.js";
 
 /**
  * When a marking scheme is allotted (or changed / removed) for a group or
@@ -9,8 +10,9 @@ import { dailyStudentSummary } from "../SummaryData/summary-report.js";
  * recalculated with the scheme that now applies to each student, so the new
  * scheme counts straight away. Earlier days are never touched.
  *
- * Scheme resolution is the shared resolveEffectiveSchemeId() rule (custom sub-group scheme,
- * else group scheme, else default 1). Rules come from that scheme only; the default
+ * Scheme resolution is the shared rule in effectiveScheme.js (custom sub-group scheme, else group
+ * scheme, else the person's own "My Marking Scheme" if switched on, else default 1). People can also
+ * be named directly (userIds), e.g. when someone switches their own scheme on or off. Rules come from that scheme only; the default
  * scheme is used just for activities the scheme has no rule for.
  *
  * Never throws: a failure here must not break saving the scheme itself.
@@ -18,41 +20,38 @@ import { dailyStudentSummary } from "../SummaryData/summary-report.js";
  * @param {{ centerIds?: Array<number|string>, labelIds?: Array<number|string> }} targets
  * @returns {Promise<{ students: number, entries: number }>}
  */
-export const recalculateTodayMarks = async ({ centerIds = [], labelIds = [] } = {}) => {
+export const recalculateTodayMarks = async ({ centerIds = [], labelIds = [], userIds = [] } = {}) => {
   const result = { students: 0, entries: 0 };
   try {
     const centers = [...new Set(centerIds.filter(v => v !== undefined && v !== null && v !== ""))];
     const labels = [...new Set(labelIds.filter(v => v !== undefined && v !== null && v !== ""))];
-    if (centers.length === 0 && labels.length === 0) return result;
+    const people = [...new Set(userIds.filter(v => v !== undefined && v !== null && v !== "").map(String))];
+    if (centers.length === 0 && labels.length === 0 && people.length === 0) return result;
 
     // Students whose CURRENT assignment is in one of the affected groups / sub-groups.
-    const conds = [];
-    const params = [];
-    if (centers.length) { conds.push(`ua.center_id IN (${centers.map(() => "?").join(",")})`); params.push(...centers); }
-    if (labels.length) { conds.push(`ua.label_id IN (${labels.map(() => "?").join(",")})`); params.push(...labels); }
-
-    const [students] = await db.query(
-      `SELECT DISTINCT ua.user_id
-       FROM user_assignments ua
-       WHERE (${conds.join(" OR ")})
-         AND ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = ua.user_id)`,
-      params
-    );
+    let students = [];
+    if (centers.length || labels.length) {
+      const conds = [];
+      const params = [];
+      if (centers.length) { conds.push(`ua.center_id IN (${centers.map(() => "?").join(",")})`); params.push(...centers); }
+      if (labels.length) { conds.push(`ua.label_id IN (${labels.map(() => "?").join(",")})`); params.push(...labels); }
+      [students] = await db.query(
+        `SELECT DISTINCT ua.user_id
+         FROM user_assignments ua
+         WHERE (${conds.join(" OR ")})
+           AND ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = ua.user_id)`,
+        params
+      );
+    }
+    // ...plus the people named directly.
+    const seen = new Set(students.map(s => String(s.user_id)));
+    people.forEach(id => { if (!seen.has(id)) students.push({ user_id: id }); });
 
     const today = moment().utcOffset("+05:30").format("YYYY-MM-DD");
     const rulesCache = new Map();
 
     for (const { user_id } of students) {
-      const [[assignment]] = await db.query(
-        `SELECT ll.marking_scheme_id AS label_scheme_id, cl.marking_scheme_id AS center_scheme_id
-         FROM user_assignments ua
-         LEFT JOIN labels_list ll ON ua.label_id = ll.id
-         LEFT JOIN center_list cl ON ua.center_id = cl.center_id
-         WHERE ua.user_id = ?
-         ORDER BY ua.id DESC LIMIT 1`,
-        [user_id]
-      );
-      const schemeId = resolveEffectiveSchemeId(assignment?.label_scheme_id, assignment?.center_scheme_id);
+      const { schemeId } = await getEffectiveScheme(user_id);
 
       const [entries] = await db.query(
         `SELECT dr.activity_id, dr.count, fa.master_activity_id, fa.activity_type, fa.unit, fa.name
@@ -122,6 +121,7 @@ export const targetsFromAssignments = (assignList = []) => ({
 export const mergeTargets = (...list) => ({
   centerIds: list.flatMap(t => t?.centerIds || []),
   labelIds: list.flatMap(t => t?.labelIds || []),
+  userIds: list.flatMap(t => t?.userIds || []),
 });
 
 /**

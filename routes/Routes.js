@@ -10,6 +10,7 @@ import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 import { irregularMenteesList, toggleMenteeNotification } from "../SadhanaGPT/Mentors/NotificationController.js";
 import { assignActivitiesToStudents, getMentorSelectableActivities, createCustomActivity, assignActivitiesToGroup, deassignActivitiesFromGroup, deleteCustomActivity, deleteAssignedCustomActivity, getGroupSubgroupList } from "../SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js";
 import { getAddableActivities, addSelectedActivities } from "../SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js";
+import { getMyMarkingScheme, mySchemeActivities, myMarkingRules, mySaveScheme, myDeleteRule, myDeleteActivityRules, useMyMarkingScheme, getStudentOwnScheme } from "../SadhanaGPT/Controllers/Marking Rules/PersonalSchemeController.js";
 import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
 import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
 import { getFollowUpStudents } from '../SadhanaGPT/Controllers/SummaryData/followUpStudents.js';
@@ -106,6 +107,14 @@ const LoggedinRoute = [
     { method: 'get', path: '/weekly-ranking', handler: getWeeklyRanking, role: "both" },
     { method: 'get', path: '/top-ranker-badge', handler: getTopRankerBadge, role: "student" },
     { method: 'get', path: '/applied-marking-scheme', handler: getStudentAppliedMarkingScheme, role: "student" },
+    // My Marking Scheme (any logged-in student or counsellor; the owner always comes from the login token)
+    { method: 'post', path: '/my-marking-scheme', handler: getMyMarkingScheme, role: "student" },
+    { method: 'post', path: '/my-scheme-activities', handler: mySchemeActivities, role: "student" },
+    { method: 'post', path: '/my-marking-rules', handler: myMarkingRules, role: "student" },
+    { method: 'post', path: '/my-save-scheme', handler: mySaveScheme, role: "student" },
+    { method: 'post', path: '/my-delete-rule', handler: myDeleteRule, role: "student" },
+    { method: 'post', path: '/my-delete-activity-rules', handler: myDeleteActivityRules, role: "student" },
+    { method: 'post', path: '/use-my-marking-scheme', handler: useMyMarkingScheme, role: "student" },
     { method: 'get', path: '/student-activities-analytics', handler: StudentActivitiesAnalytics, role: "student" },
     { method: 'get', path: '/student-export-report', handler: studentExportReport, role: "student" },
 
@@ -226,6 +235,7 @@ const LoggedinRoute = [
     { method: 'post', path: '/delete-marking-rule', handler: deleteMarkingRule, role: "counsellor" },
     { method: 'post', path: '/delete-activity-rules', handler: deleteActivityRules, role: "counsellor" },
     { method: 'get', path: '/student-rank', handler: getStudentRank, role: "counsellor" },
+    { method: 'post', path: '/student-own-scheme', handler: getStudentOwnScheme, role: "counsellor" },
     { method: 'get', path: '/student-followup', handler: getFollowUpStudents, role: "counsellor" },
     { method: 'post', path: '/create-custom-activity', handler: createCustomActivity }
 

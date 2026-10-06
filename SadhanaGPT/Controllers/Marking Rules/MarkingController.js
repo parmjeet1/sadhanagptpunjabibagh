@@ -3,7 +3,12 @@ import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 import validateFields from "../../../utils/validation.js";
 import db from "../../../config/database.js";
 import { parseRuleFrequency, buildRuleCondition, findInvalidRuleMessage } from "./ruleInput.js";
+import { PERSONAL_SCHEME_SUFFIX } from "./effectiveScheme.js";
 import { recalculateTodayMarksInBackground, getTargetsUsingScheme, targetsFromAssignments, mergeTargets } from "./recalculateMarks.js";
+
+/** The name "<user_id> My Marking Scheme" is reserved for a person's own scheme (made only by the server). */
+const isReservedSchemeName = (name) => typeof name === "string" && name.trim().endsWith(PERSONAL_SCHEME_SUFFIX);
+const RESERVED_NAME_MESSAGE = `A scheme name cannot end with "${PERSONAL_SCHEME_SUFFIX.trim()}". Please choose another name.`;
 
 export const addMarkingRule = asyncHandler(async (req, resp) => {
   try {
@@ -95,6 +100,10 @@ export const addMarkingRule = asyncHandler(async (req, resp) => {
 export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
   try {
     const { scheme_id, counsellor_id, activities, name } = mergeParam(req);
+
+    if (!req._personalFlow && isReservedSchemeName(name)) {
+      return resp.json({ status: 0, code: 422, message: [RESERVED_NAME_MESSAGE] });
+    }
 
     if (!counsellor_id || !Array.isArray(activities)) {
       return resp.json({ status: 0, code: 422, message: ["Missing required fields or activities must be an array"] });
@@ -342,7 +351,8 @@ export const getSchemesList = asyncHandler(async (req, resp) => {
            )
         ) as appliedSubgroupCount
       FROM marking_schemes ms
-      WHERE ms.counsellor_id = ? OR ms.counsellor_id = 'system'
+      WHERE (ms.counsellor_id = ? OR ms.counsellor_id = 'system')
+        AND ms.name <> CONCAT(ms.counsellor_id, '${PERSONAL_SCHEME_SUFFIX}')
       ORDER BY ms.id ASC
     `;
 
@@ -386,6 +396,10 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
 
     const { name, counsellor_id, assignments } = mergeParam(req);
     const assignList = assignments || [];
+
+    if (isReservedSchemeName(name)) {
+      return resp.json({ status: 0, code: 422, message: [RESERVED_NAME_MESSAGE] });
+    }
 
     // 1. Insert the scheme record
     const [insertRes] = await db.query(
@@ -532,6 +546,10 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
     
     const { scheme_id, counsellor_id, name, assignments } = mergeParam(req);
     const assignList = assignments || [];
+
+    if (isReservedSchemeName(name)) {
+      return resp.json({ status: 0, code: 422, message: [RESERVED_NAME_MESSAGE] });
+    }
 
     const [sysCheck] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [scheme_id]);
     if (sysCheck && sysCheck.length > 0 && sysCheck[0].counsellor_id === 'system') {
