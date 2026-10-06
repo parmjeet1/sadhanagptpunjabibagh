@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 2026-10-06, 3:44 PM IST - Revert (score retry / error answer)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Undone on request, to bring the test branch back in line with the main code zip: the day's score retry and the "error instead of a false 0%" answer (`7577735`). The score code is back to the main version (a hiccup gives "0 of 0 marks" again). A new "revert" commit was made (history is kept, nothing rewritten).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: file compared with the main code zip (identical); syntax check run.
+- **Database**: none.
+- **Frontend**: reverted the same way in `sadhanagptreactweb` (circle retry / newest-answer-wins fixes and the leftover test alert).
+
 ## 2026-10-05, 8:43 PM IST - Fix (the day's score no longer shows a false 0% when something goes wrong)
 
 - **Developer**: Manvatar Prabhu Ji
