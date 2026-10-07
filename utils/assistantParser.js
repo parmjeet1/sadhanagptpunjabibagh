@@ -32,7 +32,7 @@
 
 import {
   NICKNAMES, OTHER_AARTI_WORDS, COUNT_UNITS, MINUTE_UNITS, HOUR_UNITS, BAJE_WORDS, NUM_WORDS,
-  categorySource, categoryWords, phrasesToSource,
+  categorySource, categoryWords, phrasesToSource, activityNicknameFor,
 } from "./assistantLexicon.js";
 
 // ---------------------------------------------------------------------------
@@ -225,12 +225,21 @@ function findTokens(clause) {
 // ---------------------------------------------------------------------------
 // Step 4 — which activities does the clause mention?
 // ---------------------------------------------------------------------------
+// Every word that any kind of activity uses — a name word NOT in here is
+// specific to one activity (e.g. "distribution", "shloka").
+const ALL_GENERIC_WORDS = new Set(Object.keys(NICKNAMES).flatMap((c) => [...categoryWords(c)]));
+
 function buildActivityIndex(activities) {
   return activities.map((a) => {
-    const lex = LEXICON[a.category];
-    const generic = new Set((lex?.words || []).map((w) => w.toLowerCase()));
+    const nick = activityNicknameFor(a.name, a.category);
+    // "Study Hours", "Menial Services", "Shloka Memorisation", "Book distribution"
+    // are their own activities, whatever kind the name seems to suggest.
+    const category = nick?.forceCustom ? "custom" : a.category;
+    const lex = LEXICON[category];
+    const generic = nick?.forceCustom ? ALL_GENERIC_WORDS : new Set((lex?.words || []).map((w) => w.toLowerCase()));
     const distinguishing = nameTokens(a.name).filter((t) => !generic.has(t));
-    return { ...a, lex, distinguishing };
+    const nickRe = nick?.phrases?.length ? wordRe(phrasesToSource(nick.phrases)) : null;
+    return { ...a, category, lex, distinguishing, nickRe, needsUnit: !!nick?.needsUnit };
   });
 }
 
@@ -240,7 +249,12 @@ function chooseAmong(candidates, clause) {
     return { act: candidates[0] };
   }
   const hits = candidates
-    .map((c) => ({ c, n: c.distinguishing.filter((t) => new RegExp(`${BEFORE}${t}${AFTER}`, "iu").test(clause)).length }))
+    .map((c) => {
+      const words = c.distinguishing.filter((t) => new RegExp(`${BEFORE}${t}${AFTER}`, "iu").test(clause)).length;
+      const phrase = c.nickRe && c.nickRe.test(clause) ? 2 : 0;
+      if (c.nickRe) c.nickRe.lastIndex = 0;
+      return { c, n: words + phrase };
+    })
     .filter((x) => x.n > 0);
   if (hits.length) {
     hits.sort((a, b) => b.n - a.n);
@@ -305,6 +319,14 @@ function findAnchors(clause, index) {
       for (const m of clause.matchAll(wordRe(tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))) {
         anchors.push({ category: a.category, act: a, start: m.index, end: m.index + m[0].length, text: m[0], specific: true });
       }
+    }
+  }
+  // Nicknames that belong to one particular activity ("guru maharaj",
+  // "sankirtan", "sp book") anchor that activity directly.
+  for (const a of index) {
+    if (!a.nickRe) continue;
+    for (const m of clause.matchAll(a.nickRe)) {
+      anchors.push({ category: a.category, act: a, start: m.index, end: m.index + m[0].length, text: m[0], specific: true, nick: true });
     }
   }
   anchors.sort((a, b) => a.start - b.start);

@@ -193,3 +193,109 @@ export function categoryWords(category) {
   for (const p of entry.phrases || []) for (const w of p.toLowerCase().split(/\s+/)) out.add(w);
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Nicknames for individual activities (found by the activity's NAME)
+// ---------------------------------------------------------------------------
+// The master list has activities that are not a general kind of activity —
+// "Study Hours", "Menial Services", "Shloka Memorisation", "Book distribution" —
+// or are a more specific version of one ("Hearing Srila Prabhupada",
+// "Hearing Spiritual Master", "Reading Srila Prabhupada Book",
+// "Reading Misc. Books"). Each entry below says which activity it is
+// (nameMatch is tested against the activity's name) and what students call it.
+//
+//   forceCustom  treat it as its own activity, not as a kind of reading/hearing
+//   needsUnit    only accept an amount that comes with min / hour / ghanta
+//                (a bare "10 books distributed" is a number of books, not minutes)
+export const ACTIVITY_NICKNAMES = [
+  {
+    key: "study",
+    nameMatch: "study|studies|adhyayan|अध्ययन",
+    forceCustom: true,
+    phrases: [
+      "study", "studies", "studying", "studied", "study hours", "study time", "adhyayan", "adhyan", "अध्ययन", "स्टडी",
+    ],
+  },
+  {
+    key: "menial",
+    nameMatch: "menial|seva|sewa|service",
+    forceCustom: true,
+    phrases: [
+      "menial service", "menial services", "menial seva", "menial", "seva", "sewa", "service", "services",
+      "temple seva", "temple service", "kitchen seva", "kitchen service", "cleaning seva", "cleaning", "cooking seva",
+      "sevaa", "सेवा", "मेनियल", "सफाई", "रसोई सेवा",
+    ],
+  },
+  {
+    key: "shloka",
+    nameMatch: "shlok|slok|memori[sz]|verse",
+    forceCustom: true,
+    phrases: [
+      "shloka memorisation", "shloka memorization", "shloka", "shlok", "shlokas", "sloka", "slokas", "slok",
+      "verse", "verses", "memorisation", "memorization", "memorise", "memorize", "memorised", "memorized",
+      "memorising", "memorizing", "yaad kiya", "yaad kiye", "yaad kar", "kanthastha", "kanthasth", "kantasth",
+      "श्लोक", "श्लोकों", "याद किया", "कंठस्थ", "कण्ठस्थ",
+    ],
+  },
+  {
+    key: "distribution",
+    nameMatch: "distribut|sankirtan|book\\s*dist",
+    forceCustom: true,
+    needsUnit: true,
+    phrases: [
+      "book distribution", "books distribution", "book distributing", "books distributed", "book distributed",
+      "distribution", "distributed", "distributing", "distribute", "sankirtan", "sankirtana", "sankeertan", "bd",
+      "book dist", "book vitran", "vitran", "vitaran", "बुक डिस्ट्रीब्यूशन", "डिस्ट्रीब्यूशन", "संकीर्तन", "वितरण",
+    ],
+  },
+  {
+    key: "prabhupada_reading",
+    nameMatch: "prabhupada|\\bsp\\b",
+    category: "reading",
+    phrases: [
+      "sp book", "sp books", "srila prabhupada book", "srila prabhupada books", "prabhupada book", "prabhupada books",
+      "prabhupada's book", "prabhupada's books", "prabhupada ki book", "prabhupada ki kitab", "prabhupada ki pustak",
+      "prabhupada ke granth", "prabhupada granth", "प्रभुपाद की किताब", "प्रभुपाद की पुस्तक", "प्रभुपाद पुस्तक",
+    ],
+  },
+  {
+    key: "prabhupada_hearing",
+    nameMatch: "prabhupada|\\bsp\\b",
+    category: "hearing",
+    phrases: [
+      "sp lecture", "sp lectures", "sp class", "srila prabhupada lecture", "srila prabhupada lectures", "srila prabhupada class",
+      "prabhupada lecture", "prabhupada lectures", "prabhupada class", "prabhupada ka lecture", "prabhupada ki class",
+      "prabhupada ka pravachan", "prabhupada pravachan", "prabhupada ki katha", "प्रभुपाद प्रवचन", "प्रभुपाद का प्रवचन",
+      "प्रभुपाद लेक्चर", "प्रभुपाद क्लास",
+    ],
+  },
+  {
+    key: "spiritual_master_hearing",
+    nameMatch: "spiritual\\s*master|guru",
+    category: "hearing",
+    phrases: [
+      "spiritual master", "spiritual master lecture", "spiritual master class", "guru maharaj", "guru maharaja", "guru maharaj ka lecture",
+      "guru maharaj ki class", "guru maharaj ka pravachan", "gurudev", "guru dev", "guruji", "guru ji", "gm class", "gm lecture",
+      "guru lecture", "guru class", "guru pravachan", "गुरु महाराज", "गुरुदेव", "गुरुजी", "गुरु जी", "गुरु प्रवचन",
+    ],
+  },
+  {
+    key: "misc_reading",
+    nameMatch: "misc|\\bother\\b",
+    category: "reading",
+    phrases: [
+      "misc books", "misc book", "misc", "miscellaneous books", "miscellaneous book", "miscellaneous", "other books", "other book",
+      "anya pustak", "anya books", "अन्य पुस्तक", "अन्य किताबें",
+    ],
+  },
+];
+
+/** The entry for an activity, found by its name (and kind, when the entry says so). */
+export function activityNicknameFor(name, category) {
+  const n = String(name || "").toLowerCase();
+  for (const entry of ACTIVITY_NICKNAMES) {
+    if (entry.category && entry.category !== category) continue;
+    if (new RegExp(entry.nameMatch, "iu").test(n)) return entry;
+  }
+  return null;
+}

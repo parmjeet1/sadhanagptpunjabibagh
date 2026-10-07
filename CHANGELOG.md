@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🤖 [Chatbot] - 2026-10-07, 05:10 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The chatbot's fast first step now knows the nicknames of every activity in the real master list (16 activities, not 15), not only the 8 basic kinds. Study (study, adhyayan, अध्ययन), Menial Service (seva, service, cleaning, सेवा), Shloka Memorisation (shloka, verse, yaad kiya, कंठस्थ, श्लोक), Book Distribution (sankirtan, bd, vitran, वितरण), Prabhupada Book Reading (sp book, prabhupada ki book), Prabhupada Lecture Hearing (sp lecture, prabhupada pravachan), Spiritual Master Hearing (guru maharaj, gurudev, sb class...), Misc Book Reading (misc books, other books). Several of these can be in one message ("sp book 20 min aur sp lecture 30 min", "seva 40 min aur study 1 hour"). Book Distribution always goes to OpenAI when the unit is unclear (books or minutes?). The word lists are in `utils/assistantLexicon.js`.
+- **Files touched**: `utils/assistantLexicon.js`, `utils/assistantParser.js`, `tests/assistantParser.test.mjs`, `CHANGELOG.md`
+- **Tested**: 341 automatic checks pass (18 new, using the 16-activity list). The 3,000-sentence test still shows 0 wrong answers (about 90% understood without OpenAI), adding a stray number still always goes to OpenAI. NOT tested: live server, database, OpenAI. The real "type" of Book Distribution (books count or minutes) is a guess; if it is saved as a number of books, only messages with a clear unit go to OpenAI.
+- **Frontend**: no change needed.
+
 ## 🤖 [Chatbot] - 2026-10-07, 04:10 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

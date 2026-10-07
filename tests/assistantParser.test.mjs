@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { parseSadhna, interpretLocally } from "../utils/assistantParser.js";
 import { analyzeDatePhrase } from "../utils/assistantDate.js";
 import { build, ACTS } from "./helpers/sentenceGenerator.mjs";
-import { NICKNAMES, OTHER_AARTI_WORDS } from "../utils/assistantLexicon.js";
+import { NICKNAMES, OTHER_AARTI_WORDS, ACTIVITY_NICKNAMES } from "../utils/assistantLexicon.js";
 
 const NOW = new Date("2026-10-07T10:00:00+05:30");
 const mk = (id, name, type, category) => ({ activity_id: String(id), name, type, category });
@@ -25,6 +25,16 @@ const SETS = {
     mk(9, "Hearing(MIN)", "duration", "hearing"), mk(10, "Chanting Completion Time", "time", "chanting_completion_time"),
     mk(11, "Mangal Aarti Attended", "boolean", "mangal_aarti"), mk(12, "Reading Misc. Books", "duration", "reading"),
     mk(13, "Menial Services", "duration", "custom"), mk(14, "Shloka Memorisation", "duration", "custom"),
+  ],
+  master: [
+    mk(1, "Mangal Aarti Attended", "boolean", "mangal_aarti"), mk(2, "Chanting (Rounds)", "number", "chanting"),
+    mk(3, "Chanting Completion Time", "time", "chanting_completion_time"), mk(4, "Hearing(MIN)", "duration", "hearing"),
+    mk(5, "Reading(MIN)", "duration", "reading"), mk(6, "Day Rest(MIN)", "duration", "day_rest"),
+    mk(7, "Sleep Time", "time", "sleep"), mk(8, "Wake Up Time", "time", "wakeup"),
+    mk(9, "Study (MIN)", "duration", "custom"), mk(10, "Menial Service(MIN)", "duration", "custom"),
+    mk(11, "Shloka Memorisation", "duration", "custom"), mk(12, "Book Distribution", "number", "custom"),
+    mk(13, "Prabhupada Book Reading(MIN)", "duration", "reading"), mk(14, "Prabhupada Lecture Hearing(MIN)", "duration", "hearing"),
+    mk(15, "Spiritual Master Hearing(MIN)", "duration", "hearing"), mk(16, "Misc Book Reading(MIN)", "duration", "reading"),
   ],
   odd: [mk(1, "Chanting", "boolean", "chanting"), mk(2, "Day Rest (in hours)", "number", "day_rest"), mk(3, "Hearing", "time", "hearing")],
 };
@@ -257,5 +267,32 @@ test("huge input is quick and goes to the AI step", () => {
 test("activity names with odd characters never break the parser", () => {
   for (const name of ["Chanting (rounds)", "Hearing [MIN]", "C++ class", "a|b", "*", "(", "\\", "Japa?", "$1"]) {
     parseSadhna("chanting 16 hearing 30 min", [mk(1, name, "duration", "hearing"), mk(2, name + "x", "number", "chanting")]);
+  }
+});
+
+// ---- every activity in the real master list is reached by its nicknames
+const M = "master";
+const masterRows = [
+  [M, "sp book 20 min", { "Prabhupada Book Reading(MIN)": 20 }], [M, "prabhupada ki book 30 min", { "Prabhupada Book Reading(MIN)": 30 }],
+  [M, "misc books 15 min", { "Misc Book Reading(MIN)": 15 }], [M, "reading 20 min", { "Reading(MIN)": 20 }],
+  [M, "guru maharaj 30 min", { "Spiritual Master Hearing(MIN)": 30 }], [M, "sp lecture 30 min", { "Prabhupada Lecture Hearing(MIN)": 30 }],
+  [M, "hearing 15 min", { "Hearing(MIN)": 15 }], [M, "seva 30 min", { "Menial Service(MIN)": 30 }], [M, "study 45 min", { "Study (MIN)": 45 }],
+  [M, "shloka 20 min", { "Shloka Memorisation": 20 }], [M, "study 30 min and seva 20 min", { "Study (MIN)": 30, "Menial Service(MIN)": 20 }],
+  [M, "sp book 20 min aur sp lecture 30 min", { "Prabhupada Book Reading(MIN)": 20, "Prabhupada Lecture Hearing(MIN)": 30 }],
+  [M, "aaj seva kiya 40 min aur study 1 hour", { "Menial Service(MIN)": 40, "Study (MIN)": 60 }],
+  [M, "parso 14 mala", { "Chanting (Rounds)": 14 }],
+  // Book Distribution: books or minutes? Unclear, so these go to the AI step
+  [M, "book distribution 30 min", "AI"], [M, "sankirtan 2 hrs", "AI"], [M, "books distributed 10", "AI"],
+];
+for (const [set, text, want] of masterRows) {
+  test(`master list: ${text}`, () => assert.deepEqual(run(set, text), want));
+}
+test("master list: no nickname phrase reaches two different activities", () => {
+  for (const e of ACTIVITY_NICKNAMES) {
+    for (const f of ACTIVITY_NICKNAMES) {
+      if (e === f || e.forceCustom !== f.forceCustom || (e.category || "") !== (f.category || "")) continue;
+      const shared = e.phrases.filter((p) => f.phrases.includes(p));
+      assert.deepEqual(shared, [], `${e.key} and ${f.key} share ${shared}`);
+    }
   }
 });
