@@ -8,6 +8,7 @@ import {
 import { dailyStudentSummary } from "../../Controllers/SummaryData/summary-report.js";
 import { interpretWithGpt5Nano, transcribeAudio } from "../../../utils/openaiService.js";
 import { analyzeDatePhrase, sanitizeTargetDate } from "../../../utils/assistantDate.js";
+import { interpretLocally } from "../../../utils/assistantParser.js";
 
 /**
  * ============================================================================
@@ -484,10 +485,11 @@ export const assistantGetLast7DaysMarks = asyncHandler(async (req, resp) => {
 // 9. interpretNaturalLanguage
 // ----------------------------------------------------------------------------
 // Two-tier interpretation:
-//   1. A fast, free, local regex/keyword pass (`regexInterpret`) — handles
+//   1. A fast, free, local pass (`interpretLocally`, utils/assistantParser.js) — handles
 //      the common, unambiguous cases ("16 rounds", "woke at 4:25", "30 min
 //      hearing") instantly and at zero AI cost.
-//   2. Only when that pass finds NOTHING does this fall back to GPT-5 nano
+//   2. Only when that pass finds nothing — or is not completely sure about
+//      any part of the message — does this fall back to GPT-5 nano
 //      (the cheapest OpenAI model) for real natural-language understanding
 //      of freer phrasing, Hinglish, negation, multi-activity messages, etc.
 //   If GPT-5 nano also can't relate the message to any activity, the user is
@@ -495,157 +497,10 @@ export const assistantGetLast7DaysMarks = asyncHandler(async (req, resp) => {
 //   assistant guessing.
 // ============================================================================
 
-const TIME_TRIGGERS = {
-  wakeup: /\b(?:woke|wake ?up|wakeup|utha|uthi|uth gaya|uth gayi|got up)\b/,
-  sleep: /\b(?:sleep|slept|soya|so gaya|so gayi|went to bed|bed time)\b/,
-  // Broadened to also catch common Hinglish phrasing for finishing rounds —
-  // "mala poora kiya", "japa khatam hua", "chanting khatm ho gaya", etc. —
-  // not just the original English-only "chanting completed/finished/done".
-  chanting_completion_time:
-    /\b(?:chanting|rounds?|mala|japa)\s*(?:complete|completed|finish(?:ed)?|done|over|khatam|khatm|poora|pura|purn)(?:\s*(?:kiya|kar liya|ho gaya|ho gayi|hua|hui))?\b|\b(?:finished|completed)\s*(?:chanting|rounds?|mala|japa)\b/,
-};
-
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function regexInterpret(text, activities) {
-  const lower = String(text || "").toLowerCase();
-  const updates = [];
-
-  for (const a of activities) {
-    if (updates.some((u) => u.activity_id === a.activity_id)) continue;
-    const nameEsc = escapeRegex(a.name.toLowerCase());
-
-    if (a.type === "number" || a.type === "duration") {
-      const unitWord = a.type === "duration"
-        ? "(?:min(?:ute)?s?|mins?|hrs?|hours?|ghanta|ghante|ghanton)"
-        : "(?:rounds?|round|mala|malas)";
-      // "Strict" patterns require an actual unit word (rounds/mala/min/
-      // hour/etc.) next to the number, so they can only ever match a count
-      // or duration, never a clock time.
-      const strictPatterns = [
-        new RegExp(`(\\d{1,4})\\s*${unitWord}[^\\d\\n]{0,20}${nameEsc}`),
-        new RegExp(`${nameEsc}[^\\d\\n]{0,20}(\\d{1,4})\\s*${unitWord}`),
-        new RegExp(`(\\d{1,4})\\s*${unitWord}\\s+(?:of\\s+)?${nameEsc}`),
-      ];
-      // "Loose" patterns fall back to plain proximity (any number within
-      // ~12 chars of the activity's name, no unit word required) — needed
-      // for terse messages like "chanting 16", but dangerous on their own:
-      // without a guard, "chanting completed AT 6" (a TIME) would be
-      // misread as "6 rounds of chanting" (a COUNT), producing a wrong-but-
-      // nonempty match that short-circuits the whole interpretation before
-      // it ever reaches the AI fallback (a local match always wins, right
-      // or wrong). So a loose match is only accepted when the number isn't
-      // itself an obvious clock-time reference ("at 6", "6 baje", "6pm",
-      // "6:30") — those are left for a stricter/AI pass to attribute to
-      // whichever TIME-type activity they actually belong to.
-      const loosePatterns = [
-        new RegExp(`${nameEsc}[^\\d\\n]{0,12}(\\d{1,4})\\b`),
-        new RegExp(`(\\d{1,4})[^\\d\\n]{0,12}${nameEsc}`),
-      ];
-      const looksLikeClockTimeAt = (idx, numStr) => {
-        const before = lower.slice(Math.max(0, idx - 6), idx);
-        const after = lower.slice(idx + numStr.length, idx + numStr.length + 6);
-        return /\bat\s*$/.test(before) || /^\s*(?:am|pm|baje|:\s*\d|\.\d)/.test(after);
-      };
-      let matched = false;
-      for (const re of strictPatterns) {
-        const m = lower.match(re);
-        if (m) {
-          const val = Number(m[1]);
-          if (!isNaN(val)) {
-            updates.push({ activity_id: a.activity_id, value: val });
-            matched = true;
-          }
-          break;
-        }
-      }
-      if (!matched) {
-        for (const re of loosePatterns) {
-          const m = lower.match(re);
-          if (m) {
-            const numIdx = m.index + m[0].lastIndexOf(m[1]);
-            if (looksLikeClockTimeAt(numIdx, m[1])) continue; // leave it for the time-activity / AI pass
-            const val = Number(m[1]);
-            if (!isNaN(val)) {
-              updates.push({ activity_id: a.activity_id, value: val });
-              matched = true;
-            }
-            break;
-          }
-        }
-      }
-      if (!matched) {
-        const negRe = new RegExp(`(?:no|didn'?t|couldn'?t|nahi)[^\\n]{0,12}${nameEsc}`);
-        if (negRe.test(lower)) updates.push({ activity_id: a.activity_id, value: 0 });
-      }
-    } else if (a.type === "boolean") {
-      const negRe = new RegExp(`${nameEsc}[^\\n]{0,15}(?:no|nahi|missed|not attended)|(?:missed|didn'?t (?:do|attend))[^\\n]{0,15}${nameEsc}`);
-      const posRe = new RegExp(`${nameEsc}[^\\n]{0,15}(?:yes|done|attended|hua|ki|kiya)|(?:attended|did|went to)[^\\n]{0,15}${nameEsc}`);
-      if (negRe.test(lower)) updates.push({ activity_id: a.activity_id, value: false });
-      else if (posRe.test(lower)) updates.push({ activity_id: a.activity_id, value: true });
-    } else if (a.type === "time") {
-      const trigger = TIME_TRIGGERS[a.category];
-      if (trigger && trigger.test(lower)) {
-        // A duration-unit word anywhere in the message means the number
-        // near this trigger is almost certainly a DURATION, not a clock
-        // time — e.g. "din me 1 ghanta soya" (1 hour of day rest) must
-        // NOT be read as "slept at 1 o'clock". Bail out to the AI fallback
-        // rather than risk a wrong local guess.
-        const hasDurationUnit = /\b(?:ghanta|ghante|ghanton|hour|hours|hrs?|min(?:ute)?s?|mins?)\b/.test(lower);
-        if (hasDurationUnit) continue;
-
-        // Only accept a genuinely unambiguous clock time here — an
-        // explicit am/pm, "baje", or an HH:MM with a colon. A bare lone
-        // digit ("1", "4") is too easy to misread out of context, so
-        // without one of these markers this is left for the AI fallback
-        // (which reads the whole sentence, not just a nearby number).
-        const m =
-          lower.match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/) ||
-          lower.match(/(\d{1,2})\s*(am|pm)/) ||
-          lower.match(/(\d{1,2})(?:[:.](\d{2}))?\s*baje/);
-        if (m) {
-          let hour = parseInt(m[1], 10);
-          let minute = 0;
-          let meridiem = null;
-          if (/am|pm/.test(m[0])) {
-            // Could be either the "(\d)[:.](\d{2}) (am|pm)" or "(\d) (am|pm)" match.
-            minute = m[2] && /^\d+$/.test(m[2]) ? parseInt(m[2], 10) : 0;
-            meridiem = m[0].match(/am|pm/)[0];
-          } else {
-            // "<h>[:.<mm>] baje" match
-            minute = m[2] ? parseInt(m[2], 10) : 0;
-          }
-          if (!isNaN(hour) && hour <= 23 && minute <= 59) {
-            if (meridiem === "pm" && hour < 12) hour += 12;
-            if (meridiem === "am" && hour === 12) hour = 0;
-            if (!meridiem && a.category === "sleep") {
-              // Night-sleep-specific defaulting for a bare hour like "1
-              // baje soya" (no am/pm given): people go to bed in the
-              // evening (7-11 => PM) or occasionally past midnight
-              // (1-6 => AM, i.e. after 12). "12 baje" on its own means
-              // midnight. This replaces the old blunt "always add 12"
-              // rule, which turned "1 baje soya" into 1 PM.
-              if (hour >= 7 && hour <= 11) hour += 12; // 7-11 -> PM (19:00-23:00)
-              else if (hour === 12) hour = 0; // 12 baje (night) -> midnight
-              // hour 1-6 is left as-is -> AM (after midnight)
-            }
-            updates.push({
-              activity_id: a.activity_id,
-              value: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
-            });
-          }
-        }
-      }
-    }
-  }
-
-  if (updates.length > 0) {
-    return { intent: "update_activities", updates, confidence: 0.85 };
-  }
-  return { intent: "unrecognized", updates: [] };
-}
+// The fast, free local reader lives in utils/assistantParser.js (pure code
+// with its own tests). It works out the activity from its category and
+// meaning, not its exact name, and hands anything it is not sure about to the
+// AI step instead of guessing.
 
 // ---------------------------------------------------------------------------
 // Date-phrase detection lives in utils/assistantDate.js (pure code with its
@@ -726,7 +581,7 @@ export const assistantInterpretNL = asyncHandler(async (req, resp) => {
   //    day each part belongs to. The date words are cut out first so that
   //    "3 din pehle" is never read as "3 rounds".
   if (!forceAI && !dateInfo.ambiguous) {
-    const regexResult = regexInterpret(dateInfo.cleaned, activities);
+    const regexResult = interpretLocally(dateInfo.cleaned, activities);
     if (regexResult.intent === "update_activities" && regexResult.updates.length > 0) {
       return resp.json({
         status: 1,

@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🤖 [Chatbot] - 2026-10-07, 03:30 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The chatbot's fast first step (the one that runs before OpenAI) is rewritten as a new reader in `utils/assistantParser.js`. Before, it matched the activity's exact name, so with real names like "Hearing(MIN)", "Reading(MIN)", "Day Rest(MIN)" or "Mangal Aarti Attended" almost nothing matched and about 70% of messages went to OpenAI. Now it finds the activity by meaning (hearing / pravachan / suna / lecture, reading / padha / book, day rest / aaram / "din me soya", mangal aarti, wake-up / utha, sleep / soya, chanting / japa / mala / round) and treats names with extra words ("Hearing Srila Prabhupada" vs "Hearing(MIN)") correctly. It splits the message into parts so each number goes to its own activity (no more 30 min hearing landing in reading, or one time given to two activities). Hours and fractions become minutes (1 ghanta = 60, dedh ghanta = 90, aadha ghanta = 30); "saade char baje" = 4:30; "did not attend", "nhi kiya", "mis ho gayi" are read as No; "chanting nahi hui" is saved as 0; rounds must be 0-64 and durations up to 12 hours; "14 mala" and "japa 14" work without the word chanting; a wake/sleep/completion time is only used by its own activity. Rule of the new reader: if ANY part of the message is unclear (an unused number, a correction word such as "actually", "sorry", "instead", a question, a range, a negative number, two activities that could match), the whole message goes to OpenAI instead of being saved half-understood. The old matching code is removed from `AssistantController.js`.
+- **Files touched**: `utils/assistantParser.js` (new), `SadhanaGPT/Student/Controllers/AssistantController.js`, `tests/assistantParser.test.mjs` (new), `tests/helpers/sentenceGenerator.mjs` (new, made-up test messages only, no real data), `CHANGELOG.md`
+- **Tested**: 249 automatic checks pass (`node --test "tests/*.test.mjs"`, no package needed), including 3,000 made-up messages in English, Hinglish and Hindi: about 90% are understood without OpenAI and 0 are accepted with a wrong answer; adding a stray number to a message always sends it to OpenAI; 5,000 random word mixes and 100,000-character inputs do not break it; a normal message takes about 0.08 ms. The controller passes a syntax check. NOT tested: the live server, the database, or the OpenAI step (no database or key here). The percentages come from test messages written by me, so real users may differ.
+- **Frontend**: no change needed (same request and answer shape).
+
 ## 🤖 [Chatbot] - 2026-10-07, 02:20 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
