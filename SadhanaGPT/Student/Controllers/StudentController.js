@@ -1169,7 +1169,10 @@ export const saveActivityEntry = async ({ activity_id, count, activity_date, use
         [activity_id, final_activity_date, user_id]
       ),
       db.execute(
-        `SELECT name, activity_type, master_activity_id FROM fix_activities WHERE activity_id = ? AND user_id = ? LIMIT 1`,
+        `SELECT f.name, f.activity_type, COALESCE(f.master_activity_id, a.id) AS master_activity_id
+         FROM fix_activities f
+         LEFT JOIN activities a ON (f.master_activity_id = a.id OR (f.master_activity_id IS NULL AND LOWER(TRIM(f.name)) = LOWER(TRIM(a.name))))
+         WHERE f.activity_id = ? AND f.user_id = ? LIMIT 1`,
         [activity_id, user_id]
       ),
       db.execute(
@@ -3209,17 +3212,26 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
 
     // 2. Get Max Possible Marks (Handles name-fallback and Center precedence in pure SQL using MAX)
     const [maxMarksResult] = await db.execute(`
-      SELECT SUM(max_marks) as max_marks
+      SELECT COALESCE(SUM(activity_max), 0) as max_marks
       FROM (
-        SELECT f.master_activity_id, 
-               COALESCE(
-                 (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND scheme_id = ?),
-                 (SELECT MAX(marks) FROM marking_rules WHERE master_activity_id = f.master_activity_id AND status = 1 AND frequency = 'daily' AND scheme_id = 1)
-               ) as max_marks
-        FROM (SELECT DISTINCT user_id, master_activity_id FROM fix_activities) f
-        WHERE f.user_id = ? AND f.master_activity_id IS NOT NULL AND f.master_activity_id > 0
-      ) temp
-    `, [scheme_id, user_id]);
+        SELECT 
+          COALESCE(
+            MAX(CASE WHEN mr.scheme_id = ? THEN mr.marks END),
+            MAX(CASE WHEN mr.scheme_id = 1 THEN mr.marks END),
+            0
+          ) AS activity_max
+        FROM fix_activities fa
+        LEFT JOIN activities a ON (fa.master_activity_id = a.id OR (fa.master_activity_id IS NULL AND LOWER(TRIM(fa.name)) = LOWER(TRIM(a.name))))
+        JOIN marking_rules mr ON mr.master_activity_id = COALESCE(fa.master_activity_id, a.id)
+        WHERE fa.user_id = ?
+          AND COALESCE(fa.master_activity_id, a.id) IS NOT NULL
+          AND COALESCE(fa.master_activity_id, a.id) > 0
+          AND mr.status = 1
+          AND mr.frequency = 'daily'
+          AND mr.scheme_id IN (?, 1)
+        GROUP BY COALESCE(fa.master_activity_id, a.id)
+      ) sub
+    `, [scheme_id, user_id, scheme_id]);
 
     // 3. Fetch Today's Total Earned Marks
     const [earnedMarksResult] = await db.execute(`
@@ -3471,10 +3483,10 @@ export const getStudentAppliedMarkingScheme = asyncHandler(async (req, resp) => 
         mr.marks,
         mr.is_max_marks
       FROM fix_activities fa
-      JOIN activities a ON fa.master_activity_id = a.id
-      JOIN marking_rules mr ON fa.master_activity_id = mr.master_activity_id
+      LEFT JOIN activities a ON (fa.master_activity_id = a.id OR (fa.master_activity_id IS NULL AND LOWER(TRIM(fa.name)) = LOWER(TRIM(a.name))))
+      JOIN marking_rules mr ON COALESCE(fa.master_activity_id, a.id) = mr.master_activity_id
       WHERE fa.user_id = ? 
-        AND fa.master_activity_id IS NOT NULL
+        AND COALESCE(fa.master_activity_id, a.id) IS NOT NULL
         AND mr.status = 1
         AND (
           mr.scheme_id = ? 
@@ -3482,13 +3494,13 @@ export const getStudentAppliedMarkingScheme = asyncHandler(async (req, resp) => 
             mr.scheme_id = 1 
             AND NOT EXISTS (
               SELECT 1 FROM marking_rules mr2 
-              WHERE mr2.master_activity_id = fa.master_activity_id 
+              WHERE mr2.master_activity_id = COALESCE(fa.master_activity_id, a.id) 
                 AND mr2.scheme_id = ? 
                 AND mr2.status = 1
             )
           )
         )
-      ORDER BY fa.master_activity_id ASC, mr.marks DESC
+      ORDER BY mr.master_activity_id ASC, mr.marks DESC
     `;
 
     const [rules] = await db.execute(query, [user_id, scheme_id, scheme_id]);
