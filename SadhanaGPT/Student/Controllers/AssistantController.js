@@ -25,6 +25,7 @@ import { interpretLocally } from "../../../utils/assistantParser.js";
  *   getActivitiesForDate        -> GET  /assistant/activities/by-date/:date
  *   updateActivityForDate       -> POST /assistant/activities/update-for-date
  *   getTodayMarks               -> GET  /assistant/marks/today
+ *   getMarksForDate             -> GET  /assistant/marks/by-date/:date
  *   getLast7DaysMarks           -> GET  /assistant/marks/last7days
  *   interpretNaturalLanguage    -> POST /assistant/nlp/interpret
  *
@@ -428,35 +429,49 @@ export const assistantUpdateActivitiesForDates = asyncHandler(async (req, resp) 
 // ============================================================================
 // 7. getTodayMarks
 // ============================================================================
-export const assistantGetTodayMarks = asyncHandler(async (req, resp) => {
-  const { user_id } = mergeParam(req);
-  const todayStr = today();
-  const yesterdayStr = yesterday();
+// Marks for one day, compared with the day before it. Shared by today's marks
+// and the marks for any earlier date ("kal ki chanting 16 mala").
+async function marksForDate(user_id, dateStr) {
+  const previousStr = moment(dateStr, "YYYY-MM-DD").subtract(1, "days").format("YYYY-MM-DD");
 
-  const [todayScore, yesterdayScore, countsResult] = await Promise.all([
-    calculateDailySadhanaScore(user_id, todayStr),
-    calculateDailySadhanaScore(user_id, yesterdayStr),
+  const [score, previousScore, countsResult] = await Promise.all([
+    calculateDailySadhanaScore(user_id, dateStr),
+    calculateDailySadhanaScore(user_id, previousStr),
     db.execute(
       `SELECT
          (SELECT COUNT(*) FROM fix_activities WHERE user_id = ?) AS totalActiveCount,
          (SELECT COUNT(*) FROM daily_report WHERE user_id = ? AND DATE(activity_date) = ? AND count IS NOT NULL AND count <> '') AS completedCount`,
-      [user_id, user_id, todayStr]
+      [user_id, user_id, dateStr]
     ),
   ]);
 
   const counts = countsResult[0][0] || {};
+  return {
+    date: dateStr,
+    marks: score.percentage,
+    maxMarks: 100,
+    yesterdayMarks: previousScore.percentage,
+    completedCount: Number(counts.completedCount) || 0,
+    totalActiveCount: Number(counts.totalActiveCount) || 0,
+  };
+}
 
-  return resp.json({
-    status: 1,
-    code: 200,
-    data: {
-      marks: todayScore.percentage,
-      maxMarks: 100,
-      yesterdayMarks: yesterdayScore.percentage,
-      completedCount: Number(counts.completedCount) || 0,
-      totalActiveCount: Number(counts.totalActiveCount) || 0,
-    },
-  });
+export const assistantGetTodayMarks = asyncHandler(async (req, resp) => {
+  const { user_id } = mergeParam(req);
+  const data = await marksForDate(user_id, today());
+  return resp.json({ status: 1, code: 200, data });
+});
+
+// GET /assistant/marks/by-date/:date — same answer as today's marks, for a
+// past day (up to a year back). Future dates and bad dates are refused.
+export const assistantGetMarksForDate = asyncHandler(async (req, resp) => {
+  const { user_id } = mergeParam(req);
+  const date = sanitizeTargetDate(req.params.date);
+  if (!date) {
+    return resp.json({ status: 0, code: 422, message: ["A valid past date (YYYY-MM-DD, within the last year) is required"] });
+  }
+  const data = await marksForDate(user_id, date);
+  return resp.json({ status: 1, code: 200, data });
 });
 
 // ============================================================================

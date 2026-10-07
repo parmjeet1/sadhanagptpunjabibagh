@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🤖 [Chatbot] - 2026-10-07, 05:00 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: New API `GET /assistant/marks/by-date/:date` (for example `/assistant/marks/by-date/2026-10-06`). It gives the marks for a past day in the same shape as today's marks (marks, maxMarks, previous day's marks, activities recorded, total activities), so the chat can show marks after an entry for "kal". It only reads data and changes nothing. Bad dates, future dates and dates older than a year are refused with a 422 message. Today's marks API works as before; both now use one shared calculation, which is the same marks engine the dashboard uses. Needs deploying to the server for the website change to work.
+- **Files touched**: `SadhanaGPT/Student/Controllers/AssistantController.js`, `routes/Routes.js`, `CHANGELOG.md`
+- **Tested**: syntax check passes on both files; the 355 existing automatic checks still pass. NOT tested: the new API itself against a real database (no database here), so please try `/assistant/marks/by-date/<yesterday>` once with a student login after deploying. No database change is needed.
+- **Frontend**: needs the matching change (`getMarksForDate` in the adapter and the chat), done in the website repo.
+
 ## 🤖 [Chatbot] - 2026-10-07, 03:45 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
