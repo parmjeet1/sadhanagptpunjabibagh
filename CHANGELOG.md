@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🤖 [Chatbot] - 2026-10-07, 05:45 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: When a student mentions an activity they do not have (for example "study 25 minute" with no Study activity, or "chanting poori hui 2 baje" with no Chanting Completion Time), the chatbot now answers by itself instead of sending the message to OpenAI: "I understood this as Study, but it isn't in your sadhana list, so I can't save it. Your activities: ... If you think I got this wrong, tap 'Ask AI to re-check'." It does this only when it is sure: the message is read again with pretend versions of the activities the student lacks, and it must understand the WHOLE message that way (nothing left over or unclear). Anything less sure still goes to OpenAI. A student whose activity NAME looks like the kind (e.g. "Study Hours") is never told it is missing. If a message mixes real and missing activities ("16 rounds, study 30 min"), the real part comes back as normal updates for confirmation, plus a `missing` list. The "Ask AI to re-check" button (forced AI) skips this check, so the student can ask OpenAI once. New answer type: `intent: "missing_activity"` with `missing` (names) and `clarification` (the sentence).
+- **Files touched**: `utils/assistantMissing.js` (new), `SadhanaGPT/Student/Controllers/AssistantController.js`, `tests/assistantMissing.test.mjs` (new), `CHANGELOG.md`
+- **Tested**: 362 automatic checks pass (7 new). On 3,000 made-up messages with one activity removed from the list (completion time, day rest, hearing, reading, sleep, wake-up, mangal aarti): all messages about the removed activity (about 160 to 660 each) were answered correctly and 0 were wrongly claimed; the 3,000-sentence accuracy test still shows 0 wrong answers. NOT tested: live server/database/OpenAI.
+- **Frontend**: needs the matching change in the website repo: show the answer of type `missing_activity` with an "Ask AI to re-check" button, and show a note when `missing` comes with normal updates. Until then, the website shows the sentence as a normal message (without the button), so deploy both together.
+
 ## 🤖 [Chatbot] - 2026-10-07, 05:00 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

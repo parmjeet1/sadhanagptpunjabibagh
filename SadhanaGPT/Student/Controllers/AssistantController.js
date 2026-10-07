@@ -8,6 +8,7 @@ import {
 import { dailyStudentSummary } from "../../Controllers/SummaryData/summary-report.js";
 import { interpretWithGpt5Nano, transcribeAudio } from "../../../utils/openaiService.js";
 import { analyzeDatePhrase, sanitizeTargetDate } from "../../../utils/assistantDate.js";
+import { checkMissingActivities, missingActivityMessage } from "../../../utils/assistantMissing.js";
 import { interpretLocally } from "../../../utils/assistantParser.js";
 
 /**
@@ -602,6 +603,41 @@ export const assistantInterpretNL = asyncHandler(async (req, resp) => {
         status: 1,
         code: 200,
         data: { ...regexResult, target_date: detectedDate || undefined },
+      });
+    }
+  }
+
+  // 1b. Not understood — but is it simply an activity this student does not
+  //     have ("study 25 min" with no Study activity)? If we are sure, say so
+  //     directly instead of asking the AI; the chat offers "Ask AI to
+  //     re-check" for the rare case we are wrong. Skipped on a forced re-check.
+  if (!forceAI && !dateInfo.ambiguous) {
+    const missing = checkMissingActivities(dateInfo.cleaned, activities);
+    if (missing) {
+      if (missing.updates.length > 0) {
+        // Part of the message is for activities they have: save those, mention the rest.
+        return resp.json({
+          status: 1,
+          code: 200,
+          data: {
+            intent: "update_activities",
+            updates: missing.updates,
+            confidence: 0.9,
+            missing: missing.missing,
+            target_date: detectedDate || undefined,
+          },
+        });
+      }
+      return resp.json({
+        status: 1,
+        code: 200,
+        data: {
+          intent: "missing_activity",
+          updates: [],
+          missing: missing.missing,
+          clarification: missingActivityMessage(missing.missing, activities),
+          target_date: detectedDate || undefined,
+        },
       });
     }
   }
