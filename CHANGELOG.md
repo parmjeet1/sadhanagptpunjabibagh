@@ -1,5 +1,21 @@
 # Changelog - SadhanaGPT Backend
 
+## ✨ [Feature] - 2026-10-07, 11:08 AM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Negative (penalty) marks, such as -5, are now supported in custom marking schemes, like in the counsellor's scheme builder. Two small safety fixes for it: the day's percentage never shows below 0%, and a scheme whose rules are all negative still marks one rule as its maximum. No database change (the marks columns already hold negatives).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `CHANGELOG.md`
+- **Tested**: 7 new local checks (save, store, read back, score, percentage, ranking) plus the earlier 31 + 6 + 7 checks, on a copy of the data (SQLite, not MySQL).
+- **Frontend**: the custom scheme editor lets the user type or toggle a minus sign (see the frontend entry).
+
+## 🐛 [Fix] - 2026-10-07, 09:15 AM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The "most marks possible" part of the daily score no longer uses a nested `SELECT DISTINCT ... ) f` table; it reads `fix_activities` directly and groups by activity. Same result (checked on a copy of real data: 85 students x 4 schemes, 340 comparisons, 0 differences). Made because the server reported `Unknown column 'f.master_activity_id' in 'WHERE'` for this query; the cause is not confirmed (the old query was unchanged by the My Marking Scheme work and no code uses the removed `users.personal_marking_scheme_id` column). No database change.
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: 31 + 6 local checks pass; old and new query give identical totals on MariaDB 10.11 with real data. Not tried on your MariaDB 11 server.
+- **Frontend**: nothing needed.
+
 ## ✨ [Feature] - 2026-10-06, 08:41 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

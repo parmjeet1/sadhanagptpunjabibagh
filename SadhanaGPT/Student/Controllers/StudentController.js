@@ -3248,6 +3248,7 @@ export const calculateDailySadhanaScore = async (user_id, activity_date) => {
     if (totalPossibleMarks > 0) {
       percentage = Math.round((totalEarnedMarks / totalPossibleMarks) * 100);
       if (percentage > 100) percentage = 100;
+      if (percentage < 0) percentage = 0; // penalty (negative) marks can pull the day below zero; show 0%
     }
 
     console.log(`User: ${user_id}, Center: ${center_id}, Scheme: ${scheme_id}, Earned: ${totalEarnedMarks}, Max: ${totalPossibleMarks}, %: ${percentage}`);

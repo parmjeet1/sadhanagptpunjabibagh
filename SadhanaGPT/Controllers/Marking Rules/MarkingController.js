@@ -190,7 +190,7 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
 
       if (allRows.length === 0) continue;
 
-      let maxMarksVal = -1;
+      let maxMarksVal = -Infinity; // so a scheme whose rules are all negative still marks one row as the max
       let maxMarksIdx = -1;
       allRows.forEach((r, idx) => {
         const m = parseInt(r.marks) || 0;
