@@ -28,36 +28,44 @@ export const getDailyMaxByUser = async (db, userIds) => {
 
   const placeholders = ids.map(() => "?").join(",");
   const [rows] = await db.query(
-    `SELECT t.user_id, SUM(t.max_marks) AS daily_max
-     FROM (
-       SELECT x.user_id, x.master_activity_id,
-              COALESCE(
-                (SELECT MAX(r.marks) FROM marking_rules r
-                  WHERE r.master_activity_id = x.master_activity_id AND r.status = 1
-                    AND r.frequency = 'daily' AND r.scheme_id = s.scheme_id),
-                (SELECT MAX(r.marks) FROM marking_rules r
-                  WHERE r.master_activity_id = x.master_activity_id AND r.status = 1
-                    AND r.frequency = 'daily' AND r.scheme_id = 1)
-              ) AS max_marks
-       FROM (SELECT DISTINCT user_id, master_activity_id
-               FROM fix_activities
-              WHERE user_id IN (${placeholders}) AND master_activity_id IS NOT NULL AND master_activity_id > 0) x
-       JOIN (
-         SELECT u.user_id,
-                CASE
-                  WHEN l.marking_scheme_id IS NOT NULL AND l.marking_scheme_id <> 1 THEN l.marking_scheme_id
-                  WHEN c.marking_scheme_id IS NOT NULL AND c.marking_scheme_id > 0 THEN c.marking_scheme_id
-                  ELSE 1
-                END AS scheme_id
-         FROM users u
-         LEFT JOIN user_assignments ua
-                ON ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = u.user_id)
-         LEFT JOIN labels_list l ON l.id = ua.label_id
-         LEFT JOIN center_list c ON c.center_id = ua.center_id
-         WHERE u.user_id IN (${placeholders})
-       ) s ON s.user_id = x.user_id
-     ) t
-     GROUP BY t.user_id`,
+    `SELECT 
+      sub.user_id,
+      SUM(sub.activity_max) AS daily_max
+    FROM (
+      SELECT 
+        fa.user_id,
+        COALESCE(fa.master_activity_id, a.id) AS master_activity_id,
+        COALESCE(
+          MAX(CASE WHEN mr.scheme_id = s.scheme_id THEN mr.marks END),
+          MAX(CASE WHEN mr.scheme_id = 1 THEN mr.marks END),
+          0
+        ) AS activity_max
+      FROM fix_activities fa
+      LEFT JOIN activities a ON (fa.master_activity_id = a.id OR (fa.master_activity_id IS NULL AND LOWER(TRIM(fa.name)) = LOWER(TRIM(a.name))))
+      JOIN (
+        SELECT u.user_id,
+               CASE
+                 WHEN l.marking_scheme_id IS NOT NULL AND l.marking_scheme_id <> 1 THEN l.marking_scheme_id
+                 WHEN c.marking_scheme_id IS NOT NULL AND c.marking_scheme_id > 0 THEN c.marking_scheme_id
+                 ELSE 1
+               END AS scheme_id
+        FROM users u
+        LEFT JOIN user_assignments ua
+               ON ua.id = (SELECT MAX(ua2.id) FROM user_assignments ua2 WHERE ua2.user_id = u.user_id)
+        LEFT JOIN labels_list l ON l.id = ua.label_id
+        LEFT JOIN center_list c ON c.center_id = ua.center_id
+        WHERE u.user_id IN (${placeholders})
+      ) s ON s.user_id = fa.user_id
+      JOIN marking_rules mr ON mr.master_activity_id = COALESCE(fa.master_activity_id, a.id)
+      WHERE fa.user_id IN (${placeholders})
+        AND COALESCE(fa.master_activity_id, a.id) IS NOT NULL
+        AND COALESCE(fa.master_activity_id, a.id) > 0
+        AND mr.status = 1
+        AND mr.frequency = 'daily'
+        AND (mr.scheme_id = s.scheme_id OR mr.scheme_id = 1)
+      GROUP BY fa.user_id, COALESCE(fa.master_activity_id, a.id)
+    ) sub
+    GROUP BY sub.user_id`,
     [...ids, ...ids]
   );
   rows.forEach((r) => result.set(String(r.user_id), Number(r.daily_max) || 0));
