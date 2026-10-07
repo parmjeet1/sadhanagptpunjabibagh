@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🤖 [Chatbot] - 2026-10-07, 05:35 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: (1) Misspelled day words are now understood. A student typed "Cal ki chanting 3" (meaning "kal"): no day was found, so the entry would have been saved for TODAY instead of yesterday. Now "cal", "kl", "caal" (only when followed by ki/ka/ke/ko/ne/me/mein/tak, or at the start of the message), "kaal", "kall", and the typos "yesterdy", "yestarday", "yesturday", "yestrday", "parsso", "paraso", "parsu", "parsoo", "parsho" are read as yesterday / the day before. Things like "chanting 3 cal" or "200 cal burnt" are NOT taken as a day. (2) The OpenAI prompt (`utils/openaiService.js`) now tells the AI: the same misspelled day words mean kal/parso; only fill an activity the message really talks about (so "chanting 3" is the round count only, not also the completion time); a time activity gets only a clock time, a yes/no activity only yes/no, a number activity only a number; and if the message is about an activity that is not in the list, answer "unrecognized" instead of picking a similar one.
+- **Files touched**: `utils/assistantDate.js`, `utils/openaiService.js`, `tests/assistantDate.test.mjs`, `CHANGELOG.md`
+- **Tested**: 382 automatic checks pass (27 new for the spellings, including cases that must NOT count as a day); the 3,000-sentence test still shows 0 wrong answers. NOT tested: the new OpenAI prompt wording (no OpenAI key here), so please try "Cal ki chanting 3" and a message about a missing activity with "Ask AI to re-check" on the test site. The server-side check of OpenAI's values by type (fix 3) is not done yet.
+- **Frontend**: no change needed.
+
 ## 🤖 [Chatbot] - 2026-10-07, 05:45 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

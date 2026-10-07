@@ -105,3 +105,21 @@ test("empty and non-text input", () => {
   assert.equal(d(undefined), null);
   assert.equal(d(12345), null);
 });
+
+// ---- misspelled day words (the "Cal ki chanting 3" case)
+const typoCases = [
+  ["Cal ki chanting 3", "2026-10-06"], ["cal chanting 3", "2026-10-06"], ["kl chanting 3", "2026-10-06"], ["kl ki chanting 3", "2026-10-06"],
+  ["caal ki chanting 3", "2026-10-06"], ["kaal ki chanting 3", "2026-10-06"], ["kall 3 round", "2026-10-06"], ["cal ko 16 mala", "2026-10-06"],
+  ["yesterdy chanting 12", "2026-10-06"], ["yestarday chanting 12", "2026-10-06"], ["yesturday reading 20 min", "2026-10-06"],
+  ["parsso 14 mala", "2026-10-05"], ["paraso 14 mala", "2026-10-05"], ["parsu 14 mala", "2026-10-05"], ["parsoo 14 mala", "2026-10-05"],
+  // must NOT be taken as a day
+  ["chanting 3 cal", null], ["200 cal burnt chanting 3", null], ["chanting kl 3", null], ["chanting 16 rounds", null],
+];
+for (const [text, want] of typoCases) {
+  test(`typo day word: ${JSON.stringify(text)} -> ${want}`, () => assert.equal(d(text), want));
+}
+test("a typo day word plus a real one is one day, not ambiguous", () => {
+  const r = analyzeDatePhrase("Cal ki chanting 3, kal reading 20 min", NOW);
+  assert.equal(r.date, "2026-10-06");
+  assert.equal(r.ambiguous, false);
+});

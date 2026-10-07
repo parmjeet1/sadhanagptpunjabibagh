@@ -116,11 +116,25 @@ function findDatePhrases(prepared, today) {
   }
   // "two days ago" spelled out in full English
   // (covered above by NUMBER_WORD_SRC) — plus the fixed phrases:
-  for (const m of prepared.matchAll(W("day\\s+before\\s+yesterday|parso|par-so|parson|परसों|परसो"))) add(rel(2), m);
-  for (const m of prepared.matchAll(W("yesterday|y'?day|last\\s+night|kal|कल"))) {
+  for (const m of prepared.matchAll(W("day\\s+before\\s+yesterday|parso|par-so|parson|parsoo|parsho|parsu|paraso|parsso|prso|परसों|परसो"))) add(rel(2), m);
+  for (const m of prepared.matchAll(W("yesterday|yesterdy|yestarday|yesturday|yestrday|y'?day|last\\s+night|kal|kall|kaal|कल"))) {
     // "kal" is also the first part of "kal ke din ..." and similar; the word
     // boundary already keeps it out of names such as "kalpana".
     add(rel(1), m);
+  }
+  // Common ways of mistyping "kal" (cal, kl, caal). They also look like other
+  // things, so they only count as "kal" when a Hindi helper word follows
+  // ("cal ki chanting 3") or when they open the message ("cal chanting 3").
+  const KAL_TYPOS = "cal|caal|kl";
+  const kalTypoAfter = new RegExp(`${BEFORE}(?:${KAL_TYPOS})(?=\\s+(?:ki|ka|ke|ko|ne|me|mein|tak)${AFTER})`, "giu");
+  const kalTypoStart = new RegExp(`^\\s*(?:${KAL_TYPOS})${AFTER}`, "iu");
+  for (const m of prepared.matchAll(kalTypoAfter)) add(rel(1), m);
+  {
+    const m = prepared.match(kalTypoStart);
+    if (m && !hits.some((h) => h.start === m.index + m[0].search(/\S/))) {
+      const lead = m[0].search(/\S/);
+      hits.push({ date: rel(1), start: m.index + lead, end: m.index + m[0].length });
+    }
   }
   for (const m of prepared.matchAll(W("today|aaj|आज"))) add(rel(0), m);
   for (const m of prepared.matchAll(W("abhi|अभी"))) add(rel(0), m, { weak: true });
