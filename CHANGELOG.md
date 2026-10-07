@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🤖 [Chatbot] - 2026-10-07, 03:45 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: (1) When the OpenAI step fails, the chatbot now says "OpenAI is taking time. Please try with another phrase, e.g. '16 rounds, 30 min hearing, woke at 4:25'." instead of "Something went wrong understanding that...". (2) Chanting completion time was checked in English, Hinglish and Hindi ("chanting poori hui 2 baje", "16 rounds 2 baje poore hue", "japa 2 pm tak complete", "mala poori 10:30 baje raat", "चैंटिंग 2 बजे पूरी हुई", "chanting khatam kiya 11 baje raat ko"); it already worked, now covered by tests. One gap fixed: "12 baje" is only saved as 12:00 noon when the message says dopahar/noon, as 00:00 when it says raat/night, and otherwise goes to OpenAI, because it could mean either. Note: a student who has no "Chanting Completion Time" activity still goes to OpenAI for such a message, since there is nowhere to save it.
+- **Files touched**: `SadhanaGPT/Student/Controllers/AssistantController.js`, `utils/assistantParser.js`, `tests/assistantParser.test.mjs`, `CHANGELOG.md`
+- **Tested**: 355 automatic checks pass (14 new); the 3,000-sentence test still has 0 wrong answers; controller syntax check passes. NOT tested: the live server or OpenAI.
+- **Frontend**: optional. The website has its own text "I couldn't reach the assistant just now" (`src/sadhna-assistant/adapters/RealSadhnaGptAdapter.js`, line 155) for when the server does not answer at all (timeout/network). Not changed, as it also covers a student being offline.
+
 ## 🤖 [Chatbot] - 2026-10-07, 05:10 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

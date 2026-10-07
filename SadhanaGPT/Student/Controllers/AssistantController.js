@@ -619,7 +619,7 @@ export const assistantInterpretNL = asyncHandler(async (req, resp) => {
       data: {
         intent: "clarification_required",
         updates: [],
-        clarification: "Something went wrong understanding that — could you rephrase, e.g. '16 rounds, 30 min hearing, woke at 4:25'?",
+        clarification: "OpenAI is taking time. Please try with another phrase, e.g. '16 rounds, 30 min hearing, woke at 4:25'.",
       },
     });
   }

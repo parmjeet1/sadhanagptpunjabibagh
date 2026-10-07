@@ -287,6 +287,24 @@ const masterRows = [
 for (const [set, text, want] of masterRows) {
   test(`master list: ${text}`, () => assert.deepEqual(run(set, text), want));
 }
+// ---- chanting completion time in English, Hinglish and Hindi
+const CTA = [{ activity_id: "10", name: "Chanting Completion Time", type: "time", category: "chanting_completion_time" },
+  { activity_id: "1", name: "Chanting", type: "number", category: "chanting" }];
+const ctRows = [
+  ["Chanting poori Hui 2 baje", { "10": "14:00" }], ["chanting complete 2 baje", { "10": "14:00" }], ["chanting khatam 11 baje", { "10": "11:00" }],
+  ["16 rounds 2 baje poore hue", { "10": "14:00", "1": 16 }], ["japa 2 pm tak complete", { "10": "14:00" }], ["chanting finished at 1:30 pm", { "10": "13:30" }],
+  ["mala poori 10:30 baje raat", { "10": "22:30" }], ["jap pura hua 8 baje subah", { "10": "08:00" }], ["चैंटिंग 2 बजे पूरी हुई", { "10": "14:00" }],
+  ["chanting khatam kiya 11 baje raat ko", { "10": "23:00" }], ["chanting poori hui 12 baje raat", { "10": "00:00" }],
+  ["chanting poori hui 12 baje dopahar", { "10": "12:00" }], ["chanting poori hui 12 baje", null], ["chanting poori hui 25 baje", null],
+];
+for (const [text, want] of ctRows) {
+  test(`completion time: ${text}`, () => {
+    const r = parseSadhna(analyzeDatePhrase(text, NOW).cleaned, CTA);
+    if (want === null) return assert.ok(r.needsAI || !r.updates.length);
+    assert.equal(r.needsAI, false);
+    assert.deepEqual(Object.fromEntries(r.updates.map((u) => [u.activity_id, u.value])), want);
+  });
+}
 test("master list: no nickname phrase reaches two different activities", () => {
   for (const e of ACTIVITY_NICKNAMES) {
     for (const f of ACTIVITY_NICKNAMES) {

@@ -371,7 +371,12 @@ function timeValue(tok, category, clause) {
   if (category === "chanting_completion_time") {
     if (pmHint && !amHint && hour <= 11) return `${pad2(hour + 12)}:${pad2(minute)}`;
     if (hour >= 4 && hour <= 11) return `${pad2(hour)}:${pad2(minute)}`;
-    if (hour === 12) return `12:${pad2(minute)}`;
+    if (hour === 12) {
+      // 12 could be noon or midnight: only say so when the words do
+      if (/\b(?:raat|rat|night|midnight)\b|रात/iu.test(clause)) return `00:${pad2(minute)}`;
+      if (/\b(?:dopahar|dupahar|noon|afternoon)\b|दोपहर/iu.test(clause)) return `12:${pad2(minute)}`;
+      return null;
+    }
     if (hour >= 1 && hour <= 3) return `${pad2(hour + 12)}:${pad2(minute)}`;
     return null;
   }
