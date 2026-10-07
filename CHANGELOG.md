@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🤖 [Chatbot] - 2026-10-07, 04:10 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Added the common nicknames for every sadhana activity to the chatbot's fast first step, in English, Hinglish and Hindi (Devanagari), kept in one easy word list: `utils/assistantLexicon.js`. About 280 words, for example: chanting (japa, jap, jaap, mala, maala, harinam, hari naam, mantra, round, rd, जप, माला, राउंड); hearing (suna, pravachan, katha, class, satsang, shravan, lecture, sb class, gita class, श्रवण, प्रवचन); reading (padha, padhai, pustak, granth, swadhyay, sb, bg, cc, bhagavatam, gita, पढ़ाई, स्वाध्याय); day rest (aaram, vishram, nap, power nap, siesta, "din ki neend", आराम); sleep (soya, so gaya, so gaye, neend, bed, bedtime, lights off, सोया, नींद); wake-up (utha, uth gya, jaga, uthna, wokeup, "aankh khuli", "neend khuli", उठा, जागा); mangal aarti (mangal / mangla / mangala + aarti, arti, arati, aratik, morning aarti, bare "aarti", मंगल आरती). Also more spellings of units (ghnta, ghantey, minat, minit, rd, maala), "bje / बजे", Hindi number words (सोलह माला, दो घंटे), and Hindi time idioms (साढ़े चार बजे, सवा पाँच बजे, पौने पाँच बजे). A word inside a longer nickname goes with the longer one ("gita class" is hearing, "neend khuli" is wake-up). Other aartis (sandhya, gaur, shayan, dhoop, bhog, guru, narsimha, tulasi...) are never taken for Mangal Aarti; those messages go to OpenAI. To teach the chatbot a new nickname later, add it to the list in that file and add one test line.
+- **Files touched**: `utils/assistantLexicon.js` (new), `utils/assistantParser.js` (now reads the word list), `tests/assistantParser.test.mjs`, `CHANGELOG.md`
+- **Tested**: 323 automatic checks pass (74 new): every nickname in the list is tested on its own in a sentence, no nickname belongs to two kinds of activity, other aartis are never read as Mangal Aarti, plus 60+ sentences with the new words (Hindi idioms, spelling variants). The earlier 3,000-sentence test still shows 0 wrong answers (about 90% understood without OpenAI); a message takes about 0.15 ms. NOT tested: the live server, the database or the OpenAI step.
+- **Frontend**: no change needed.
+
 ## 🤖 [Chatbot] - 2026-10-07, 03:30 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

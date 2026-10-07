@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { parseSadhna, interpretLocally } from "../utils/assistantParser.js";
 import { analyzeDatePhrase } from "../utils/assistantDate.js";
 import { build, ACTS } from "./helpers/sentenceGenerator.mjs";
+import { NICKNAMES, OTHER_AARTI_WORDS } from "../utils/assistantLexicon.js";
 
 const NOW = new Date("2026-10-07T10:00:00+05:30");
 const mk = (id, name, type, category) => ({ activity_id: String(id), name, type, category });
@@ -104,6 +105,76 @@ const rows = [
 ];
 for (const [set, text, want] of rows) {
   test(`${set}: ${JSON.stringify(text)} -> ${want === "AI" ? "AI step" : JSON.stringify(want)}`, () => assert.deepEqual(run(set, text), want));
+}
+
+// ---------------------------------------------------------------------------
+// Nicknames: every word in utils/assistantLexicon.js must work on its own
+// ---------------------------------------------------------------------------
+const NICK_TEMPLATES = {
+  chanting: [(p) => `${p} 16`, { Chanting: 16 }],
+  hearing: [(p) => `${p} 30 min`, { [H]: 30 }],
+  reading: [(p) => `${p} 20 min`, { [R]: 20 }],
+  day_rest: [(p) => `${p} 30 min`, { [D]: 30 }],
+  sleep: [(p) => `${p} 10 pm`, { [SL]: "22:00" }],
+  wakeup: [(p) => `${p} 4:30`, { [WK]: "04:30" }],
+};
+for (const [category, [sentence, want]] of Object.entries(NICK_TEMPLATES)) {
+  test(`every ${category} nickname is understood (${NICKNAMES[category].phrases.length} words)`, () => {
+    const failures = [];
+    for (const phrase of NICKNAMES[category].phrases) {
+      const got = run(T, sentence(phrase));
+      if (JSON.stringify(got) !== JSON.stringify(want)) failures.push(`${sentence(phrase)} -> ${JSON.stringify(got)}`);
+    }
+    assert.deepEqual(failures, []);
+  });
+}
+test("every Mangal Aarti nickname is understood", () => {
+  const failures = [];
+  for (const phrase of NICKNAMES.mangal_aarti.phrases) {
+    const got = run(T, `${phrase} attended`);
+    if (JSON.stringify(got) !== JSON.stringify({ [MA]: true })) failures.push(phrase);
+  }
+  for (const phrase of ["mangal aarti", "mangla aarti", "mangal arti", "mangal arati", "mangala arati", "mangala aratik", "mangal aarthi", "mangal-aarti", "manglaarti", "aarti", "arti", "arati", "आरती", "मंगल आरती"]) {
+    const got = run(T, `${phrase} attended`);
+    if (JSON.stringify(got) !== JSON.stringify({ [MA]: true })) failures.push(phrase);
+  }
+  assert.deepEqual(failures, []);
+});
+test("no nickname belongs to two kinds of activity", () => {
+  const seen = {};
+  for (const [category, entry] of Object.entries(NICKNAMES)) for (const p of entry.phrases || []) (seen[p] ||= []).push(category);
+  assert.deepEqual(Object.entries(seen).filter(([, v]) => v.length > 1), []);
+});
+test("other aartis are never taken for Mangal Aarti", () => {
+  for (const word of OTHER_AARTI_WORDS.filter((w) => /^[a-z ]+$/.test(w))) {
+    assert.equal(run(T, `${word} aarti attended`), "AI", word);
+  }
+});
+
+const nickRows = [
+  [T, "harinam 16 round", { [CH]: 16 }], [T, "hari naam 16 mala", { [CH]: 16 }], [T, "16 maala", { [CH]: 16 }], [T, "महामंत्र 16 माला", { [CH]: 16 }],
+  [T, "mantra jap 12 rounds", { [CH]: 12 }], [T, "16 jaap", { [CH]: 16 }], [T, "16 rd", { [CH]: 16 }], [T, "round 16", { [CH]: 16 }],
+  [T, "sb 30 min", { [R]: 30 }], [T, "bhagavatam 30 min padha", { [R]: 30 }], [T, "bg 20 min", { [R]: 20 }], [T, "srimad bhagavatam 45 min", { [R]: 45 }],
+  [T, "swadhyay 20 min", { [R]: 20 }], [T, "स्वाध्याय 20 मिनट", { [R]: 20 }], [T, "पढ़ाई 1 घंटा", { [R]: 60 }], [T, "दो घंटे पढ़ाई", { [R]: 120 }],
+  [T, "gita class 30 min", { [H]: 30 }], [T, "sb class 45 min suna", { [H]: 45 }], [T, "satsang 60 min", { [H]: 60 }], [T, "katha 1 ghanta suna", { [H]: 60 }],
+  [T, "श्रवण 30 मिनट", { [H]: 30 }], [T, "डेढ़ घंटा श्रवण", { [H]: 90 }], [T, "आधा घंटा सुना", { [H]: 30 }], [T, "ek ghanta suna", { [H]: 60 }],
+  [T, "2 ghantey padha", { [R]: 120 }], [T, "1 ghnta hearing", { [H]: 60 }], [T, "30 minat suna", { [H]: 30 }], [T, "20 minit padha", { [R]: 20 }],
+  [T, "10 mins hearing", { [H]: 10 }], [T, "hearing 2 hrs.", { [H]: 120 }],
+  [T, "power nap 20 min", { [D]: 20 }], [T, "siesta 30 min", { [D]: 30 }], [T, "aaram kiya 30 min", { [D]: 30 }], [T, "vishram 20 min", { [D]: 20 }],
+  [T, "दोपहर की नींद 30 मिनट", { [D]: 30 }], [T, "afternoon nap 25 min", { [D]: 25 }], [T, "din ki neend 30 min", { [D]: 30 }],
+  [T, "lights off at 10 pm", { [SL]: "22:00" }], [T, "so gaye 10 baje", { [SL]: "22:00" }], [T, "10 बजे सोया", { [SL]: "22:00" }],
+  [T, "रात 10 बजे सोया", { [SL]: "22:00" }], [T, "neend 10 baje", { [SL]: "22:00" }], [T, "sone gaya 10 baje", { [SL]: "22:00" }],
+  [T, "woke-up 4:30", { [WK]: "04:30" }], [T, "wokeup 4:30", { [WK]: "04:30" }], [T, "4:30 uth gya", { [WK]: "04:30" }], [T, "4 baje jaaga", { [WK]: "04:00" }],
+  [T, "साढ़े चार बजे उठा", { [WK]: "04:30" }], [T, "सवा पाँच बजे उठा", { [WK]: "05:15" }], [T, "पौने पाँच बजे उठा", { [WK]: "04:45" }],
+  [T, "आँख खुली 4:30", { [WK]: "04:30" }], [T, "neend khuli 4:30", { [WK]: "04:30" }], [T, "4:30 बजे उठा", { [WK]: "04:30" }], [T, "5 bje utha", { [WK]: "05:00" }],
+  [T, "woke at 4:30 and rounds done by 9", { [WK]: "04:30", [CT]: "09:00" }],
+  [T, "सोलह माला", { [CH]: 16 }],
+  [T, "mangla aarti attended", { [MA]: true }], [T, "mangal arati hua", { [MA]: true }], [T, "mangala aratik nahi hua", { [MA]: false }],
+  [T, "aarti attended", { [MA]: true }], [T, "मंगल आरती हुई", { [MA]: true }], [T, "आरती नहीं हुई", { [MA]: false }],
+  [T, "sandhya aarti attended", "AI"], [T, "gaur aarti hua", "AI"], [T, "rest of the day was good", "AI"],
+];
+for (const [set, text, want] of nickRows) {
+  test(`nickname: ${JSON.stringify(text)} -> ${want === "AI" ? "AI step" : JSON.stringify(want)}`, () => assert.deepEqual(run(set, text), want));
 }
 
 test("a message with no activities and no text", () => {

@@ -30,6 +30,11 @@
  *      correction word ...) sets needsAI.
  */
 
+import {
+  NICKNAMES, OTHER_AARTI_WORDS, COUNT_UNITS, MINUTE_UNITS, HOUR_UNITS, BAJE_WORDS, NUM_WORDS,
+  categorySource, categoryWords, phrasesToSource,
+} from "./assistantLexicon.js";
+
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
@@ -44,21 +49,13 @@ const pad2 = (n) => String(n).padStart(2, "0");
 // ---------------------------------------------------------------------------
 // Words
 // ---------------------------------------------------------------------------
-const NUM_WORDS = {
-  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
-  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17,
-  eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60,
-  ek: 1, do: 2, teen: 3, char: 4, chaar: 4, panch: 5, paanch: 5, chhe: 6, chhah: 6, che: 6, chhey: 6,
-  saat: 7, aath: 8, nau: 9, das: 10, gyarah: 11, barah: 12, terah: 13, chaudah: 14, pandrah: 15,
-  solah: 16, satrah: 17, atharah: 18, unnis: 19, bees: 20, pachees: 25, tees: 30, chalis: 40,
-  paintalis: 45, pachas: 50,
-};
 const NUM_WORD_SRC = Object.keys(NUM_WORDS).sort((a, b) => b.length - a.length).join("|");
-
-const COUNT_UNIT = "rounds?|malas?|mala|japa|jap|rnd|राउंड|माला";
-const MIN_UNIT = "minutes?|mins?|min|mint|मिनट";
-const HOUR_UNIT = "hours?|hrs?|hr|ghant[ae]o?n?|ghanta|ghante|ghanton|घंटा|घंटे";
+const unitSrc = (list) => [...list].sort((x, y) => y.length - x.length).join("|");
+const COUNT_UNIT = unitSrc(COUNT_UNITS);
+const MIN_UNIT = unitSrc(MINUTE_UNITS);
+const HOUR_UNIT = unitSrc(HOUR_UNITS);
 const ANY_UNIT = `${COUNT_UNIT}|${MIN_UNIT}|${HOUR_UNIT}`;
+const BAJE = unitSrc(BAJE_WORDS);
 
 // Words that make a message too tricky for the fast step.
 const AI_ONLY_WORDS = wordRe(
@@ -94,44 +91,15 @@ const POSITIVE = wordRe(POS_SRC);
 const NEG_PHRASE = new RegExp(`${BEFORE}(?:${NEG_SRC})(?:\\s+[${LET}']+){0,2}?\\s+(?:${POS_SRC})${AFTER}`, "giu");
 
 // ---------------------------------------------------------------------------
-// Activity lexicon — how people refer to each kind of activity.
+// Activity lexicon — built from the nickname lists in assistantLexicon.js.
 // `words` are plain words (used to tell a generic name from a specific one);
-// `re` is the pattern that finds them in text.
+// `re` is the pattern that finds the nicknames in text.
 // ---------------------------------------------------------------------------
-const LEXICON = {
-  chanting: {
-    words: ["chanting", "chant", "chanted", "japa", "jap", "mala", "malas", "round", "rounds"],
-    re: "chant(?:ing|ed|s)?|japa|jap|malas?|rounds?|जप|माला|चैंटिंग|राउंड",
-  },
-  chanting_completion_time: {
-    words: ["chanting", "chant", "completion", "completed", "complete", "finish", "finished", "japa", "mala", "round", "rounds"],
-    re: "complet(?:ion|ed|e)?|finish(?:ed)?|khatam|khatm|poora|pura|purn|पूरा|खत्म",
-  },
-  hearing: {
-    words: ["hearing", "hear", "heard", "listen", "listened", "listening", "suna", "suni", "pravachan", "lecture", "katha", "class", "shravan", "sravan"],
-    re: "hear(?:ing|d)?|listen(?:ed|ing)?|sun(?:a|i|aa|ne|na)|pravachan(?:a)?|lectures?|katha|class(?:es)?|shravan(?:a)?|sravan(?:a)?|श्रवण|प्रवचन|सुना|सुनी|कथा",
-  },
-  reading: {
-    words: ["reading", "read", "padha", "padhi", "padhai", "book", "books", "pustak", "granth", "bhagavatam", "bhagwatam", "gita", "geeta"],
-    re: "read(?:ing)?|padh(?:a|i|ai|ne|na|e)?|books?|pustak|granth|bhagavatam|bhagwatam|gita|geeta|पढ़ा|पढ़ी|पढ़ाई|पढ़|किताब",
-  },
-  day_rest: {
-    words: ["rest", "nap", "aaram", "araam", "relax", "day", "afternoon", "siesta"],
-    re: "rest(?:ed|ing)?|naps?|napped|aaram|araam|siesta|relax(?:ed)?|आराम",
-  },
-  sleep: {
-    words: ["sleep", "slept", "soya", "sone", "bed", "bedtime", "neend"],
-    re: "sleep|slept|sleeping|soya|soyi|so\\s*gaya|so\\s*gayi|sone|went\\s+to\\s+bed|bed\\s*time|bedtime|सोया|सोई|सो गया|सो गई",
-  },
-  wakeup: {
-    words: ["wake", "woke", "wakeup", "utha", "uthi", "uthna", "up", "got", "jaga"],
-    re: "woke|wake\\s*up|wakeup|wake|waking|got\\s+up|utha|uthi|uthe|uthna|uth\\s*gaya|uth\\s*gayi|jaaga|jaga|उठा|उठी|उठना",
-  },
-  mangal_aarti: {
-    words: ["mangal", "mangala", "aarti", "arti", "aarati", "arati", "aarathi"],
-    re: "mangala?\\s*a+r(?:a)?(?:t|th)(?:i|y)?|a+r(?:a)?(?:t|th)(?:i|y)|मंगल\\s*आरती|आरती",
-  },
-};
+const LEXICON = Object.fromEntries(
+  Object.keys(NICKNAMES).map((category) => [category, { words: [...categoryWords(category)], re: categorySource(category) }])
+);
+const BARE_AARTI = wordRe(NICKNAMES.mangal_aarti.bare.join("|"));
+const OTHER_AARTI = wordRe(phrasesToSource(OTHER_AARTI_WORDS));
 
 // Words in a name that say nothing about WHICH activity it is.
 const FILLER_NAME_WORDS = new Set([
@@ -157,12 +125,12 @@ function prepare(text) {
 
   // "saade char baje" = 4:30, "sawa char baje" = 4:15, "paune char baje" = 3:45
   t = t.replace(
-    new RegExp(`${BEFORE}(saade|sade|sadhe|sawa|sava|paune|pona)\\s*(\\d{1,2}|${NUM_WORD_SRC})\\s*baje`, "giu"),
+    new RegExp(`${BEFORE}(saade|sade|sadhe|sawa|sava|paune|pona|साढ़े|साढे|सवा|पौने)\\s*(\\d{1,2}|${NUM_WORD_SRC})\\s*(?:${BAJE})`, "giu"),
     (_, idiom, h) => {
       let hour = /^\d+$/.test(h) ? parseInt(h, 10) : NUM_WORDS[h];
       let mins = 30;
-      if (/^(sawa|sava)$/.test(idiom)) mins = 15;
-      if (/^(paune|pona)$/.test(idiom)) { mins = 45; hour = hour === 1 ? 12 : hour - 1; }
+      if (/^(sawa|sava|सवा)$/.test(idiom)) mins = 15;
+      if (/^(paune|pona|पौने)$/.test(idiom)) { mins = 45; hour = hour === 1 ? 12 : hour - 1; }
       return ` ${hour}:${pad2(mins)} baje`;
     }
   );
@@ -179,7 +147,7 @@ function prepare(text) {
 
   // Number words in front of a unit or "baje": "solah mala" -> "16 mala".
   t = t.replace(
-    new RegExp(`${BEFORE}(${NUM_WORD_SRC})\\s*(?=(?:${ANY_UNIT}|baje)${AFTER})`, "giu"),
+    new RegExp(`${BEFORE}(${NUM_WORD_SRC})\\s*(?=(?:${ANY_UNIT}|${BAJE})${AFTER})`, "giu"),
     (_, w) => ` ${NUM_WORDS[w.toLowerCase()]} `
   );
   // ...and after a chanting word: "chanting sixteen", "japa solah".
@@ -227,11 +195,11 @@ function findTokens(clause) {
   };
 
   // Clock times. A time like "4.30" followed by a unit word is a decimal amount.
-  take(new RegExp(`${BEFORE}(\\d{1,2})[:.](\\d{2})(?!\\d)(?!\\s*(?:${ANY_UNIT})${AFTER})\\s*(am|pm)?(?:\\s*baje)?`, "giu"),
+  take(new RegExp(`${BEFORE}(\\d{1,2})[:.](\\d{2})(?!\\d)(?!\\s*(?:${ANY_UNIT})${AFTER})\\s*(am|pm)?(?:\\s*(?:${BAJE}))?`, "giu"),
     (m) => ({ kind: "time", hour: +m[1], minute: +m[2], meridiem: m[3] || null }));
-  take(new RegExp(`${BEFORE}(\\d{1,2})\\s*(am|pm)${AFTER}(?:\\s*baje)?`, "giu"),
+  take(new RegExp(`${BEFORE}(\\d{1,2})\\s*(am|pm)${AFTER}(?:\\s*(?:${BAJE}))?`, "giu"),
     (m) => ({ kind: "time", hour: +m[1], minute: 0, meridiem: m[2] }));
-  take(new RegExp(`${BEFORE}(\\d{1,2})\\s*baje${AFTER}`, "giu"),
+  take(new RegExp(`${BEFORE}(\\d{1,2})\\s*(?:${BAJE})${AFTER}`, "giu"),
     (m) => ({ kind: "time", hour: +m[1], minute: 0, meridiem: null }));
 
   // Amounts with a unit.
@@ -313,6 +281,19 @@ function findAnchors(clause, index) {
     addHits(category, LEXICON[category].re);
     seenCat.add(category);
   }
+  // A bare "aarti" (no "mangal" in front) counts as Mangal Aarti unless it is
+  // another aarti ("sandhya aarti", "gaur aarti") — that goes to the AI.
+  if (byCategory.mangal_aarti) {
+    for (const m of clause.matchAll(BARE_AARTI)) {
+      const overlaps = anchors.some((x) => x.category === "mangal_aarti" && x.start < m.index + m[0].length && x.end > m.index);
+      if (overlaps) continue;
+      const before = clause.slice(Math.max(0, m.index - 30), m.index);
+      const lastWords = before.trim().split(/\s+/).slice(-2).join(" ");
+      const other = OTHER_AARTI.test(lastWords);
+      OTHER_AARTI.lastIndex = 0;
+      anchors.push({ category: other ? "other_aarti" : "mangal_aarti", start: m.index, end: m.index + m[0].length, text: m[0] });
+    }
+  }
   // A specific name word ("srila", "prabhupada", "spiritual", "misc") also
   // anchors its activity — but only when the clause also says the general word
   // ("hearing", "reading" ...), so "srila prabhupada" alone never pulls in a
@@ -327,9 +308,10 @@ function findAnchors(clause, index) {
     }
   }
   anchors.sort((a, b) => a.start - b.start);
-  // Remove an anchor that sits inside another one of the same category.
+  // A word inside a longer nickname belongs to the longer one ("gita" inside
+  // "gita class", "neend" inside "neend khuli", "mala" inside "japa mala").
   return anchors.filter(
-    (x, i) => !anchors.some((y, j) => j !== i && y.category === x.category && y.start <= x.start && y.end >= x.end && (y.start < x.start || y.end > x.end))
+    (x, i) => !anchors.some((y, j) => j !== i && y.start <= x.start && y.end >= x.end && (y.start < x.start || y.end > x.end))
   );
 }
 
@@ -434,6 +416,11 @@ function parseClause(clause, index, out) {
     }
     return [...byKey.values()].sort((x, y) => x.start - y.start);
   };
+
+  if (anchors.some((a) => a.category === "other_aarti")) {
+    out.needsAI = true;
+    reasons.push("an aarti other than Mangal Aarti");
+  }
 
   const used = new Set();
   const setValue = (act, value) => {
