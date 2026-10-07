@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🤖 [Chatbot] - 2026-10-07, 02:20 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The chatbot now reads "which day is this about?" with a new, separate date reader (`utils/assistantDate.js`). Fixed: "1/2 ghanta" and "2-3 hours" or "5-6 rounds" were wrongly read as dates (1 Feb, 2 Mar, 5 Jun); "3 din pehle" and "N days ago" now use the real number (before, every "din pehle" meant 2 days) and that number is no longer mistaken for a chanting count; dates like 22/09, 05/10, 2026-09-22, "22 september", "5th oct", "oct 5th" now work; a year in the sentence is respected; dates just after New Year ("28 dec" said in January) go to last year; weekdays (monday, somvar, pichle somvar) work; Hindi (Devanagari) आज / कल / परसों / ३ दिन पहले work. If a message names two different days ("kal ... aaj ..."), it is now passed to the AI to decide instead of picking one. A date sent back by the AI is checked (real date, not in the future, not older than a year) before use. The old date code in `AssistantController.js` is removed.
+- **Files touched**: `utils/assistantDate.js` (new), `SadhanaGPT/Student/Controllers/AssistantController.js`, `tests/assistantDate.test.mjs` (new), `CHANGELOG.md`
+- **Tested**: 107 new automatic checks (run with `node --test "tests/*.test.mjs"`, no package needed), all pass; 1,656 generated test sentences (English, Hinglish, Hindi): wrong dates went from 328 to 0; the controller file passes a syntax check. Not run against the live server or the OpenAI step (no database or key here).
+- **Frontend**: no change needed (same request and answer shape).
+
 ## ✨ [Feature] - 2026-10-07, 11:08 AM IST
 
 - **Developer**: Manvatar Prabhu Ji

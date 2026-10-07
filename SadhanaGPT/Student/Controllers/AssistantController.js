@@ -7,6 +7,7 @@ import {
 } from "./StudentController.js";
 import { dailyStudentSummary } from "../../Controllers/SummaryData/summary-report.js";
 import { interpretWithGpt5Nano, transcribeAudio } from "../../../utils/openaiService.js";
+import { analyzeDatePhrase, sanitizeTargetDate } from "../../../utils/assistantDate.js";
 
 /**
  * ============================================================================
@@ -647,61 +648,11 @@ function regexInterpret(text, activities) {
 }
 
 // ---------------------------------------------------------------------------
-// Date-phrase detection — deterministic, cheap, and ALWAYS runs (even ahead
-// of the AI fallback) so "kal ki chanting 26 mala" resolves to yesterday's
-// date regardless of which tier (regex or AI) ends up parsing "26 mala".
-// Returns an ISO "YYYY-MM-DD" string, or null if the message doesn't
-// mention a date at all (in which case the frontend keeps using whatever
-// date is already active in that chat session).
+// Date-phrase detection lives in utils/assistantDate.js (pure code with its
+// own tests). It is deterministic, cheap, and ALWAYS runs (even ahead of the
+// AI fallback) so "kal ki chanting 26 mala" resolves to yesterday's date
+// regardless of which tier (regex or AI) ends up parsing "26 mala".
 // ---------------------------------------------------------------------------
-const MONTH_NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-
-function extractDatePhrase(text) {
-  const lower = String(text || "").toLowerCase();
-  const now = moment().utcOffset(IST_OFFSET);
-
-  // "day before yesterday" / "parso" must be checked before "yesterday"/"kal".
-  if (/\b(parso|par-so|din pehle|day before yesterday|2 days ago|two days ago)\b/.test(lower)) {
-    return now.clone().subtract(2, "days").format("YYYY-MM-DD");
-  }
-  if (/\b(kal|yesterday|y'?day|last night)\b/.test(lower)) {
-    // "kal" is technically ambiguous in Hindi (yesterday OR tomorrow), but
-    // this app only ever LOGS past practice, so a future date never makes
-    // sense here — always resolve it to yesterday.
-    return now.clone().subtract(1, "days").format("YYYY-MM-DD");
-  }
-  if (/\b(\d+)\s*days?\s*ago\b/.test(lower)) {
-    const n = parseInt(lower.match(/\b(\d+)\s*days?\s*ago\b/)[1], 10);
-    if (!isNaN(n) && n > 0 && n <= 31) return now.clone().subtract(n, "days").format("YYYY-MM-DD");
-  }
-  if (/\b(aaj|today|abhi)\b/.test(lower)) {
-    return now.format("YYYY-MM-DD");
-  }
-
-  // Explicit dates: "2026-09-23", "23/09/2026", "23-09", "23 sep", "sep 23".
-  const isoMatch = lower.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
-  if (isoMatch) {
-    const m = moment(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`, "YYYY-M-D", true);
-    if (m.isValid() && !m.isAfter(now, "day")) return m.format("YYYY-MM-DD");
-  }
-  const dmyMatch = lower.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
-  if (dmyMatch) {
-    const yr = dmyMatch[3] ? (dmyMatch[3].length === 2 ? `20${dmyMatch[3]}` : dmyMatch[3]) : now.format("YYYY");
-    const m = moment(`${yr}-${dmyMatch[2]}-${dmyMatch[1]}`, "YYYY-M-D", true);
-    if (m.isValid() && !m.isAfter(now, "day")) return m.format("YYYY-MM-DD");
-  }
-  const monthNamePattern = `(?:${MONTH_NAMES.join("|")})[a-z]*`;
-  const dayMonth = lower.match(new RegExp(`\\b(\\d{1,2})\\s*(${monthNamePattern})\\b`));
-  const monthDay = lower.match(new RegExp(`\\b(${monthNamePattern})\\s*(\\d{1,2})\\b`));
-  const nameMatch = dayMonth || monthDay;
-  if (nameMatch) {
-    const str = dayMonth ? `${dayMonth[1]} ${dayMonth[2]}` : `${monthDay[1]} ${monthDay[2]}`;
-    const m = moment(`${str} ${now.format("YYYY")}`, ["D MMM YYYY", "MMM D YYYY"], true);
-    if (m.isValid() && !m.isAfter(now, "day")) return m.format("YYYY-MM-DD");
-  }
-
-  return null;
-}
 
 // ============================================================================
 // 10. transcribeVoiceNote — speech-to-text fallback for browsers (notably
@@ -765,13 +716,17 @@ export const assistantInterpretNL = asyncHandler(async (req, resp) => {
 
   // Date detection is deterministic and always runs, independent of which
   // tier resolves the activity values themselves.
-  const detectedDate = extractDatePhrase(text);
+  const dateInfo = analyzeDatePhrase(text);
+  const detectedDate = dateInfo.date;
 
   // 1. Fast, free, local pass first — skipped entirely when the caller asks
   //    for a forced AI re-check (used by the chat's "Ask AI to re-check"
-  //    button after a wrong local guess).
-  if (!forceAI) {
-    const regexResult = regexInterpret(text, activities);
+  //    button after a wrong local guess), and when the message names two
+  //    different days ("kal ... aaj ...") because the AI must decide which
+  //    day each part belongs to. The date words are cut out first so that
+  //    "3 din pehle" is never read as "3 rounds".
+  if (!forceAI && !dateInfo.ambiguous) {
+    const regexResult = regexInterpret(dateInfo.cleaned, activities);
     if (regexResult.intent === "update_activities" && regexResult.updates.length > 0) {
       return resp.json({
         status: 1,
@@ -798,7 +753,7 @@ export const assistantInterpretNL = asyncHandler(async (req, resp) => {
 
     // Prefer our own deterministic date detection; fall back to whatever
     // date (if any) the model itself picked out of the sentence.
-    const target_date = detectedDate || aiResult.target_date || undefined;
+    const target_date = detectedDate || sanitizeTargetDate(aiResult.target_date) || undefined;
 
     return resp.json({ status: 1, code: 200, data: { ...aiResult, target_date } });
   } catch (err) {
