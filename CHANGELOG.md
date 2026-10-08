@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🔔 [Notifications] - 2026-10-08, 09:37 AM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Two push notifications were switched off. (1) The daily 9:00 AM "your N-day average fell below target" alert to students is gone; the other 9:00 AM alert ("We Miss You! - no activity logged for N days") still works. (2) The daily 9:15 AM "Mentee Alerts - you have X mentees who need attention" push to counsellors is no longer scheduled. The mentor-alert code is left in the file (not deleted) so it can be turned back on by adding one schedule line.
+- **Files touched**: `SadhanaGPT/cronjobs/WebPushNotification.js`, `CHANGELOG.md`
+- **Tested**: file loads without errors (syntax check) and the 382 automatic checks pass. NOT tested: the live cron jobs (they only run on the server); after deploy, confirm the log shows no 9:15 AM mentor job and no "Activity Alert" pushes.
+- **Frontend**: no change needed.
+
 ## 🤖 [Chatbot] - 2026-10-07, 05:35 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
