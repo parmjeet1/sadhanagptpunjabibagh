@@ -12,4 +12,7 @@ Rules for this folder:
 - If an API changes on the backend, the website folder needs the matching change, and the other way round (see CLAUDE.md, rule 8).
 - Do not put keys, passwords or real student data in this folder.
 
-Status: folder created, nothing built yet.
+Files here:
+- `DB-PROPOSAL.sql`: proposed new database tables (NOT run; the developer runs it by hand on the test database first).
+
+Status: design stage, no app code built yet.

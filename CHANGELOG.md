@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 03:20 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Wrote the PROPOSED database design for the books + lectures feature in `SadhanaGPT/reading-lecture-feature/DB-PROPOSAL.sql` (8 new tables, no existing table changed). It has NOT been run on any real database: the developer runs it by hand, test database first. Also updated the folder README.
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/DB-PROPOSAL.sql` (new), `SadhanaGPT/reading-lecture-feature/README.md`, `CHANGELOG.md`
+- **Tested**: ran the whole file on a throwaway local database (not yours) with a stand-in users table: all tables create, duplicate plans are refused, a mentee's plan lookup (sub-group, then group, then all mentees, then default) picks the right plan, deleting a plan removes its books, and the undo statement removes everything. NOT tested on your real database: please run the "CHECK FIRST" queries at the top of the file before running it.
+- **Frontend**: nothing yet (screens are still being designed).
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 02:45 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
