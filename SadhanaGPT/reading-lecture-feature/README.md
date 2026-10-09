@@ -14,5 +14,6 @@ Rules for this folder:
 
 Files here:
 - `DB-PROPOSAL.sql`: proposed new database tables (NOT run; the developer runs it by hand on the test database first).
+- `DB-SEED-DEFAULT.sql`: PLACEHOLDER default books/levels (not run; replace when the real default list arrives).
 
 Status: design stage, no app code built yet.

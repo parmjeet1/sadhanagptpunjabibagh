@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 03:45 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Updated the proposed database design after the developer's answers: (1) a book can now also be "skipped" (hidden) by a person; (2) Hindi titles (`title_hi`, level `name_hi`) for books, lectures and levels; (3) "added on" dates on plan books/lectures so recently added items can show a NEW badge; (4) a book a person adds for himself is a normal book row owned by him and shown only to him (and his counsellor in the status list). Added `DB-SEED-DEFAULT.sql` with PLACEHOLDER default data (7 Prabhupada books in 3 levels, Hindi titles only where certain; no lectures invented) so screens have something to show until the real list arrives.
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/DB-PROPOSAL.sql`, `SadhanaGPT/reading-lecture-feature/DB-SEED-DEFAULT.sql` (new), `SadhanaGPT/reading-lecture-feature/README.md`, `CHANGELOG.md`
+- **Tested**: both files run cleanly one after the other on a throwaway local database (not yours); Hindi text stored and read back correctly; "skipped" saved; the placeholder data undo works. NOT run on your real database.
+- **Frontend**: nothing yet.
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 03:20 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

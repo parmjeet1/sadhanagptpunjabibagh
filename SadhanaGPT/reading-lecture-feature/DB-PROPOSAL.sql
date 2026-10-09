@@ -14,6 +14,10 @@
 --    mentees, one group, or one sub-group.
 --  * Which plan a mentee sees (same idea as the marking scheme):
 --       sub-group plan -> group plan -> counsellor's "all mentees" plan -> system default.
+--  * A book a student/counsellor adds for himself ("another book I am reading")
+--    is a normal reading_books row with created_by = that person; it is shown
+--    only to him (and his counsellor in the status list), never in anybody's plan.
+--  * Titles can be stored in English and Hindi (title / title_hi).
 --  * Each person's progress is stored per BOOK / per LECTURE (not per plan),
 --    so progress is kept even if the counsellor re-orders the list later.
 --  * Groups = center_list.center_id, sub-groups = labels_list.id (as in the
@@ -38,6 +42,7 @@
 CREATE TABLE IF NOT EXISTS `reading_books` (
   `id`           BIGINT(20) NOT NULL AUTO_INCREMENT,
   `title`        VARCHAR(255) NOT NULL,
+  `title_hi`     VARCHAR(255) NULL DEFAULT NULL COMMENT 'Hindi title (optional)',
   `author`       VARCHAR(150) NOT NULL DEFAULT 'Srila Prabhupada',
   `link`         VARCHAR(500) NULL DEFAULT NULL,
   `cover_image`  VARCHAR(500) NULL DEFAULT NULL,
@@ -59,6 +64,7 @@ CREATE TABLE IF NOT EXISTS `reading_books` (
 CREATE TABLE IF NOT EXISTS `lectures` (
   `id`          BIGINT(20) NOT NULL AUTO_INCREMENT,
   `title`       VARCHAR(255) NOT NULL,
+  `title_hi`    VARCHAR(255) NULL DEFAULT NULL COMMENT 'Hindi title (optional)',
   `speaker`     VARCHAR(150) NOT NULL DEFAULT 'Srila Prabhupada',
   `link`        VARCHAR(500) NULL DEFAULT NULL,
   `topic`       VARCHAR(150) NULL DEFAULT NULL COMMENT 'optional heading, e.g. Bhagavad-gita',
@@ -108,6 +114,7 @@ CREATE TABLE IF NOT EXISTS `reading_plan_levels` (
   `id`          BIGINT(20) NOT NULL AUTO_INCREMENT,
   `plan_id`     BIGINT(20) NOT NULL,
   `name`        VARCHAR(150) NOT NULL,
+  `name_hi`     VARCHAR(150) NULL DEFAULT NULL COMMENT 'Hindi level name (optional)',
   `sort_order`  INT NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_rpl_plan` (`plan_id`, `sort_order`),
@@ -125,6 +132,7 @@ CREATE TABLE IF NOT EXISTS `reading_plan_books` (
   `level_id`    BIGINT(20) NOT NULL,
   `book_id`     BIGINT(20) NOT NULL,
   `sort_order`  INT NOT NULL DEFAULT 0,
+  `created_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'used for a NEW badge on recently added books',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_rpb_plan_book` (`plan_id`, `book_id`),
   KEY `idx_rpb_level` (`level_id`, `sort_order`),
@@ -143,6 +151,7 @@ CREATE TABLE IF NOT EXISTS `lecture_plan_items` (
   `plan_id`     BIGINT(20) NOT NULL,
   `lecture_id`  BIGINT(20) NOT NULL,
   `sort_order`  INT NOT NULL DEFAULT 0,
+  `created_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'used for a NEW badge on recently added lectures',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_lpi_plan_lecture` (`plan_id`, `lecture_id`),
   KEY `idx_lpi_order` (`plan_id`, `sort_order`),
@@ -152,7 +161,8 @@ CREATE TABLE IF NOT EXISTS `lecture_plan_items` (
 
 -- ---------------------------------------------------------------------
 -- RL-007  Each person's book status  (Not Started / Ongoing / Completed)
--- Why: one row per person per book. No row = Not Started (so nothing needs
+-- Why: one row per person per book. 'skipped' = the person hid / skipped a
+--      recommended book. No row = Not Started (so nothing needs
 --      to be created for everybody up front). started_at / completed_at give
 --      the counsellor a "completed on" date.
 --      Works for students AND counsellors (same user table).
@@ -162,7 +172,7 @@ CREATE TABLE IF NOT EXISTS `user_book_status` (
   `id`            BIGINT(20) NOT NULL AUTO_INCREMENT,
   `user_id`       VARCHAR(20) NOT NULL,
   `book_id`       BIGINT(20) NOT NULL,
-  `status`        ENUM('not_started','ongoing','completed') NOT NULL DEFAULT 'not_started',
+  `status`        ENUM('not_started','ongoing','completed','skipped') NOT NULL DEFAULT 'not_started',
   `started_at`    DATE NULL DEFAULT NULL,
   `completed_at`  DATE NULL DEFAULT NULL,
   `updated_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
