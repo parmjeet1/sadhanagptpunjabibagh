@@ -15,6 +15,7 @@ import { getMyMarkingScheme, mySchemeActivities, myMarkingRules, mySaveScheme, m
 import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
 import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
 import { getFollowUpStudents } from '../SadhanaGPT/Controllers/SummaryData/followUpStudents.js';
+import { getReadingPlan, setBookStatus, addMyBook, removeMyBook } from '../SadhanaGPT/reading-lecture-feature/index.js';
 import {
   assistantGetActivities,
   assistantGetTodayActivities,
@@ -127,6 +128,12 @@ const LoggedinRoute = [
     { method: 'post', path: '/verify-otp', handler: verifyOTP, role: "student" },
 
     { method: 'get', path: '/student-content-list', handler: contentListStudent, role: "student" },
+
+    // Reading books (any logged-in student or counsellor: their own list; see SadhanaGPT/reading-lecture-feature/)
+    { method: 'get', path: '/reading/plan', handler: getReadingPlan, role: "student" },
+    { method: 'post', path: '/reading/book-status', handler: setBookStatus, role: "student" },
+    { method: 'post', path: '/reading/add-my-book', handler: addMyBook, role: "student" },
+    { method: 'post', path: '/reading/remove-my-book', handler: removeMyBook, role: "student" },
 
     // SadhnaAssistant chatbot integration (see SadhanaGPT/Student/Controllers/AssistantController.js)
     { method: 'get', path: '/assistant/activities', handler: assistantGetActivities, role: "student" },

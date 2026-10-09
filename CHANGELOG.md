@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 06:20 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Built the first 4 Reading (books) endpoints for the logged-in person (student or counsellor): `GET /api/reading/plan` (the reading list he sees, with his status on each book, a NEW badge on books a counsellor recently added, his own books and progress counts), `POST /api/reading/book-status` (not started / ongoing / completed / skipped, with started/completed dates), `POST /api/reading/add-my-book` ("another book I am reading", author defaults to Srila Prabhupada) and `POST /api/reading/remove-my-book`. A person sees his counsellor's sub-group list, else group list, else the counsellor's "all mentees" list, else the system default. The person always comes from the login token. Nothing existing was changed except 7 lines in `routes/Routes.js` that register these 4 routes. They need the new tables (already created on the test database); on a database without them these 4 routes would return an error, nothing else is affected.
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/readingRules.js` (new), `ReadingStudentController.js` (new), `index.js` (new), `README.md`, `routes/Routes.js`, `tests/readingRules.test.mjs` (new), `tests/readingController.test.mjs` (new), `CHANGELOG.md`
+- **Tested**: whole suite `node --test "tests/*.test.mjs"` = 398 tests, 389 pass, 9 skipped, 0 fail (the 9 skipped are the database tests, which only run when a throwaway local database is given). Those 9 were run separately against a throwaway local database (not yours) with made-up users and the real seed file: all pass (default list 54 books / 22-15-17 with Hindi; plan choice sub-group > group > all > default and never another counsellor's list; NEW badge; status and date changes; refusals for wrong input and for books not in the person's list; add/remove own book). The server itself cannot be started in my environment, so the routes were only syntax-checked: please try them on the test server after deploying.
+- **Frontend**: the website can now replace its sample data with these 4 calls (still to do, in the next steps). Headers as for other logged-in APIs.
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 05:25 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
