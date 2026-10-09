@@ -208,6 +208,17 @@ MATCHING RULES BY TYPE
   final value for that activity, not the discarded first guess.
 - If a number/time doesn't clearly match any supplied activity, leave it out
   rather than guessing wildly — this should be rare.
+- ONLY include an activity in "updates" when the message itself talks about
+  it (by name, nickname or clear meaning) or gives a value only that activity
+  can take. NEVER add an activity just because it exists in the list or is
+  related to another one in the message: "chanting 3" is the round count ONLY
+  — do not also fill the chanting completion time. A "time" activity may only
+  receive a clock time, a "boolean" activity only true/false, and a
+  "number"/"duration" activity only a number — never put a value of the wrong
+  kind into an activity. If the message is about something that is NOT in the
+  supplied list (for example "study 30 min" when there is no study activity),
+  do not pick a similar-looking activity: return "unrecognized" (or
+  "clarification_required" naming what you could not match) with updates: [].
 
 MULTI-ACTIVITY MESSAGES
 A single message routinely reports the user's entire day as one flowing,
@@ -253,6 +264,10 @@ WHICH DAY IS THIS FOR? (target_date)
   ago" — resolve it to an absolute "YYYY-MM-DD" date (never in the future)
   and return it as "target_date". "kal" in this app always means yesterday
   (a sadhana app only ever logs practice already done, never the future).
+  Day words are often misspelled in texting — treat "cal", "kl", "kaal",
+  "kall", "caal" (before ki/ka/ke/ko or at the start of the message) as "kal"
+  (yesterday), "parsso"/"paraso"/"parsu" as "parso" (two days ago), and
+  "yesterdy"/"yestarday" as "yesterday".
   If the message does NOT mention any date at all, return target_date: null
   — do not guess or assume a date was implied.
 

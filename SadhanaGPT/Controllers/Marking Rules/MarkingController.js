@@ -2,6 +2,13 @@ import { insertRecord, deleteRecord } from "../../../utils/dbUtils.js";
 import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 import validateFields from "../../../utils/validation.js";
 import db from "../../../config/database.js";
+import { parseRuleFrequency, buildRuleCondition, findInvalidRuleMessage } from "./ruleInput.js";
+import { PERSONAL_SCHEME_SUFFIX } from "./effectiveScheme.js";
+import { recalculateTodayMarksInBackground, getTargetsUsingScheme, targetsFromAssignments, mergeTargets } from "./recalculateMarks.js";
+
+/** The name "<user_id> My Marking Scheme" is reserved for a person's own scheme (made only by the server). */
+const isReservedSchemeName = (name) => typeof name === "string" && name.trim().endsWith(PERSONAL_SCHEME_SUFFIX);
+const RESERVED_NAME_MESSAGE = `A scheme name cannot end with "${PERSONAL_SCHEME_SUFFIX.trim()}". Please choose another name.`;
 
 export const addMarkingRule = asyncHandler(async (req, resp) => {
   try {
@@ -94,8 +101,18 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
   try {
     const { scheme_id, counsellor_id, activities, name } = mergeParam(req);
 
+    if (!req._personalFlow && isReservedSchemeName(name)) {
+      return resp.json({ status: 0, code: 422, message: [RESERVED_NAME_MESSAGE] });
+    }
+
     if (!counsellor_id || !Array.isArray(activities)) {
       return resp.json({ status: 0, code: 422, message: ["Missing required fields or activities must be an array"] });
+    }
+
+    // Refuse (before anything is saved) a rule with no target value, so a broken rule can never be stored.
+    const invalidMessage = findInvalidRuleMessage(activities);
+    if (invalidMessage) {
+      return resp.json({ status: 0, code: 422, message: [invalidMessage] });
     }
 
     let schemeIdToUse = scheme_id;
@@ -148,7 +165,19 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
         master_activity_id = parseInt(master_activity_id, 10) || 1;
       }
 
-      const frequency = activity.badge || "Daily";
+      // The editor sends the frequency in "badge" for saved activities, but for a newly added
+      // activity it sends the unit ("rounds", "min"...). Only daily/weekly/monthly are valid:
+      // otherwise use the frequency the default scheme gives this activity, else daily.
+      let frequency = parseRuleFrequency(activity.badge);
+      if (!frequency) {
+        const [[defaultRule]] = await db.query(
+          `SELECT frequency FROM marking_rules
+           WHERE scheme_id = 1 AND master_activity_id = ? AND frequency IN ('daily','weekly','monthly') AND status = 1
+           LIMIT 1`,
+          [master_activity_id]
+        );
+        frequency = defaultRule?.frequency || "daily";
+      }
 
       let allRows = [];
       if (activity.subTables) {
@@ -161,7 +190,7 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
 
       if (allRows.length === 0) continue;
 
-      let maxMarksVal = -1;
+      let maxMarksVal = -Infinity; // so a scheme whose rules are all negative still marks one row as the max
       let maxMarksIdx = -1;
       allRows.forEach((r, idx) => {
         const m = parseInt(r.marks) || 0;
@@ -174,54 +203,17 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
       for (let i = 0; i < allRows.length; i++) {
         const row = allRows[i];
         const is_max_marks = (i === maxMarksIdx) ? 1 : 0;
-        const conditionStr = row.condition || "";
-        let operator = row.operator;
-        let value = row.value;
-
-        if (!operator || value === undefined || value === null || value === '') {
-          operator = "=";
-          value = conditionStr;
-          
-          const rulesMap = {
-            "Before": "<=",
-            "After": ">=",
-            "Exact Time": "=",
-            "At Least": ">=",
-            "Up To": "<=",
-            "Yes": "=",
-            "No": "="
-          };
-
-          for (const [rule, op] of Object.entries(rulesMap)) {
-            if (conditionStr.toLowerCase().startsWith(rule.toLowerCase())) {
-              operator = op;
-              value = conditionStr.substring(rule.length).trim();
-              if (rule === "Yes" || rule === "No") value = rule;
-              break;
-            }
-          }
-        }
-        
-        // Clean value to remove non-numeric chars like "min", "rounds" unless it's a time or boolean
-        if (value && typeof value === 'string' && !value.includes(':') && !['yes', 'no', 'true', 'false', 'completed'].includes(value.toLowerCase())) {
-            const match = value.match(/[\d.]+/);
-            if (match) value = match[0];
-        }
-
-        // Normalize boolean / yes_no condition values to standard 'Yes' and 'No'
-        if (value !== undefined && value !== null) {
-            const valStr = String(value).trim().toLowerCase();
-            if (valStr === 'true' || valStr === 'yes') value = 'Yes';
-            if (valStr === 'false' || valStr === 'no') value = 'No';
-        }
+        const { operator, value } = buildRuleCondition(row);
 
         if (row.id) {
           const updateQuery = `
             UPDATE marking_rules
-            SET condition_operator = ?, condition_value = ?, marks = ?, is_max_marks = ?
+            SET condition_operator = ?, condition_value = ?, marks = ?, is_max_marks = ?,
+                frequency = IF(frequency IN ('daily','weekly','monthly'), frequency, ?)
             WHERE id = ? AND scheme_id = ?
           `;
-          await db.query(updateQuery, [operator, value, row.marks || 0, is_max_marks, row.id, schemeIdToUse]);
+          // (a rule saved earlier with a broken/empty frequency is repaired here; valid ones are left as they are)
+          await db.query(updateQuery, [operator, value, row.marks || 0, is_max_marks, row._subFreq, row.id, schemeIdToUse]);
           insertedCount++;
         } else {
           const values = [
@@ -241,6 +233,14 @@ export const saveMarkingSchemeBatch = asyncHandler(async (req, resp) => {
         }
       }
     }
+
+    // Today's entries of the students on this scheme follow the saved rules straight away.
+    // (The built-in default scheme is never recalculated here: it covers everyone.)
+    // Runs in the background: the rules are already saved, so this can never turn the save into a "failed".
+    recalculateTodayMarksInBackground(async () => {
+      const [[savedScheme]] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [schemeIdToUse]);
+      return savedScheme && savedScheme.counsellor_id !== 'system' ? await getTargetsUsingScheme(schemeIdToUse) : {};
+    });
 
     return resp.json({
       status: 1,
@@ -352,7 +352,8 @@ export const getSchemesList = asyncHandler(async (req, resp) => {
            )
         ) as appliedSubgroupCount
       FROM marking_schemes ms
-      WHERE ms.counsellor_id = ? OR ms.counsellor_id = 'system'
+      WHERE (ms.counsellor_id = ? OR ms.counsellor_id = 'system')
+        AND ms.name <> CONCAT(ms.counsellor_id, '${PERSONAL_SCHEME_SUFFIX}')
       ORDER BY ms.id ASC
     `;
 
@@ -397,6 +398,10 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
     const { name, counsellor_id, assignments } = mergeParam(req);
     const assignList = assignments || [];
 
+    if (isReservedSchemeName(name)) {
+      return resp.json({ status: 0, code: 422, message: [RESERVED_NAME_MESSAGE] });
+    }
+
     // 1. Insert the scheme record
     const [insertRes] = await db.query(
       "INSERT INTO marking_schemes (name, counsellor_id, is_enabled) VALUES (?, ?, 1)",
@@ -404,8 +409,15 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
     );
     const schemeId = insertRes.insertId;
 
-    // 2. Clone/copy rules of system default scheme to the new scheme in marking_rules table
-    const [defaultRules] = await db.query("SELECT * FROM marking_rules WHERE counsellor_id = 'system' AND status = 1");
+    // 2. Clone/copy rules of system default scheme to the new scheme in marking_rules table.
+    //    The rules are found through the default SCHEME (owned by 'system'), not by the owner
+    //    label on each rule: some default rules (the 5 Chanting rules) have no owner label and
+    //    used to be left out of every new scheme.
+    const [defaultRules] = await db.query(
+      `SELECT * FROM marking_rules
+       WHERE status = 1
+         AND scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' ORDER BY id LIMIT 1)`
+    );
     
     if (defaultRules && defaultRules.length > 0) {
       const columns = [
@@ -447,6 +459,9 @@ export const createMarkingScheme = asyncHandler(async (req, resp) => {
       }
     }
 
+    // Allotted to groups / sub-groups: recalculate today's entries with the new scheme.
+    recalculateTodayMarksInBackground(targetsFromAssignments(assignList));
+
     return resp.json({
       status: 1,
       code: 200,
@@ -475,7 +490,7 @@ export const getSchemeActivitiesList = asyncHandler(async (req, resp) => {
     const query = `
       SELECT id, name, description, unit, target, activity_type, counsellor_id, status
       FROM activities
-      WHERE (counsellor_id = ? OR counsellor_id IS NULL OR counsellor_id = 'null')
+      WHERE (counsellor_id = ? OR counsellor_id IS NULL OR counsellor_id = 'null' OR counsellor_id = '')
       AND status IN (1, 2, 3)
       ORDER BY id ASC
     `;
@@ -533,6 +548,10 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
     const { scheme_id, counsellor_id, name, assignments } = mergeParam(req);
     const assignList = assignments || [];
 
+    if (isReservedSchemeName(name)) {
+      return resp.json({ status: 0, code: 422, message: [RESERVED_NAME_MESSAGE] });
+    }
+
     const [sysCheck] = await db.query("SELECT counsellor_id FROM marking_schemes WHERE id = ?", [scheme_id]);
     if (sysCheck && sysCheck.length > 0 && sysCheck[0].counsellor_id === 'system') {
       return resp.json({ status: 0, code: 403, message: ["Cannot edit the system default scheme."] });
@@ -550,6 +569,9 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
       await db.query("UPDATE marking_schemes SET name = ? WHERE id = ?", [name.trim(), scheme_id]);
     }
 
+    // Remember who used this scheme before, so students who lose it are recalculated too.
+    const previousTargets = await getTargetsUsingScheme(scheme_id);
+
     // Unlink old assignments
     await db.query(`UPDATE center_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
     await db.query(`UPDATE labels_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
@@ -562,6 +584,8 @@ export const updateMarkingScheme = asyncHandler(async (req, resp) => {
         await db.query("UPDATE labels_list SET marking_scheme_id = ? WHERE id = ?", [scheme_id, a.id]);
       }
     }
+
+    recalculateTodayMarksInBackground(mergeTargets(previousTargets, targetsFromAssignments(assignList)));
 
     return resp.json({
       status: 1,
@@ -595,12 +619,17 @@ export const deleteMarkingScheme = asyncHandler(async (req, resp) => {
       return resp.json({ status: 0, code: 403, message: ["Scheme not found or access denied."] });
     }
 
+    const previousTargets = await getTargetsUsingScheme(scheme_id);
+
     await db.query("DELETE FROM marking_rules WHERE scheme_id = ?", [scheme_id]);
 
     await db.query(`UPDATE center_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
     await db.query(`UPDATE labels_list SET marking_scheme_id = (SELECT id FROM marking_schemes WHERE counsellor_id = 'system' LIMIT 1) WHERE marking_scheme_id = ?`, [scheme_id]);
 
     await db.query("DELETE FROM marking_schemes WHERE id = ?", [scheme_id]);
+
+    // Those students are back on the default scheme: recalculate today's entries.
+    recalculateTodayMarksInBackground(previousTargets);
 
     return resp.json({
       status: 1,

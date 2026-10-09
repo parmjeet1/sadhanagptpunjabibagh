@@ -164,80 +164,7 @@ const checkAndSendReminders = async () => {
         );
         continue; // They missed everything, skip checking individual averages
       }
-      console.log("case2")
-      // CASE 2: Check Individual Averages
-      // Fetch only activities belonging to this user or global activities (own_by = 0)
-      const activitiesQuery = `
-          SELECT activity_id, name, unit, activity_type, target 
-          FROM fix_activities 
-          WHERE user_id = ? OR own_by = 0 OR user_id IS NULL OR user_id = ''
-        `;
-      const [activities] = await db.query(activitiesQuery, [user.user_id]);
-
-      let missedTargets = [];
-
-      for (const activity of activities) {
-        // Find reports specific to this activity in the last N days
-        const activityReports = reports.filter(r => String(r.activity_id) === String(activity.activity_id));
-
-        // --- Logic for Numbers & Minutes (Chanting, Hearing, Reading) ---
-        if (['min', 'numb', 'rounds', 'page'].includes(activity.activity_type) || ['min', 'rounds'].includes(activity.unit)) {
-          const targetPerDay = parseFloat(activity.target);
-          if (isNaN(targetPerDay)) continue;
-
-          const cumulativeTarget = targetPerDay * N;
-          const threshold = cumulativeTarget / 2; // 50% Rule
-
-          let totalAchieved = 0;
-          // Calculate sum even if activityReports is empty (it will be 0)
-          activityReports.forEach(r => {
-            totalAchieved += parseFloat(r.count) || 0;
-          });
-
-          // If they missed it entirely (0) OR achieved less than threshold
-          if (totalAchieved < threshold) {
-            missedTargets.push(activity.name);
-          }
-        }
-
-        // --- Logic for Time Based (Wake up time) ---
-        else if (activity.activity_type === 'time' || activity.unit === 'time') {
-          // If they didn't log time at all, they missed it
-          if (activityReports.length === 0) {
-            missedTargets.push(activity.name);
-            continue;
-          }
-
-          const targetMins = parseTimeToMinutes(activity.target);
-          let totalMinsAchieved = 0;
-
-          activityReports.forEach(r => {
-            totalMinsAchieved += parseTimeToMinutes(r.count);
-          });
-
-          // Average time over the days they actually logged it
-          const avgMinsAchieved = totalMinsAchieved / activityReports.length;
-
-          // If average wake up time is LATER than target time (e.g. avg is 6 AM > target 4 AM)
-          if (avgMinsAchieved > targetMins) {
-            missedTargets.push(activity.name);
-          }
-        }
-      }
-
-      // 4. Send Alert if any specific targets fell below average
-      if (missedTargets.length > 0) {
-        // Unique names in case of duplicates
-        const uniqueMissed = [...new Set(missedTargets)].join(', ');
-
-        await sendPush(
-          user.user_id,
-          "Activity Alert",
-          `Hare Krishna ${user.name}, your ${N}-day average fell below target .`
-        );
-      }
-
-      //
+      // The "N-day average fell below target" alert was removed (Developer request, 2026-10-08).
     }
 
     console.log("Analysis Completed.");
@@ -372,15 +299,8 @@ export const freqSadhnaCronjob = () => {
   cron.schedule('0 9 * * *', async () => {
     await checkAndSendReminders();
   }, { timezone });
-  // Daily at 9:15 AM IST
-  cron.schedule(
-    '15 9 * * *',
-    async () => {
-      // console.log('Running notifyMentorsOfIrregularMentees:', new Date());
-      await notifyMentorsOfIrregularMentees();
-    },
-    { timezone }
-  );
+  // The daily 9:15 AM mentor "Mentee Alerts" push was removed (Developer request, 2026-10-08).
+  // notifyMentorsOfIrregularMentees() is kept in this file but is no longer scheduled.
   // Every Saturday at 10:00 AM IST
   cron.schedule(
     '0 10 * * 6',

@@ -87,7 +87,7 @@ export const getMentorSelectableActivities = asyncHandler(async (req, resp) => {
         SELECT *, id AS master_activity_id,
         ${assignmentStatusSql} AS assignment_status
         FROM activities 
-        WHERE (counsellor_id IS NULL OR counsellor_id = ${safeUserId})
+        WHERE (counsellor_id IS NULL OR counsellor_id = '' OR counsellor_id = ${safeUserId})
       ) AS activities`,
       columns: `master_activity_id, name, description, unit, target, activity_type, counsellor_id, status AS original_status, assignment_status AS status`,
       sortColumn: "master_activity_id",

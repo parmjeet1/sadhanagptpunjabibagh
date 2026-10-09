@@ -9,6 +9,9 @@ import { handleFileUpload } from "../utils/fileUpload.js";
 import { sendBulknEmails } from "../SadhanaGPT/cronjobs/Email-notificatiion.js";
 import { irregularMenteesList, toggleMenteeNotification } from "../SadhanaGPT/Mentors/NotificationController.js";
 import { assignActivitiesToStudents, getMentorSelectableActivities, createCustomActivity, assignActivitiesToGroup, deassignActivitiesFromGroup, deleteCustomActivity, deleteAssignedCustomActivity, getGroupSubgroupList } from "../SadhanaGPT/Controllers/custom activities/AssingActvtiesController.js";
+import { getAddableActivities, addSelectedActivities } from "../SadhanaGPT/Controllers/custom activities/SelfAddActivitiesController.js";
+import { getDailyMarksBreakdown } from "../SadhanaGPT/Controllers/Marking Rules/MarksBreakdownController.js";
+import { getMyMarkingScheme, mySchemeActivities, myMarkingRules, mySaveScheme, myDeleteRule, myDeleteActivityRules, useMyMarkingScheme, getStudentOwnScheme } from "../SadhanaGPT/Controllers/Marking Rules/PersonalSchemeController.js";
 import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
 import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
 import { getFollowUpStudents } from '../SadhanaGPT/Controllers/SummaryData/followUpStudents.js';
@@ -21,6 +24,7 @@ import {
   assistantUpdateActivityForDate,
   assistantUpdateActivitiesForDates,
   assistantGetTodayMarks,
+  assistantGetMarksForDate,
   assistantGetLast7DaysMarks,
   assistantInterpretNL,
   assistantTranscribeVoiceNote,
@@ -92,6 +96,9 @@ const LoggedinRoute = [
     { method: 'post', path: '/edit-acitivity', handler: editActivity, role: "student" },
     { method: 'post', path: '/delete-acitivity', handler: deleteActivity, role: "student" },
     { method: 'get', path: '/activity-list', handler: listActivities, role: "student" },
+    // "Add custom activity" pick-list (students and counsellors, own list only)
+    { method: 'get', path: '/addable-activities', handler: getAddableActivities, role: "student" },
+    { method: 'post', path: '/add-selected-activities', handler: addSelectedActivities, role: "student" },
 
     { method: 'post', path: '/add-daily-report', handler: addSadhna, role: "student" },
 
@@ -102,6 +109,15 @@ const LoggedinRoute = [
     { method: 'get', path: '/weekly-ranking', handler: getWeeklyRanking, role: "both" },
     { method: 'get', path: '/top-ranker-badge', handler: getTopRankerBadge, role: "student" },
     { method: 'get', path: '/applied-marking-scheme', handler: getStudentAppliedMarkingScheme, role: "student" },
+    // My Marking Scheme (any logged-in student or counsellor; the owner always comes from the login token)
+    { method: 'post', path: '/my-marking-scheme', handler: getMyMarkingScheme, role: "student" },
+    { method: 'post', path: '/my-scheme-activities', handler: mySchemeActivities, role: "student" },
+    { method: 'post', path: '/my-marking-rules', handler: myMarkingRules, role: "student" },
+    { method: 'post', path: '/my-save-scheme', handler: mySaveScheme, role: "student" },
+    { method: 'post', path: '/my-delete-rule', handler: myDeleteRule, role: "student" },
+    { method: 'post', path: '/my-delete-activity-rules', handler: myDeleteActivityRules, role: "student" },
+    { method: 'post', path: '/use-my-marking-scheme', handler: useMyMarkingScheme, role: "student" },
+    { method: 'post', path: '/daily-marks-breakdown', handler: getDailyMarksBreakdown, role: "student" },
     { method: 'get', path: '/student-activities-analytics', handler: StudentActivitiesAnalytics, role: "student" },
     { method: 'get', path: '/student-export-report', handler: studentExportReport, role: "student" },
 
@@ -121,6 +137,7 @@ const LoggedinRoute = [
     { method: 'post', path: '/assistant/activities/update-for-date', handler: assistantUpdateActivityForDate, role: "student" },
     { method: 'post', path: '/assistant/activities/update-for-dates', handler: assistantUpdateActivitiesForDates, role: "student" },
     { method: 'get', path: '/assistant/marks/today', handler: assistantGetTodayMarks, role: "student" },
+    { method: 'get', path: '/assistant/marks/by-date/:date', handler: assistantGetMarksForDate, role: "student" },
     { method: 'get', path: '/assistant/marks/last7days', handler: assistantGetLast7DaysMarks, role: "student" },
     { method: 'post', path: '/assistant/nlp/interpret', handler: assistantInterpretNL, role: "student" },
     { method: 'post', path: '/assistant/nlp/transcribe', handler: assistantTranscribeVoiceNote, role: "student" },
@@ -222,6 +239,7 @@ const LoggedinRoute = [
     { method: 'post', path: '/delete-marking-rule', handler: deleteMarkingRule, role: "counsellor" },
     { method: 'post', path: '/delete-activity-rules', handler: deleteActivityRules, role: "counsellor" },
     { method: 'get', path: '/student-rank', handler: getStudentRank, role: "counsellor" },
+    { method: 'post', path: '/student-own-scheme', handler: getStudentOwnScheme, role: "counsellor" },
     { method: 'get', path: '/student-followup', handler: getFollowUpStudents, role: "counsellor" },
     { method: 'post', path: '/create-custom-activity', handler: createCustomActivity }
 
