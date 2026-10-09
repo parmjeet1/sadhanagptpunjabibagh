@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 05:10 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Replaced the 7-book placeholder in `DB-SEED-DEFAULT.sql` with the real default reading list from the developer's PDF "Srila Prabhupada - Book Reading Plan": 54 books in 3 levels (Level 1 - Category I: 22 books, Level 2 - Category II: 15, Level 3 - Category III: 17), in the same order as the PDF. Hindi titles are left empty for now. No lectures added (list not supplied yet). The file has a clean-up block for anyone who already ran the old placeholder.
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/DB-SEED-DEFAULT.sql`, `CHANGELOG.md`
+- **Tested**: ran `DB-PROPOSAL.sql` then this file on a throwaway local database (not yours): 54 books, 22 / 15 / 17 per level, order 1..N in each level. NOT run on your real database.
+- **Frontend**: nothing needed now. The sample data in the website preview still shows the old placeholder books.
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 03:45 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
