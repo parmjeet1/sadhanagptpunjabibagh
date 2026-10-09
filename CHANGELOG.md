@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 02:45 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Created a new folder `SadhanaGPT/reading-lecture-feature/` (with a short README) where all new work for the reading-lecture feature will go. Nothing is built yet and no existing behaviour changes. A matching folder was made in the other repo (website `src/reading-lecture-feature/`).
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/README.md` (new), `CHANGELOG.md`
+- **Tested**: not needed (no code); the folder is not used by anything yet.
+- **Frontend**: no change needed.
+
 ## 🔔 [Notifications] - 2026-10-08, 09:37 AM IST
 
 - **Developer**: Manvatar Prabhu Ji
