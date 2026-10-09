@@ -186,7 +186,7 @@ export const createReadingHandlers = (db, { now = () => Date.now() } = {}) => {
     const link = cleanLink(p.link);
     if (link === undefined) return fail(resp, 422, "Link must start with http:// or https://");
     const status = p.status === undefined || p.status === "" ? "ongoing" : p.status;
-    if (!isValidBookStatus(status) || status === "not_started") return fail(resp, 422, "status must be ongoing, completed or skipped");
+    if (!isValidBookStatus(status)) return fail(resp, 422, "status must be not_started, ongoing, completed or skipped");
 
     const [[dup]] = await db.query(
       `SELECT id FROM reading_books WHERE created_by = ? AND is_active = 1 AND LOWER(title) = LOWER(?) LIMIT 1`,
@@ -201,10 +201,12 @@ export const createReadingHandlers = (db, { now = () => Date.now() } = {}) => {
     const bookId = Number(ins.insertId);
     const today = todayIST(now());
     const d = statusDates(status, null, today);
-    await db.query(
-      `INSERT INTO user_book_status (user_id, book_id, status, started_at, completed_at) VALUES (?, ?, ?, ?, ?)`,
-      [me, bookId, status, d.started_at, d.completed_at]
-    );
+    if (status !== "not_started") { // "not started" = no status row (same as every other book)
+      await db.query(
+        `INSERT INTO user_book_status (user_id, book_id, status, started_at, completed_at) VALUES (?, ?, ?, ?, ?)`,
+        [me, bookId, status, d.started_at, d.completed_at]
+      );
+    }
     return ok(resp, "Book added to your list.", { book_id: bookId, title, title_hi: titleHi, author, link, status, ...d });
   });
 

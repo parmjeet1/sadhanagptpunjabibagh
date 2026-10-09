@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 08:40 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: `POST /api/reading/add-my-book` now also accepts status `not_started` ("a book I plan to read"). Before, it refused it, but the website's "Add a book I am reading" form offers that choice. A not-started book is saved with no status row (same as every other not-started book).
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/ReadingStudentController.js`, `tests/readingController.test.mjs`, `CHANGELOG.md`
+- **Tested**: whole suite = 420 tests, all pass with a throwaway local database (not yours); 389 pass and 31 database tests are skipped without one.
+- **Frontend**: nothing to change; the existing form now works with this choice.
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 08:10 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

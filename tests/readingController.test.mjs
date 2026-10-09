@@ -123,7 +123,11 @@ test("add my own book: author defaults to Srila Prabhupada, shows only for me, d
   assert.equal((await call(H.addMyBook, "S_none", { title: "my extra book" })).code, 409);
   assert.equal((await call(H.addMyBook, "S_none", { title: "X", link: "javascript:alert(1)" })).code, 422);
   assert.equal((await call(H.addMyBook, "S_none", { title: "" })).code, 422);
-  assert.equal((await call(H.addMyBook, "S_none", { title: "Y", status: "not_started" })).code, 422);
+  assert.equal((await call(H.addMyBook, "S_none", { title: "Y", status: "done" })).code, 422);
+  r = await call(H.addMyBook, "S_none", { title: "Planned book", status: "not_started" }); // "not started" is allowed: no status row
+  assert.deepEqual([r.status, r.data.status, r.data.started_at], [1, "not_started", null]);
+  assert.deepEqual((await call(H.getReadingPlan, "S_none")).data.my_books.map((b) => [b.title, b.status]), [["My Extra Book", "ongoing"], ["Planned book", "not_started"]]);
+  assert.equal((await call(H.removeMyBook, "S_none", { book_id: r.data.book_id })).status, 1);
   r = await call(H.addMyBook, "S_none", { title: "Hindi", title_hi: "मेरी पुस्तक", author: "Other Author", status: "completed" });
   assert.deepEqual([r.data.title_hi, r.data.author, r.data.status], ["मेरी पुस्तक", "Other Author", "completed"]);
   // somebody else cannot remove it; I can
