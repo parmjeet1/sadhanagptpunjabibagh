@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 05:25 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Added the Hindi names to `DB-SEED-DEFAULT.sql`, taken from the developer's "Hindi Only" PDF: a Hindi title for all 54 books and Hindi names for the 3 levels (स्तर 1/2/3 — श्रेणी 1/2/3). Hindi and English were matched by position (both lists have the same order and counts 22 / 15 / 17). English titles are unchanged.
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/DB-SEED-DEFAULT.sql`, `CHANGELOG.md`
+- **Tested**: ran `DB-PROPOSAL.sql` then this file on a throwaway local database (not yours): 54 books, all 54 with a Hindi title, Hindi stored and read back correctly, level names correct. NOT run on your real database.
+- **Frontend**: nothing needed now (the website preview still shows the old sample books).
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 05:10 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
