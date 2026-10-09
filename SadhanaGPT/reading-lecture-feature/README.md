@@ -37,8 +37,18 @@ Lectures endpoints (same headers; recommended lectures + the person's own log):
 | POST `/api/lectures/add-my-lecture` | `title`, optional `speaker` (default Srila Prabhupada), `link`, `heard_on` | A lecture he typed in himself. |
 | POST `/api/lectures/remove-my-lecture` | `log_id` | Removes a lecture he typed in himself. |
 
+Counsellor Reading endpoints (counsellors only; a counsellor can only use his OWN groups / sub-groups and mentees; `group_id` / `sub_id` empty or `all` = all his mentees):
+
+| Method + path | Body / query | What it does |
+|---|---|---|
+| GET `/api/reading/counsellor/scopes` | - | His groups and sub-groups with mentee counts and whether a custom list exists. |
+| GET `/api/reading/counsellor/plan` | `group_id?`, `sub_id?` | The list in effect for that scope (to edit; `is_custom` false = still the wider/default list) + the books he can add. |
+| POST `/api/reading/counsellor/save-plan` | `group_id?`, `sub_id?`, `levels: [{name, name_hi?, books: [{book_id} or {title, title_hi?, author?, link?}]}]` | Saves the whole list for that scope in one go (levels and order as sent). New titles become his own books. Only books that were not already in the list get the NEW badge. |
+| POST `/api/reading/counsellor/reset-plan` | `group_id?`, `sub_id?` | Removes his list for that scope (mentees fall back to the wider list / default). |
+| GET `/api/reading/counsellor/mentees-status` | `group_id?`, `sub_id?` | Mentees in the scope: completed count, books being read (with days), status per book, their own books; plus counts per book. |
+
 Which list a person sees: his counsellor's sub-group list, else group list, else the counsellor's "all mentees" list, else the system default.
 
-Tests: `tests/readingRules.test.mjs` (always runs) and `tests/readingController.test.mjs` + `tests/lectureController.test.mjs` (run only when `READING_TEST_SOCKET` points to a throwaway local MariaDB; never use a real database).
+Tests: `tests/readingRules.test.mjs` (always runs) and `tests/readingController.test.mjs`, `tests/lectureController.test.mjs` + `tests/counsellorReading.test.mjs` (run only when `READING_TEST_SOCKET` points to a throwaway local MariaDB; never use a real database).
 
-Status: Reading and Lectures endpoints for the person himself are built. Still to build: counsellor endpoints (customise lists, see mentees' status, Excel upload).
+Status: Reading and Lectures endpoints for the person himself are built. Counsellor Reading endpoints are built too. Still to build: counsellor Lectures endpoints (customise lecture list, Excel upload, mentees' lectures).

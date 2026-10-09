@@ -15,7 +15,7 @@ import { getMyMarkingScheme, mySchemeActivities, myMarkingRules, mySaveScheme, m
 import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
 import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
 import { getFollowUpStudents } from '../SadhanaGPT/Controllers/SummaryData/followUpStudents.js';
-import { getReadingPlan, setBookStatus, addMyBook, removeMyBook, getLecturePlan, markHeard, unmarkHeard, addMyLecture, removeMyLecture } from '../SadhanaGPT/reading-lecture-feature/index.js';
+import { getReadingPlan, setBookStatus, addMyBook, removeMyBook, getLecturePlan, markHeard, unmarkHeard, addMyLecture, removeMyLecture, getReadingScopes, getReadingScopePlan, saveReadingPlan, resetReadingPlan, getReadingMenteesStatus } from '../SadhanaGPT/reading-lecture-feature/index.js';
 import {
   assistantGetActivities,
   assistantGetTodayActivities,
@@ -141,6 +141,13 @@ const LoggedinRoute = [
     { method: 'post', path: '/lectures/unmark-heard', handler: unmarkHeard, role: "student" },
     { method: 'post', path: '/lectures/add-my-lecture', handler: addMyLecture, role: "student" },
     { method: 'post', path: '/lectures/remove-my-lecture', handler: removeMyLecture, role: "student" },
+
+    // Reading and Lectures for COUNSELLORS (his own groups / mentees only)
+    { method: 'get', path: '/reading/counsellor/scopes', handler: getReadingScopes, role: "counsellor" },
+    { method: 'get', path: '/reading/counsellor/plan', handler: getReadingScopePlan, role: "counsellor" },
+    { method: 'post', path: '/reading/counsellor/save-plan', handler: saveReadingPlan, role: "counsellor" },
+    { method: 'post', path: '/reading/counsellor/reset-plan', handler: resetReadingPlan, role: "counsellor" },
+    { method: 'get', path: '/reading/counsellor/mentees-status', handler: getReadingMenteesStatus, role: "counsellor" },
 
     // SadhnaAssistant chatbot integration (see SadhanaGPT/Student/Controllers/AssistantController.js)
     { method: 'get', path: '/assistant/activities', handler: assistantGetActivities, role: "student" },

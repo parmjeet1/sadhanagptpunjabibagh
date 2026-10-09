@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 07:40 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Built the 5 counsellor endpoints for Reading: `GET /api/reading/counsellor/scopes` (his groups and sub-groups with mentee counts and whether a custom list exists), `GET .../plan` (the list in effect for a group / sub-group / all mentees, to edit, plus the books he can add), `POST .../save-plan` (saves the whole list - levels, order, new books - for that scope in one go, all-or-nothing), `POST .../reset-plan` (back to the wider/default list) and `GET .../mentees-status` (each mentee's completed count, books being read with days, status per book, their own books, and counts per book). A counsellor can only use his OWN groups, sub-groups and mentees (checked on every call). Only books that were not already visible to the mentees get the NEW badge, so customising a list does not mark every book NEW. The system default list and other counsellors' lists are never changed. Existing file changed: `routes/Routes.js` (5 route lines + import).
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/CounsellorReadingController.js` (new), `scopeHelpers.js` (new), `ReadingStudentController.js` (small refactor: the "which list applies" lookup is now a shared function, same behaviour), `index.js`, `README.md`, `routes/Routes.js`, `tests/counsellorReading.test.mjs` (new), `tests/helpers/throwawayDb.mjs` (more made-up groups for tests), `CHANGELOG.md`
+- **Tested**: whole suite = 413 tests; with a throwaway local database (not yours, made-up data) all 413 pass. Checked: access to own groups only (another counsellor's group/sub-group refused), saving / editing / resetting lists at sub-group, group and all-mentees level and which list each mentee then sees, NEW badge rules, refusals for empty / duplicate / other people's books / bad links / nameless levels, and the mentees' status numbers (including days, own books, and that another counsellor's mentees are never shown). The server itself cannot be started in my environment, so please try these on the test server. One thing not testable here: the all-or-nothing save uses a real database transaction, which only exists on the live connection.
+- **Frontend**: the counsellor preview screens (scope picker, customise window, mentees' reading window) can switch from sample data to these calls (still to do).
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 06:55 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

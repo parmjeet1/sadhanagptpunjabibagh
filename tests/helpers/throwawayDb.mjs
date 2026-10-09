@@ -44,13 +44,18 @@ export const call = async (handler, userId, body = {}) => {
 export const createBaseDb = () => {
   cli(`DROP DATABASE IF EXISTS ${DBN}; CREATE DATABASE ${DBN} CHARACTER SET utf8mb4;`, "");
   cli(`
-    CREATE TABLE users (user_id VARCHAR(20) PRIMARY KEY, user_type VARCHAR(20)) ENGINE=InnoDB;
+    CREATE TABLE users (user_id VARCHAR(20) PRIMARY KEY, user_type VARCHAR(20), name VARCHAR(100) NULL) ENGINE=InnoDB;
     CREATE TABLE user_assignments (id INT AUTO_INCREMENT PRIMARY KEY, user_id VARCHAR(20), center_id BIGINT, label_id BIGINT, counsellor_id VARCHAR(20)) ENGINE=InnoDB;
     CREATE TABLE user_counsellors (id INT AUTO_INCREMENT PRIMARY KEY, user_id VARCHAR(20), counsller_id VARCHAR(20), counsllor_type VARCHAR(20)) ENGINE=InnoDB;
-    INSERT INTO users VALUES ('C1','counsellor'),('C2','counsellor'),('S_none','student'),('S_sub','student'),('S_grp','student'),('S_all','student'),('S_prim','student'),('S_other','student');
+    CREATE TABLE center_list (center_id BIGINT PRIMARY KEY, name VARCHAR(100), counsller_id VARCHAR(20)) ENGINE=InnoDB;
+    CREATE TABLE labels_list (id BIGINT PRIMARY KEY, center_id BIGINT, name VARCHAR(100), counsellor_id VARCHAR(20)) ENGINE=InnoDB;
+    INSERT INTO users (user_id, user_type) VALUES ('C1','counsellor'),('C2','counsellor'),('S_none','student'),('S_sub','student'),('S_grp','student'),('S_all','student'),('S_prim','student'),('S_other','student');
+    UPDATE users SET name = CONCAT('Name ', user_id);
     INSERT INTO user_assignments (user_id, center_id, label_id, counsellor_id) VALUES
       ('S_sub', 5, 9, 'C1'), ('S_grp', 5, 2, 'C1'), ('S_all', 7, 3, 'C1'), ('S_prim', NULL, NULL, ''), ('S_other', 5, 9, 'C2');
-    INSERT INTO user_counsellors (user_id, counsller_id, counsllor_type) VALUES ('S_prim','C1','primary');
+    INSERT INTO user_counsellors (user_id, counsller_id, counsllor_type) VALUES ('S_prim','C1','primary'),('S_sub','C1','primary'),('S_grp','C1','primary'),('S_all','C1','primary'),('S_other','C2','primary');
+    INSERT INTO center_list VALUES (5,'Sunday Class','C1'),(7,'Weekday Class','C1'),(11,'Other Group','C2');
+    INSERT INTO labels_list VALUES (9,5,'Youth','C1'),(2,5,'Ladies','C1'),(3,7,'Beginners','C1'),(20,11,'Other Sub','C2');
   `);
   cli(readFileSync(new URL("DB-PROPOSAL.sql", FEATURE), "utf8"));
   cli(readFileSync(new URL("DB-SEED-DEFAULT.sql", FEATURE), "utf8"));

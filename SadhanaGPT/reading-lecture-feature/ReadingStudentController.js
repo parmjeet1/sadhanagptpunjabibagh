@@ -35,7 +35,15 @@ export const resolvePlan = async (db, userId, kind) => {
     [userId]
   );
   if (!me) return null;
-  const owner = me.counsellor_id || null;
+  return findPlan(db, kind, me.counsellor_id || null, me.center_id, me.label_id);
+};
+
+/**
+ * The plan that applies for a given counsellor + group + sub-group:
+ * sub-group plan -> group plan -> counsellor's "all mentees" plan -> system default.
+ * (Also used by the counsellor screens to show "what is in effect for this group".)
+ */
+export const findPlan = async (db, kind, owner, centerId, labelId) => {
   const [[plan]] = await db.query(
     `SELECT id, scope, owner_id FROM learning_plans
      WHERE kind = ? AND (
@@ -44,7 +52,7 @@ export const resolvePlan = async (db, userId, kind) => {
          OR (scope = 'all'      AND owner_id = ?)
          OR (scope = 'default'  AND owner_id IS NULL))
      ORDER BY FIELD(scope, 'subgroup', 'group', 'all', 'default') LIMIT 1`,
-    [kind, owner, me.label_id, owner, me.center_id, owner]
+    [kind, owner, labelId ?? null, owner, centerId ?? null, owner]
   );
   return plan || null;
 };
