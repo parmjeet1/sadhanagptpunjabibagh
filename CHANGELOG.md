@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 06:55 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Built the 5 Lectures endpoints for the logged-in person (student or counsellor): `GET /api/lectures/plan` (recommended lectures he sees, ticked if heard, NEW badge on lectures a counsellor recently added, plus his own log), `POST /api/lectures/mark-heard` (with an optional date, not in the future), `POST /api/lectures/unmark-heard`, `POST /api/lectures/add-my-lecture` (title, speaker - default Srila Prabhupada -, link, date) and `POST /api/lectures/remove-my-lecture` (only a lecture he typed in himself). Same list rules as books: counsellor's sub-group list, else group, else "all mentees", else system default. The person always comes from the login token. The only existing file changed is `routes/Routes.js` (5 route lines + the import). The system lecture list is still empty until the real list is supplied, so `/api/lectures/plan` returns an empty recommended list for now (his own log still works).
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/LectureStudentController.js` (new), `readingRules.js`, `index.js`, `README.md`, `routes/Routes.js`, `tests/lectureController.test.mjs` (new), `tests/helpers/throwawayDb.mjs` (new, shared test helper), `tests/readingController.test.mjs` (now uses the shared helper), `CHANGELOG.md`
+- **Tested**: whole suite = 404 tests; with a throwaway local database (not yours, made-up users) all 404 pass; without one, 389 pass and 15 database tests are skipped, 0 fail. Checked: list choice (default / counsellor's list / never another counsellor's), NEW badge, tick/un-tick and date change, refusals for bad input and for lectures not in the person's list, add/duplicate/remove own lecture, and that a ticked recommended lecture cannot be removed through remove-my-lecture. The server itself cannot be started in my environment, so the routes were only syntax-checked: please try them on the test server.
+- **Frontend**: the website can replace its sample data with these 5 calls (still to do).
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 06:20 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

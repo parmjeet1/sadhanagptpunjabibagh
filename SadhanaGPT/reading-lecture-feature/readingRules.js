@@ -65,3 +65,13 @@ export const summarize = (rows) => {
   }
   return out;
 };
+
+/**
+ * The "heard on" date: empty -> today; a real date that is not in the future -> that date;
+ * anything else -> undefined (invalid).
+ */
+export const cleanHeardOn = (value, today) => {
+  if (value === undefined || value === null || value === "") return today;
+  if (!isRealDate(value) || value > today) return undefined;
+  return value;
+};

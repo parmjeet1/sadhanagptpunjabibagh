@@ -15,7 +15,7 @@ import { getMyMarkingScheme, mySchemeActivities, myMarkingRules, mySaveScheme, m
 import { addMarkingRule, saveMarkingSchemeBatch, getMarkingRules, getSchemesList, createMarkingScheme, getSchemeActivitiesList, deleteMarkingScheme, updateMarkingScheme, deleteMarkingRule, deleteActivityRules } from "../SadhanaGPT/Controllers/Marking Rules/MarkingController.js";
 import { getStudentRank } from '../SadhanaGPT/Controllers/SummaryData/showRank.js';
 import { getFollowUpStudents } from '../SadhanaGPT/Controllers/SummaryData/followUpStudents.js';
-import { getReadingPlan, setBookStatus, addMyBook, removeMyBook } from '../SadhanaGPT/reading-lecture-feature/index.js';
+import { getReadingPlan, setBookStatus, addMyBook, removeMyBook, getLecturePlan, markHeard, unmarkHeard, addMyLecture, removeMyLecture } from '../SadhanaGPT/reading-lecture-feature/index.js';
 import {
   assistantGetActivities,
   assistantGetTodayActivities,
@@ -134,6 +134,13 @@ const LoggedinRoute = [
     { method: 'post', path: '/reading/book-status', handler: setBookStatus, role: "student" },
     { method: 'post', path: '/reading/add-my-book', handler: addMyBook, role: "student" },
     { method: 'post', path: '/reading/remove-my-book', handler: removeMyBook, role: "student" },
+
+    // Lectures heard (any logged-in student or counsellor: their own list and log)
+    { method: 'get', path: '/lectures/plan', handler: getLecturePlan, role: "student" },
+    { method: 'post', path: '/lectures/mark-heard', handler: markHeard, role: "student" },
+    { method: 'post', path: '/lectures/unmark-heard', handler: unmarkHeard, role: "student" },
+    { method: 'post', path: '/lectures/add-my-lecture', handler: addMyLecture, role: "student" },
+    { method: 'post', path: '/lectures/remove-my-lecture', handler: removeMyLecture, role: "student" },
 
     // SadhnaAssistant chatbot integration (see SadhanaGPT/Student/Controllers/AssistantController.js)
     { method: 'get', path: '/assistant/activities', handler: assistantGetActivities, role: "student" },
