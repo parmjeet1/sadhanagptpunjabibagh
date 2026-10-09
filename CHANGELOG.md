@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 📚 [Reading Lecture Feature] - 2026-10-09, 08:10 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Built the 4 counsellor endpoints for Lectures: `GET /api/lectures/counsellor/plan` (the recommended lecture list in effect for a group / sub-group / all mentees, to edit, plus lectures he can add), `POST .../save-plan` (saves the whole list in the order sent, up to 500 lectures, all-or-nothing; this is also what an uploaded Excel sheet turns into - the website reads the sheet and sends the rows, and every row is checked here: title required, link must be http(s), speaker defaults to Srila Prabhupada, duplicates refused), `POST .../reset-plan` and `GET .../mentees-lectures` (per mentee: lectures heard newest first, recommended vs typed in, counts, last heard date). A counsellor can only use his OWN groups, sub-groups and mentees. Same rules as the Reading list for which list applies and for the NEW badge. Existing file changed: `routes/Routes.js` (4 route lines + import). I did not add a server-side Excel upload on purpose: reading the sheet in the browser (already built in the website preview) and sending a normal list means one set of checks and no file handling on the server.
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/CounsellorLectureController.js` (new), `index.js`, `README.md`, `routes/Routes.js`, `tests/counsellorLectures.test.mjs` (new), `CHANGELOG.md`
+- **Tested**: whole suite = 420 tests; with a throwaway local database (not yours, made-up data) all 420 pass; without one 389 pass and 31 database tests are skipped, 0 fail. Checked: own-group-only access, saving / re-saving (reuse of the same lecture, order, NEW badge), sub-group > group > all > default, reset, refusals (empty, bad link, too long, duplicates, other counsellor's lecture, not his group), and the mentees' lectures numbers (another counsellor's mentees never shown). The server itself cannot be started in my environment, so please try these on the test server.
+- **Frontend**: the counsellor preview's lecture list editor and "Mentees' lectures" window can switch from sample data to these calls (still to do).
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 07:40 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
