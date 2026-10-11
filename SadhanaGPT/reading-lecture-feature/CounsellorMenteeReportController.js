@@ -91,10 +91,14 @@ export const createCounsellorMenteeReportHandlers = (db, { now = () => Date.now(
     });
   });
 
-  /** GET /mentees-report/mentee?user_id=...  - one mentee's books and lectures (only his own mentees). */
+  /**
+   * GET /mentees-report/mentee?mentee_id=...  - one mentee's books and lectures (only his own mentees).
+   * NOTE: the login middleware overwrites `user_id` in the query/body with the logged-in user's id, so the
+   * mentee must be sent as `mentee_id`.
+   */
   const getMenteeReport = guard(async (req, resp, me) => {
-    const userId = String(params(req).user_id || "").trim();
-    if (!userId) return fail(resp, 422, "user_id is required");
+    const userId = String(params(req).mentee_id || "").trim();
+    if (!userId) return fail(resp, 422, "mentee_id is required");
     const all = await menteesInScope(db, me, { scope: "all", centerId: null, labelId: null });
     const m = all.find((x) => String(x.user_id) === userId); // ids can come back from the database as numbers
     if (!m) return fail(resp, 404, "Mentee not found.");

@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🐛 [Reading Lecture Feature] - 2026-10-11, 09:15 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Real fix for "Mentee not found" in the Mentees Report. The login step (`apiAuthentication`) replaces `user_id` in the query and body with the logged-in person's id, so `mentees-report/mentee?user_id=...` always received the counsellor's own id (my earlier "number vs text" fix was not the cause, though it is harmless). The endpoint now reads the mentee from `mentee_id`. The tests now also send `user_id` = the counsellor on every call, like the real server does.
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/CounsellorMenteeReportController.js`, `SadhanaGPT/reading-lecture-feature/README.md`, `tests/menteeReport.test.mjs`, `CHANGELOG.md`
+- **Tested**: whole suite = 432 tests, all pass (with a throwaway local database, not yours). NOT tested on the real server.
+- **Frontend**: `GET /api/mentees-report/mentee` must send `mentee_id` instead of `user_id` (website commit does this).
+
 ## 🐛 [Reading Lecture Feature] - 2026-10-11, 08:25 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

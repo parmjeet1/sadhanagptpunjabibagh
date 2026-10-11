@@ -1,3 +1,5 @@
+// NOTE: the login middleware overwrites `user_id` in query/body with the LOGGED-IN user's id, so the mentee is sent
+// as `mentee_id` and these tests always send `user_id` = the counsellor too, like the real server does.
 // Runs the Mentees Report endpoints against a THROWAWAY MariaDB (never a real database).
 // Skipped unless READING_TEST_SOCKET is set, e.g.
 //   READING_TEST_SOCKET=/tmp/rs.sock node --test tests/menteeReport.test.mjs
@@ -104,7 +106,7 @@ test("a counsellor with no mentees gets an empty list", opts, async () => {
 });
 
 test("mentee window: books from the list he sees, circles, dated lectures with speaker kind", opts, async () => {
-  const r = await call(R.getMenteeReport, "C1", { user_id: "S_grp" });
+  const r = await call(R.getMenteeReport, "C1", { mentee_id: "S_grp", user_id: "C1" });
   assert.equal(r.status, 1);
   const d = r.data;
   assert.deepEqual([d.mentee.name, d.mentee.group_name, d.mentee.sub_name], ["Name S_grp", "Sunday Class", "Ladies"]);
@@ -134,18 +136,18 @@ test("mentee window follows the list the mentee sees (counsellor's own list)", o
     INSERT INTO reading_plan_books (plan_id, level_id, book_id, sort_order) VALUES
       (@p, @l, ${book("Elevation to Krishna Consciousness")}, 1), (@p, @l, ${book("Perfection of Yoga")}, 2);
   `);
-  const all = (await call(R.getMenteeReport, "C1", { user_id: "S_prim" })).data; // no group: sees the all-mentees list
+  const all = (await call(R.getMenteeReport, "C1", { mentee_id: "S_prim", user_id: "C1" })).data; // no group: sees the all-mentees list
   assert.deepEqual([all.reading.list.scope, all.reading.total, all.reading.completed], ["all", 2, 0]);
-  const grp = (await call(R.getMenteeReport, "C1", { user_id: "S_all" })).data; // also falls back to it
+  const grp = (await call(R.getMenteeReport, "C1", { mentee_id: "S_all", user_id: "C1" })).data; // also falls back to it
   assert.equal(grp.reading.total, 2);
 });
 
 test("mentee window: only his own mentees; bad input refused", opts, async () => {
-  assert.equal((await call(R.getMenteeReport, "C1", { user_id: "S_other" })).code, 404); // C2's mentee
-  assert.equal((await call(R.getMenteeReport, "C1", { user_id: "nobody" })).code, 404);
-  assert.equal((await call(R.getMenteeReport, "C1", {})).code, 422);
-  assert.equal((await call(R.getMenteeReport, "C2", { user_id: "S_other" })).status, 1);
-  assert.equal((await call(R.getMenteeReport, "C2", { user_id: "S_grp" })).code, 404);
+  assert.equal((await call(R.getMenteeReport, "C1", { mentee_id: "S_other", user_id: "C1" })).code, 404); // C2's mentee
+  assert.equal((await call(R.getMenteeReport, "C1", { mentee_id: "nobody", user_id: "C1" })).code, 404);
+  assert.equal((await call(R.getMenteeReport, "C1", { user_id: "C1" })).code, 422);
+  assert.equal((await call(R.getMenteeReport, "C2", { mentee_id: "S_other", user_id: "C2" })).status, 1);
+  assert.equal((await call(R.getMenteeReport, "C2", { mentee_id: "S_grp", user_id: "C2" })).code, 404);
 });
 
 // Runs without a database: the real database can hand back user ids as NUMBERS; the mentee must still be found.
@@ -162,7 +164,7 @@ test("mentee window finds a mentee whose id comes back as a number", async () =>
   const list = await run(H.getMenteesReportList, {});
   assert.equal(list.data.groups[0].subgroups[0].mentees[0].user_id, "123");
   assert.equal(list.data.groups[0].subgroups[0].mentees[0].last_7_days, 2);
-  const one = await run(H.getMenteeReport, { user_id: "123" });
+  const one = await run(H.getMenteeReport, { mentee_id: "123", user_id: "C1" });
   assert.equal(one.status, 1, JSON.stringify(one));
   assert.equal(one.data.mentee.name, "Num Mentee");
 });
