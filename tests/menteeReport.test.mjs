@@ -147,3 +147,22 @@ test("mentee window: only his own mentees; bad input refused", opts, async () =>
   assert.equal((await call(R.getMenteeReport, "C2", { user_id: "S_other" })).status, 1);
   assert.equal((await call(R.getMenteeReport, "C2", { user_id: "S_grp" })).code, 404);
 });
+
+// Runs without a database: the real database can hand back user ids as NUMBERS; the mentee must still be found.
+test("mentee window finds a mentee whose id comes back as a number", async () => {
+  const stub = {
+    query: async (sql) => {
+      if (/FROM user_counsellors uc/.test(sql)) return [[{ user_id: 123, name: "Num Mentee", center_id: 5, label_id: null, group_name: "G", sub_name: null }]];
+      if (/FROM user_lecture_log/.test(sql) && /GROUP BY/.test(sql)) return [[{ user_id: 123, last7: "2", total: "4" }]];
+      return [[]];
+    },
+  };
+  const H = createCounsellorMenteeReportHandlers(stub, { now: () => FIXED_NOW });
+  const run = async (handler, query) => { let out; await handler({ user: { user_id: "C1" }, query, body: {} }, { json: (x) => { out = x; } }); return out; };
+  const list = await run(H.getMenteesReportList, {});
+  assert.equal(list.data.groups[0].subgroups[0].mentees[0].user_id, "123");
+  assert.equal(list.data.groups[0].subgroups[0].mentees[0].last_7_days, 2);
+  const one = await run(H.getMenteeReport, { user_id: "123" });
+  assert.equal(one.status, 1, JSON.stringify(one));
+  assert.equal(one.data.mentee.name, "Num Mentee");
+});

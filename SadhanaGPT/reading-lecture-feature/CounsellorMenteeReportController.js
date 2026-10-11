@@ -54,17 +54,17 @@ export const createCounsellorMenteeReportHandlers = (db, { now = () => Date.now(
         ids
       );
     }
-    const heardOf = new Map(heard.map((h) => [h.user_id, h]));
+    const heardOf = new Map(heard.map((h) => [String(h.user_id), h]));
     const rows = mentees.map((m) => ({
-      user_id: m.user_id,
+      user_id: String(m.user_id),
       name: m.name,
       group_id: m.center_id === null || m.center_id === undefined ? null : Number(m.center_id),
       group_name: m.group_name || null,
       sub_id: m.label_id === null || m.label_id === undefined ? null : Number(m.label_id),
       sub_name: m.sub_name || null,
-      last_7_days: Number(heardOf.get(m.user_id)?.last7 || 0),
-      total_heard: Number(heardOf.get(m.user_id)?.total || 0),
-      ongoing_books: reading.filter((r) => r.user_id === m.user_id).map((r) => r.title),
+      last_7_days: Number(heardOf.get(String(m.user_id))?.last7 || 0),
+      total_heard: Number(heardOf.get(String(m.user_id))?.total || 0),
+      ongoing_books: reading.filter((r) => String(r.user_id) === String(m.user_id)).map((r) => r.title),
     }));
 
     // group -> sub-group tree; "Ungrouped" (no group) and "No sub-group" always come last
@@ -96,7 +96,7 @@ export const createCounsellorMenteeReportHandlers = (db, { now = () => Date.now(
     const userId = String(params(req).user_id || "").trim();
     if (!userId) return fail(resp, 422, "user_id is required");
     const all = await menteesInScope(db, me, { scope: "all", centerId: null, labelId: null });
-    const m = all.find((x) => x.user_id === userId);
+    const m = all.find((x) => String(x.user_id) === userId); // ids can come back from the database as numbers
     if (!m) return fail(resp, 404, "Mentee not found.");
 
     const today = todayIST(now());
@@ -154,7 +154,7 @@ export const createCounsellorMenteeReportHandlers = (db, { now = () => Date.now(
 
     return ok(resp, "Mentee report fetched successfully!", {
       mentee: {
-        user_id: m.user_id, name: m.name,
+        user_id: String(m.user_id), name: m.name,
         group_id: m.center_id === null || m.center_id === undefined ? null : Number(m.center_id), group_name: m.group_name || null,
         sub_id: m.label_id === null || m.label_id === undefined ? null : Number(m.label_id), sub_name: m.sub_name || null,
       },

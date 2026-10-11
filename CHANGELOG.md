@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🐛 [Reading Lecture Feature] - 2026-10-11, 08:25 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Fix: tapping a mentee in the Mentees Report said "Mentee not found." The mentee's id can come back from the database as a number while the id sent by the website is text, and the two were compared strictly, so they never matched. The ids are now compared as text everywhere in the Mentees Report (list and single mentee), and the list returns `user_id` as text.
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/CounsellorMenteeReportController.js`, `tests/menteeReport.test.mjs` (one new test that uses a number id and needs no database), `CHANGELOG.md`
+- **Tested**: whole suite = 432 tests, all pass (with a throwaway local database, not yours). NOT tested on the real server.
+- **Frontend**: nothing to change.
+
 ## 👥 [Reading Lecture Feature] - 2026-10-11, 02:32 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
