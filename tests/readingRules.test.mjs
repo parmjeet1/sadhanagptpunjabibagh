@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  isValidBookStatus, cleanText, cleanLink, todayIST, isRealDate, statusDates, summarize,
+  isValidBookStatus, cleanText, cleanLink, todayIST, isRealDate, statusDates, summarize, speakerKind, dateDaysAgo, countByKind,
 } from "../SadhanaGPT/reading-lecture-feature/readingRules.js";
 
 test("book statuses", () => {
@@ -65,4 +65,18 @@ test("summarize counts every status, empty status = not started", () => {
     summarize([{ status: "completed" }, { status: "ongoing" }, { status: "skipped" }, { status: "not_started" }, { status: null }, {}]),
     { total: 6, completed: 1, ongoing: 1, skipped: 1, not_started: 3 });
   assert.deepEqual(summarize([]), { total: 0, completed: 0, ongoing: 0, skipped: 0, not_started: 0 });
+});
+
+test("speakerKind: Srila Prabhupada / Guru Maharaj / others", () => {
+  for (const s of ["Srila Prabhupada", "srila prabhupada", "His Divine Grace A.C. Bhaktivedanta Swami Prabhupada", "Prabhupada"]) assert.equal(speakerKind(s), "prabhupada", s);
+  for (const s of ["Guru Maharaj", "guru maharaj", "HH Guru Maharaja", "Guru  Maharaj ji"]) assert.equal(speakerKind(s), "guru", s);
+  for (const s of ["Others", "HH Radhanath Swami", "", null, undefined, "Guru", "Counsellor choice"]) assert.equal(speakerKind(s), "others", String(s));
+});
+
+test("dateDaysAgo and countByKind", () => {
+  assert.equal(dateDaysAgo("2026-10-09", 6), "2026-10-03");
+  assert.equal(dateDaysAgo("2026-03-02", 2), "2026-02-28");
+  assert.equal(dateDaysAgo("2026-01-01", 1), "2025-12-31");
+  assert.deepEqual(countByKind([{ speaker: "Srila Prabhupada" }, { speaker: "Guru Maharaj" }, { speaker: "x" }, { speaker: "Srila Prabhupada" }]), { prabhupada: 2, guru: 1, others: 1 });
+  assert.deepEqual(countByKind([]), { prabhupada: 0, guru: 0, others: 0 });
 });

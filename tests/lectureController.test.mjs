@@ -44,7 +44,7 @@ test("default list for a person without a counsellor list; counsellor's list for
   assert.deepEqual(titles(d), ["BG 2.13 Lecture", "SB 1.2.6 Lecture"]);
   assert.equal(d.data.lectures[0].title_hi, "गीता 2.13 प्रवचन");
   assert.ok(d.data.lectures.every((l) => !l.heard && !l.is_new));
-  assert.deepEqual(d.data.summary, { recommended: 2, heard: 0, total_heard: 0 });
+  assert.deepEqual(d.data.summary, { recommended: 2, heard: 0, total_heard: 0, heard_last_7_days: 0, by_kind: { prabhupada: 0, guru: 0, others: 0 } });
   assert.deepEqual(titles(await call(H.getLecturePlan, "S_all")), ["C1 own lecture"]);
   assert.equal((await call(H.getLecturePlan, "S_all")).data.lectures[0].is_new, true); // NEW until heard
   assert.equal((await call(H.getLecturePlan, "S_other")).data.plan.scope, "default");
@@ -58,7 +58,7 @@ test("mark heard / un-mark; copy of title kept; others unaffected", opts, async 
   assert.equal(r.data.heard_on, "2026-10-01");
   let p = (await call(H.getLecturePlan, "S_none")).data;
   assert.deepEqual([p.lectures[0].heard, p.lectures[0].heard_on], [true, "2026-10-01"]);
-  assert.deepEqual(p.summary, { recommended: 2, heard: 1, total_heard: 1 });
+  assert.deepEqual(p.summary, { recommended: 2, heard: 1, total_heard: 1, heard_last_7_days: 0, by_kind: { prabhupada: 1, guru: 0, others: 0 } }); // heard 8 days ago: not in the last 7 days
   assert.deepEqual([p.log.length, p.log[0].title, p.log[0].is_custom], [1, "BG 2.13 Lecture", false]);
   assert.equal((await call(H.getLecturePlan, "S_prim")).data.summary.total_heard, 0);
   r = await call(H.unmarkHeard, "S_none", { lecture_id: lec.lecture_id });
@@ -110,4 +110,20 @@ test("remove-my-lecture does not remove a ticked recommended lecture (use un-mar
   const logId = (await call(H.getLecturePlan, "S_none")).data.log.find((l) => l.lecture_id === lec.lecture_id).log_id;
   assert.equal((await call(H.removeMyLecture, "S_none", { log_id: logId })).code, 404);
   assert.equal((await call(H.getLecturePlan, "S_none")).data.lectures[1].heard, true);
+});
+
+test("circles: every lecture heard counts by speaker kind (recommended + own), last 7 days counted separately", opts, async () => {
+  const mine = async (body) => call(H.addMyLecture, "S_other", body);
+  assert.equal((await mine({ title: "Own PB talk", speaker: "Srila Prabhupada", heard_on: "2026-10-08" })).data.speaker_kind, "prabhupada");
+  assert.equal((await mine({ title: "Own guru talk", speaker: "Guru Maharaj", heard_on: "2026-10-07" })).data.speaker_kind, "guru");
+  assert.equal((await mine({ title: "Own other talk", speaker: "Others", heard_on: "2026-09-01" })).data.speaker_kind, "others");
+  // a RECOMMENDED Srila Prabhupada lecture also adds to the Srila Prabhupada circle
+  const rec = (await call(H.getLecturePlan, "S_other")).data.lectures[0];
+  assert.equal(rec.speaker_kind, "prabhupada");
+  assert.equal((await call(H.markHeard, "S_other", { lecture_id: rec.lecture_id, heard_on: "2026-10-09" })).status, 1);
+  const p = (await call(H.getLecturePlan, "S_other")).data;
+  assert.deepEqual(p.summary.by_kind, { prabhupada: 2, guru: 1, others: 1 });
+  assert.deepEqual([p.summary.total_heard, p.summary.heard, p.summary.heard_last_7_days], [4, 1, 3]);
+  assert.deepEqual(p.log.map((l) => l.heard_on), ["2026-10-09", "2026-10-08", "2026-10-07", "2026-09-01"]); // newest first
+  assert.deepEqual(p.log.map((l) => l.speaker_kind), ["prabhupada", "prabhupada", "guru", "others"]);
 });

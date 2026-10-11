@@ -3,7 +3,7 @@
 // tested against a throwaway database); real wiring is in ./index.js. The person always comes
 // from the login token. Needs the tables in DB-PROPOSAL.sql.
 
-import { cleanText, cleanLink, todayIST, cleanHeardOn } from "./readingRules.js";
+import { cleanText, cleanLink, todayIST, cleanHeardOn, speakerKind, countByKind, dateDaysAgo } from "./readingRules.js";
 import { resolvePlan } from "./ReadingStudentController.js";
 
 const NEW_BADGE_DAYS = 14;
@@ -32,6 +32,7 @@ export const createLectureHandlers = (db, { now = () => Date.now() } = {}) => {
     lecture_id: r.lecture_id === null || r.lecture_id === undefined ? null : Number(r.lecture_id),
     title: r.title,
     speaker: r.speaker,
+    speaker_kind: speakerKind(r.speaker),
     link: r.link,
     heard_on: r.heard_on,
     is_custom: r.lecture_id === null || r.lecture_id === undefined,
@@ -65,6 +66,7 @@ export const createLectureHandlers = (db, { now = () => Date.now() } = {}) => {
         title: r.title,
         title_hi: r.title_hi,
         speaker: r.speaker,
+        speaker_kind: speakerKind(r.speaker),
         link: r.link,
         topic: r.topic,
         heard,
@@ -77,7 +79,15 @@ export const createLectureHandlers = (db, { now = () => Date.now() } = {}) => {
       plan: { plan_id: Number(plan.id), scope: plan.scope, is_default: plan.scope === "default" },
       lectures,
       log: log.map(logShape),
-      summary: { recommended: lectures.length, heard: lectures.filter((l) => l.heard).length, total_heard: log.length },
+      // by_kind counts EVERY lecture heard (recommended ones and the ones he added himself), so a recommended
+      // Srila Prabhupada lecture also adds to the Srila Prabhupada circle.
+      summary: {
+        recommended: lectures.length,
+        heard: lectures.filter((l) => l.heard).length,
+        total_heard: log.length,
+        heard_last_7_days: log.filter((l) => l.heard_on >= dateDaysAgo(todayIST(now()), 6)).length,
+        by_kind: countByKind(log),
+      },
     });
   });
 
@@ -140,7 +150,7 @@ export const createLectureHandlers = (db, { now = () => Date.now() } = {}) => {
       [me, title, speaker, link, heardOn]
     );
     return ok(resp, "Lecture added to your list.", {
-      log_id: Number(ins.insertId), lecture_id: null, title, speaker, link, heard_on: heardOn, is_custom: true,
+      log_id: Number(ins.insertId), lecture_id: null, title, speaker, speaker_kind: speakerKind(speaker), link, heard_on: heardOn, is_custom: true,
     });
   });
 

@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🎧 [Reading Lecture Feature] - 2026-10-11, 02:32 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The Hearing screen now knows who gave each lecture. Every lecture (recommended or typed in) is classed as **Srila Prabhupada**, **Guru Maharaj** or **Others**, worked out from the existing speaker text (so the website's drop-down values, or an Excel sheet's Speaker column, are enough: NO database change). `GET /api/lectures/plan` now also returns `speaker_kind` on every lecture and every history row, and the summary now has `heard_last_7_days` and `by_kind` (`prabhupada`, `guru`, `others`). `by_kind` counts EVERY lecture heard, so a recommended Srila Prabhupada lecture also adds to the Srila Prabhupada circle. `POST /api/lectures/add-my-lecture` also returns `speaker_kind`. History is already newest first (the website groups it by date).
+- **Files touched**: `SadhanaGPT/reading-lecture-feature/readingRules.js` (new helpers `speakerKind`, `dateDaysAgo`, `countByKind`), `LectureStudentController.js`, `tests/readingRules.test.mjs`, `tests/lectureController.test.mjs`, `CHANGELOG.md`
+- **Tested**: helpers and the circle numbers (own + recommended, last 7 days boundary) pass on a throwaway local database (not yours).
+- **Frontend**: Hearing tab should show circles from `summary.by_kind`, colour rows by `speaker_kind`, offer a Srila Prabhupada / Guru Maharaj / Others drop-down when adding a lecture (send it as `speaker`; for Others a name may be typed), and group the history by `heard_on`.
+
 ## 📚 [Reading Lecture Feature] - 2026-10-09, 08:40 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

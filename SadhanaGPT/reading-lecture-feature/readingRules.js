@@ -75,3 +75,25 @@ export const cleanHeardOn = (value, today) => {
   if (!isRealDate(value) || value > today) return undefined;
   return value;
 };
+
+/**
+ * Which kind of speaker a lecture has, from the speaker text: "prabhupada", "guru" (Guru Maharaj) or "others".
+ * (The speaker is picked from a drop-down: Srila Prabhupada / Guru Maharaj / Others, and an Excel sheet
+ * may have the same names, so matching on the text is enough: no extra database column is needed.)
+ */
+export const speakerKind = (speaker) => {
+  const s = String(speaker ?? "").toLowerCase();
+  if (/prabhup/.test(s)) return "prabhupada";
+  if (/\bguru\s*maharaj/.test(s)) return "guru";
+  return "others";
+};
+
+/** The date n days before a YYYY-MM-DD date, as YYYY-MM-DD. */
+export const dateDaysAgo = (date, n) => new Date(Date.parse(`${date}T00:00:00Z`) - n * 86400000).toISOString().slice(0, 10);
+
+/** Counts of heard lectures by speaker kind. rows: [{speaker}] */
+export const countByKind = (rows) => {
+  const out = { prabhupada: 0, guru: 0, others: 0 };
+  for (const r of rows) out[speakerKind(r.speaker)] += 1;
+  return out;
+};
