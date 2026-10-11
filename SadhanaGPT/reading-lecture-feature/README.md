@@ -31,7 +31,7 @@ Lectures endpoints (same headers; recommended lectures + the person's own log):
 
 | Method + path | Body | What it does |
 |---|---|---|
-| GET `/api/lectures/plan` | - | The recommended lectures this person sees (ticked if heard, NEW badge) and his own log (newest first, includes lectures he typed in). |
+| GET `/api/lectures/plan` | - | The recommended lectures this person sees (ticked if heard, NEW badge) and his own log (newest first, includes lectures he typed in). Every lecture / log row has `speaker_kind` (`prabhupada` / `guru` / `others`, from the speaker text). `summary` has `recommended`, `heard`, `total_heard`, `heard_last_7_days` and `by_kind` (counts of EVERY lecture heard, recommended or typed in). |
 | POST `/api/lectures/mark-heard` | `lecture_id`, optional `heard_on` (default today, not in the future) | Ticks a recommended lecture (title/speaker/link are copied into his log). |
 | POST `/api/lectures/unmark-heard` | `lecture_id` | Un-ticks it. |
 | POST `/api/lectures/add-my-lecture` | `title`, optional `speaker` (default Srila Prabhupada), `link`, `heard_on` | A lecture he typed in himself. |
@@ -55,6 +55,8 @@ Counsellor Lectures endpoints (counsellors only, own groups / mentees only; an E
 | POST `/api/lectures/counsellor/save-plan` | `group_id?`, `sub_id?`, `lectures: [{lecture_id} or {title, title_hi?, speaker?, link?, topic?}]` | Saves the whole list in the order sent (up to 500). A row with the same title + link as one of his lectures reuses it. Only really new rows get the NEW badge. |
 | POST `/api/lectures/counsellor/reset-plan` | `group_id?`, `sub_id?` | Back to the wider list / system default. |
 | GET `/api/lectures/counsellor/mentees-lectures` | `group_id?`, `sub_id?` | Per mentee: lectures heard (newest first, recommended vs typed in), counts, last heard date. |
+| GET `/api/mentees-report/list` | `group_id?`, `sub_id?` | The "Mentees Report" tab list: `groups` -> `subgroups` -> `mentees` (people with no group under "Ungrouped", no sub-group under "No sub-group", always last). Each mentee: `last_7_days` (lectures heard today + the 6 days before), `total_heard`, `ongoing_books` (names). Inside a sub-group the mentee who heard the MOST last week is first. |
+| GET `/api/mentees-report/mentee` | `user_id` | One mentee's window (only the counsellor's own mentees): `reading` (the list he sees: `total`, `completed`, `ongoing`, `levels` with every book's status/days, `own_books`) and `lectures` (`last_7_days`, `total_heard`, `by_kind`, `recommended_total`, `recommended_heard`, `items` newest first with `speaker_kind`, `heard_on`, `link`, `recommended`). |
 
 (The groups list for the scope picker is `GET /api/reading/counsellor/scopes`; it also tells whether a custom lecture list exists.)
 

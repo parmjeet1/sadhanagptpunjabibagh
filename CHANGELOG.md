@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 👥 [Reading Lecture Feature] - 2026-10-11, 02:32 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Two new counsellor-only endpoints for the "Mentees Report" tab. `GET /api/mentees-report/list` (optional `group_id`, `sub_id`): mentees arranged group -> sub-group (no group = "Ungrouped", last), each with the lectures heard in the last 7 days, total heard and the book(s) being read now; the mentee who heard the most last week comes first. `GET /api/mentees-report/mentee?user_id=...`: one mentee's window: books completed out of the list HE sees (default or the counsellor's own), every book's status, his own added books, lectures heard in the last 7 days, and the full dated lecture history with the kind of speaker and whether it was recommended. A counsellor can only open his own mentees. The older `mentees-status` and `mentees-lectures` endpoints are untouched (no longer needed by the new design, can be removed later).
+- **Files touched**: new `SadhanaGPT/reading-lecture-feature/CounsellorMenteeReportController.js`; `index.js` and `routes/Routes.js` (2 routes, role counsellor); `SadhanaGPT/reading-lecture-feature/README.md`; new `tests/menteeReport.test.mjs`; `CHANGELOG.md`
+- **Tested**: whole suite = 431 tests, all pass with a throwaway local database (not yours); the new tests caught and fixed a sorting bug ("Ungrouped" was not last). NOT tested on the real server (the server cannot start here).
+- **Frontend**: new "Mentees Report" tab: group / sub-group pickers on top, list from `groups`, tap a mentee -> window from `mentees-report/mentee`.
+
 ## 🎧 [Reading Lecture Feature] - 2026-10-11, 02:32 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
