@@ -1,3 +1,4 @@
+import { toDateOnly } from "../../../utils/dateOnly.js";
 import { configDotenv } from "dotenv";
 import bcrypt from "bcrypt";
 
@@ -1572,6 +1573,9 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
   if (!isValid) {
     return resp.json({ status: 0, code: 422, message: errors });
   }
+  if (dobVal === undefined) {
+    return resp.json({ status: 0, code: 422, message: ["Please enter a valid date of birth (YYYY-MM-DD)."] });
+  }
 
   /* ---------------------------
      CHECK USER EXISTS
@@ -2150,7 +2154,9 @@ console.log("dependency",dependency)
 });
 export const editProfile = asyncHandler(async (req, resp) => {
   const { user_id, name, mobile, email, dob, birthday } = mergeParam(req);
-  const dobVal = dob || birthday || null;
+  // The birthday column is a plain DATE. Apps may send "2014-06-15" or a full timestamp
+  // ("2014-06-15T00:00:00.000Z"); always save "YYYY-MM-DD" (a timestamp made the database refuse the save).
+  const dobVal = toDateOnly(dob || birthday || null);
 
   /* ---------------------------
      VALIDATION

@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 🐛 [Profile] - 2026-10-13, 04:20 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Fix: saving a profile (`POST /api/edit-profile`) failed with "Incorrect date value: '2014-06-15T00:00:00.000Z' for column 'birthday'". The database sends a saved birthday back to the apps as a full timestamp, and the profile window sent that same timestamp back unchanged when only the name or mobile was edited; the database refused it. The server now turns whatever date it receives into a plain `YYYY-MM-DD` before saving (a timestamp at midnight UTC keeps its date; any other timestamp is read as an India date), and answers 422 "Please enter a valid date of birth (YYYY-MM-DD)." for something that is not a real date. Empty still clears the birthday as before.
+- **Files touched**: new `utils/dateOnly.js`; `SadhanaGPT/Student/Controllers/StudentController.js` (`editProfile` only); new `tests/dateOnly.test.mjs`; `CHANGELOG.md`
+- **Tested**: whole suite = 437 tests, all pass (the 5 new ones cover the date conversion). The `editProfile` function itself was NOT run against a database here (it needs the real users table); only the date conversion was tested, plus a syntax check. NOT tested on the real server.
+- **Note (not changed)**: onboarding (`onBoarding`/`registerUser`) also saves `birthday` as received; it was not part of this fix.
+- **Frontend**: the profile window now sends `YYYY-MM-DD` only (website commit). Old app versions that still send a timestamp now work too.
+
 ## 🐛 [Reading Lecture Feature] - 2026-10-11, 09:15 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
