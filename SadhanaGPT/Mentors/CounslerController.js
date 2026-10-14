@@ -17,6 +17,7 @@ import { chatWithAI, generateStudentInsights } from "../../utils/groqService.js"
 import ExcelJS from "exceljs";
 import { Parser } from "json2csv";
 import { uploadFiles } from "../../utils/fileUpload.js";
+import { effectiveSchemeSql } from "../Controllers/Marking Rules/effectiveScheme.js";
 
 
 export const oldLableList = asyncHandler(async (req, resp) => {
@@ -3802,7 +3803,7 @@ export const exportBulkStudentReports = asyncHandler(async (req, resp) => {
             (SELECT MAX(mr.marks) FROM marking_rules mr
               WHERE mr.master_activity_id = fa.master_activity_id
                 AND mr.status = 1 AND mr.frequency = 'daily'
-                AND mr.scheme_id = COALESCE(NULLIF(l.marking_scheme_id, 1), cl.marking_scheme_id, 1)),
+                AND mr.scheme_id = ${effectiveSchemeSql()}),
             (SELECT MAX(mr2.marks) FROM marking_rules mr2
               WHERE mr2.master_activity_id = fa.master_activity_id
                 AND mr2.status = 1 AND mr2.frequency = 'daily' AND mr2.scheme_id = 1),

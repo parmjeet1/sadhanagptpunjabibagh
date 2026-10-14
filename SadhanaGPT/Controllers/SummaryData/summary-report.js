@@ -32,7 +32,8 @@ export const dailyStudentSummary = async (userId, targetDate) => {
         if (completedActivities === totalActivitiesCount && totalActivitiesCount > 0) {
 
             const marksQuery = `SELECT SUM(m.marks) as max_marks FROM fix_activities f
-                LEFT JOIN marking_rules m ON f.master_activity_id = m.master_activity_id
+                LEFT JOIN activities a ON (f.master_activity_id = a.id OR (f.master_activity_id IS NULL AND LOWER(TRIM(f.name)) = LOWER(TRIM(a.name))))
+                LEFT JOIN marking_rules m ON COALESCE(f.master_activity_id, a.id) = m.master_activity_id
                 WHERE f.user_id = ? 
                   AND m.status = 1 
                   AND m.frequency = 'daily'

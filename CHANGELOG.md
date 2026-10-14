@@ -1,5 +1,190 @@
 # Changelog - SadhanaGPT Backend
 
+## 🔔 [Notifications] - 2026-10-08, 09:37 AM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Two push notifications were switched off. (1) The daily 9:00 AM "your N-day average fell below target" alert to students is gone; the other 9:00 AM alert ("We Miss You! - no activity logged for N days") still works. (2) The daily 9:15 AM "Mentee Alerts - you have X mentees who need attention" push to counsellors is no longer scheduled. The mentor-alert code is left in the file (not deleted) so it can be turned back on by adding one schedule line.
+- **Files touched**: `SadhanaGPT/cronjobs/WebPushNotification.js`, `CHANGELOG.md`
+- **Tested**: file loads without errors (syntax check) and the 382 automatic checks pass. NOT tested: the live cron jobs (they only run on the server); after deploy, confirm the log shows no 9:15 AM mentor job and no "Activity Alert" pushes.
+- **Frontend**: no change needed.
+
+## 🤖 [Chatbot] - 2026-10-07, 05:35 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: (1) Misspelled day words are now understood. A student typed "Cal ki chanting 3" (meaning "kal"): no day was found, so the entry would have been saved for TODAY instead of yesterday. Now "cal", "kl", "caal" (only when followed by ki/ka/ke/ko/ne/me/mein/tak, or at the start of the message), "kaal", "kall", and the typos "yesterdy", "yestarday", "yesturday", "yestrday", "parsso", "paraso", "parsu", "parsoo", "parsho" are read as yesterday / the day before. Things like "chanting 3 cal" or "200 cal burnt" are NOT taken as a day. (2) The OpenAI prompt (`utils/openaiService.js`) now tells the AI: the same misspelled day words mean kal/parso; only fill an activity the message really talks about (so "chanting 3" is the round count only, not also the completion time); a time activity gets only a clock time, a yes/no activity only yes/no, a number activity only a number; and if the message is about an activity that is not in the list, answer "unrecognized" instead of picking a similar one.
+- **Files touched**: `utils/assistantDate.js`, `utils/openaiService.js`, `tests/assistantDate.test.mjs`, `CHANGELOG.md`
+- **Tested**: 382 automatic checks pass (27 new for the spellings, including cases that must NOT count as a day); the 3,000-sentence test still shows 0 wrong answers. NOT tested: the new OpenAI prompt wording (no OpenAI key here), so please try "Cal ki chanting 3" and a message about a missing activity with "Ask AI to re-check" on the test site. The server-side check of OpenAI's values by type (fix 3) is not done yet.
+- **Frontend**: no change needed.
+
+## 🤖 [Chatbot] - 2026-10-07, 05:45 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: When a student mentions an activity they do not have (for example "study 25 minute" with no Study activity, or "chanting poori hui 2 baje" with no Chanting Completion Time), the chatbot now answers by itself instead of sending the message to OpenAI: "I understood this as Study, but it isn't in your sadhana list, so I can't save it. Your activities: ... If you think I got this wrong, tap 'Ask AI to re-check'." It does this only when it is sure: the message is read again with pretend versions of the activities the student lacks, and it must understand the WHOLE message that way (nothing left over or unclear). Anything less sure still goes to OpenAI. A student whose activity NAME looks like the kind (e.g. "Study Hours") is never told it is missing. If a message mixes real and missing activities ("16 rounds, study 30 min"), the real part comes back as normal updates for confirmation, plus a `missing` list. The "Ask AI to re-check" button (forced AI) skips this check, so the student can ask OpenAI once. New answer type: `intent: "missing_activity"` with `missing` (names) and `clarification` (the sentence).
+- **Files touched**: `utils/assistantMissing.js` (new), `SadhanaGPT/Student/Controllers/AssistantController.js`, `tests/assistantMissing.test.mjs` (new), `CHANGELOG.md`
+- **Tested**: 362 automatic checks pass (7 new). On 3,000 made-up messages with one activity removed from the list (completion time, day rest, hearing, reading, sleep, wake-up, mangal aarti): all messages about the removed activity (about 160 to 660 each) were answered correctly and 0 were wrongly claimed; the 3,000-sentence accuracy test still shows 0 wrong answers. NOT tested: live server/database/OpenAI.
+- **Frontend**: needs the matching change in the website repo: show the answer of type `missing_activity` with an "Ask AI to re-check" button, and show a note when `missing` comes with normal updates. Until then, the website shows the sentence as a normal message (without the button), so deploy both together.
+
+## 🤖 [Chatbot] - 2026-10-07, 05:00 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: New API `GET /assistant/marks/by-date/:date` (for example `/assistant/marks/by-date/2026-10-06`). It gives the marks for a past day in the same shape as today's marks (marks, maxMarks, previous day's marks, activities recorded, total activities), so the chat can show marks after an entry for "kal". It only reads data and changes nothing. Bad dates, future dates and dates older than a year are refused with a 422 message. Today's marks API works as before; both now use one shared calculation, which is the same marks engine the dashboard uses. Needs deploying to the server for the website change to work.
+- **Files touched**: `SadhanaGPT/Student/Controllers/AssistantController.js`, `routes/Routes.js`, `CHANGELOG.md`
+- **Tested**: syntax check passes on both files; the 355 existing automatic checks still pass. NOT tested: the new API itself against a real database (no database here), so please try `/assistant/marks/by-date/<yesterday>` once with a student login after deploying. No database change is needed.
+- **Frontend**: needs the matching change (`getMarksForDate` in the adapter and the chat), done in the website repo.
+
+## 🤖 [Chatbot] - 2026-10-07, 03:45 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: (1) When the OpenAI step fails, the chatbot now says "OpenAI is taking time. Please try with another phrase, e.g. '16 rounds, 30 min hearing, woke at 4:25'." instead of "Something went wrong understanding that...". (2) Chanting completion time was checked in English, Hinglish and Hindi ("chanting poori hui 2 baje", "16 rounds 2 baje poore hue", "japa 2 pm tak complete", "mala poori 10:30 baje raat", "चैंटिंग 2 बजे पूरी हुई", "chanting khatam kiya 11 baje raat ko"); it already worked, now covered by tests. One gap fixed: "12 baje" is only saved as 12:00 noon when the message says dopahar/noon, as 00:00 when it says raat/night, and otherwise goes to OpenAI, because it could mean either. Note: a student who has no "Chanting Completion Time" activity still goes to OpenAI for such a message, since there is nowhere to save it.
+- **Files touched**: `SadhanaGPT/Student/Controllers/AssistantController.js`, `utils/assistantParser.js`, `tests/assistantParser.test.mjs`, `CHANGELOG.md`
+- **Tested**: 355 automatic checks pass (14 new); the 3,000-sentence test still has 0 wrong answers; controller syntax check passes. NOT tested: the live server or OpenAI.
+- **Frontend**: optional. The website has its own text "I couldn't reach the assistant just now" (`src/sadhna-assistant/adapters/RealSadhnaGptAdapter.js`, line 155) for when the server does not answer at all (timeout/network). Not changed, as it also covers a student being offline.
+
+## 🤖 [Chatbot] - 2026-10-07, 05:10 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The chatbot's fast first step now knows the nicknames of every activity in the real master list (16 activities, not 15), not only the 8 basic kinds. Study (study, adhyayan, अध्ययन), Menial Service (seva, service, cleaning, सेवा), Shloka Memorisation (shloka, verse, yaad kiya, कंठस्थ, श्लोक), Book Distribution (sankirtan, bd, vitran, वितरण), Prabhupada Book Reading (sp book, prabhupada ki book), Prabhupada Lecture Hearing (sp lecture, prabhupada pravachan), Spiritual Master Hearing (guru maharaj, gurudev, sb class...), Misc Book Reading (misc books, other books). Several of these can be in one message ("sp book 20 min aur sp lecture 30 min", "seva 40 min aur study 1 hour"). Book Distribution always goes to OpenAI when the unit is unclear (books or minutes?). The word lists are in `utils/assistantLexicon.js`.
+- **Files touched**: `utils/assistantLexicon.js`, `utils/assistantParser.js`, `tests/assistantParser.test.mjs`, `CHANGELOG.md`
+- **Tested**: 341 automatic checks pass (18 new, using the 16-activity list). The 3,000-sentence test still shows 0 wrong answers (about 90% understood without OpenAI), adding a stray number still always goes to OpenAI. NOT tested: live server, database, OpenAI. The real "type" of Book Distribution (books count or minutes) is a guess; if it is saved as a number of books, only messages with a clear unit go to OpenAI.
+- **Frontend**: no change needed.
+
+## 🤖 [Chatbot] - 2026-10-07, 04:10 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Added the common nicknames for every sadhana activity to the chatbot's fast first step, in English, Hinglish and Hindi (Devanagari), kept in one easy word list: `utils/assistantLexicon.js`. About 280 words, for example: chanting (japa, jap, jaap, mala, maala, harinam, hari naam, mantra, round, rd, जप, माला, राउंड); hearing (suna, pravachan, katha, class, satsang, shravan, lecture, sb class, gita class, श्रवण, प्रवचन); reading (padha, padhai, pustak, granth, swadhyay, sb, bg, cc, bhagavatam, gita, पढ़ाई, स्वाध्याय); day rest (aaram, vishram, nap, power nap, siesta, "din ki neend", आराम); sleep (soya, so gaya, so gaye, neend, bed, bedtime, lights off, सोया, नींद); wake-up (utha, uth gya, jaga, uthna, wokeup, "aankh khuli", "neend khuli", उठा, जागा); mangal aarti (mangal / mangla / mangala + aarti, arti, arati, aratik, morning aarti, bare "aarti", मंगल आरती). Also more spellings of units (ghnta, ghantey, minat, minit, rd, maala), "bje / बजे", Hindi number words (सोलह माला, दो घंटे), and Hindi time idioms (साढ़े चार बजे, सवा पाँच बजे, पौने पाँच बजे). A word inside a longer nickname goes with the longer one ("gita class" is hearing, "neend khuli" is wake-up). Other aartis (sandhya, gaur, shayan, dhoop, bhog, guru, narsimha, tulasi...) are never taken for Mangal Aarti; those messages go to OpenAI. To teach the chatbot a new nickname later, add it to the list in that file and add one test line.
+- **Files touched**: `utils/assistantLexicon.js` (new), `utils/assistantParser.js` (now reads the word list), `tests/assistantParser.test.mjs`, `CHANGELOG.md`
+- **Tested**: 323 automatic checks pass (74 new): every nickname in the list is tested on its own in a sentence, no nickname belongs to two kinds of activity, other aartis are never read as Mangal Aarti, plus 60+ sentences with the new words (Hindi idioms, spelling variants). The earlier 3,000-sentence test still shows 0 wrong answers (about 90% understood without OpenAI); a message takes about 0.15 ms. NOT tested: the live server, the database or the OpenAI step.
+- **Frontend**: no change needed.
+
+## 🤖 [Chatbot] - 2026-10-07, 03:30 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The chatbot's fast first step (the one that runs before OpenAI) is rewritten as a new reader in `utils/assistantParser.js`. Before, it matched the activity's exact name, so with real names like "Hearing(MIN)", "Reading(MIN)", "Day Rest(MIN)" or "Mangal Aarti Attended" almost nothing matched and about 70% of messages went to OpenAI. Now it finds the activity by meaning (hearing / pravachan / suna / lecture, reading / padha / book, day rest / aaram / "din me soya", mangal aarti, wake-up / utha, sleep / soya, chanting / japa / mala / round) and treats names with extra words ("Hearing Srila Prabhupada" vs "Hearing(MIN)") correctly. It splits the message into parts so each number goes to its own activity (no more 30 min hearing landing in reading, or one time given to two activities). Hours and fractions become minutes (1 ghanta = 60, dedh ghanta = 90, aadha ghanta = 30); "saade char baje" = 4:30; "did not attend", "nhi kiya", "mis ho gayi" are read as No; "chanting nahi hui" is saved as 0; rounds must be 0-64 and durations up to 12 hours; "14 mala" and "japa 14" work without the word chanting; a wake/sleep/completion time is only used by its own activity. Rule of the new reader: if ANY part of the message is unclear (an unused number, a correction word such as "actually", "sorry", "instead", a question, a range, a negative number, two activities that could match), the whole message goes to OpenAI instead of being saved half-understood. The old matching code is removed from `AssistantController.js`.
+- **Files touched**: `utils/assistantParser.js` (new), `SadhanaGPT/Student/Controllers/AssistantController.js`, `tests/assistantParser.test.mjs` (new), `tests/helpers/sentenceGenerator.mjs` (new, made-up test messages only, no real data), `CHANGELOG.md`
+- **Tested**: 249 automatic checks pass (`node --test "tests/*.test.mjs"`, no package needed), including 3,000 made-up messages in English, Hinglish and Hindi: about 90% are understood without OpenAI and 0 are accepted with a wrong answer; adding a stray number to a message always sends it to OpenAI; 5,000 random word mixes and 100,000-character inputs do not break it; a normal message takes about 0.08 ms. The controller passes a syntax check. NOT tested: the live server, the database, or the OpenAI step (no database or key here). The percentages come from test messages written by me, so real users may differ.
+- **Frontend**: no change needed (same request and answer shape).
+
+## 🤖 [Chatbot] - 2026-10-07, 02:20 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The chatbot now reads "which day is this about?" with a new, separate date reader (`utils/assistantDate.js`). Fixed: "1/2 ghanta" and "2-3 hours" or "5-6 rounds" were wrongly read as dates (1 Feb, 2 Mar, 5 Jun); "3 din pehle" and "N days ago" now use the real number (before, every "din pehle" meant 2 days) and that number is no longer mistaken for a chanting count; dates like 22/09, 05/10, 2026-09-22, "22 september", "5th oct", "oct 5th" now work; a year in the sentence is respected; dates just after New Year ("28 dec" said in January) go to last year; weekdays (monday, somvar, pichle somvar) work; Hindi (Devanagari) आज / कल / परसों / ३ दिन पहले work. If a message names two different days ("kal ... aaj ..."), it is now passed to the AI to decide instead of picking one. A date sent back by the AI is checked (real date, not in the future, not older than a year) before use. The old date code in `AssistantController.js` is removed.
+- **Files touched**: `utils/assistantDate.js` (new), `SadhanaGPT/Student/Controllers/AssistantController.js`, `tests/assistantDate.test.mjs` (new), `CHANGELOG.md`
+- **Tested**: 107 new automatic checks (run with `node --test "tests/*.test.mjs"`, no package needed), all pass; 1,656 generated test sentences (English, Hinglish, Hindi): wrong dates went from 328 to 0; the controller file passes a syntax check. Not run against the live server or the OpenAI step (no database or key here).
+- **Frontend**: no change needed (same request and answer shape).
+
+## ✨ [Feature] - 2026-10-07, 11:08 AM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Negative (penalty) marks, such as -5, are now supported in custom marking schemes, like in the counsellor's scheme builder. Two small safety fixes for it: the day's percentage never shows below 0%, and a scheme whose rules are all negative still marks one rule as its maximum. No database change (the marks columns already hold negatives).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `CHANGELOG.md`
+- **Tested**: 7 new local checks (save, store, read back, score, percentage, ranking) plus the earlier 31 + 6 + 7 checks, on a copy of the data (SQLite, not MySQL).
+- **Frontend**: the custom scheme editor lets the user type or toggle a minus sign (see the frontend entry).
+
+## 🐛 [Fix] - 2026-10-07, 09:15 AM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: The "most marks possible" part of the daily score no longer uses a nested `SELECT DISTINCT ... ) f` table; it reads `fix_activities` directly and groups by activity. Same result (checked on a copy of real data: 85 students x 4 schemes, 340 comparisons, 0 differences). Made because the server reported `Unknown column 'f.master_activity_id' in 'WHERE'` for this query; the cause is not confirmed (the old query was unchanged by the My Marking Scheme work and no code uses the removed `users.personal_marking_scheme_id` column). No database change.
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: 31 + 6 local checks pass; old and new query give identical totals on MariaDB 10.11 with real data. Not tried on your MariaDB 11 server.
+- **Frontend**: nothing needed.
+
+## ✨ [Feature] - 2026-10-06, 08:41 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: `/my-marking-scheme` now also sends the counsellor scheme that applies to the student (sub-group first, else group): its rules, its level, and the name and email of the counsellor who made it. Sent only when such a scheme applies; nothing is sent about any other scheme or person. No database change.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/PersonalSchemeController.js`, `CHANGELOG.md`
+- **Tested**: 7 local checks on a copy of the data (group scheme, sub-group wins, none -> empty, only name and email sent, no login refused). Ran on SQLite, not MySQL.
+- **Frontend**: the Marks window shows a read-only "Counsellor Scheme" tab from the new `counsellor_scheme` field.
+
+## 2026-10-06, 8:05 PM IST - Feature (marks of the day activity by activity, for the "Today's Sadhana Score" window)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: New route `POST /daily-marks-breakdown` with `{ "activity_date": "YYYY-MM-DD" }` (the person always comes from the login token; today if no date). It answers, for each of the person's activities that carry marks: the name, the value entered, the marks earned and the most that activity can give under the scheme that applies to the person (their own scheme's rule for the activity, else the default scheme's), plus the day's totals, the scheme id and where it comes from (`subgroup`, `group`, `personal`, `default`). The totals are worked out the same way as `/daily-score`.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/MarksBreakdownController.js` (new), `routes/Routes.js`, `CHANGELOG.md`
+- **Tested**: Replayed a student from the 11:33 UTC test-database export with a copy of the real code (6 checks, all passing, file `t009.mjs` in the scratchpad): 8 activities listed; the totals equal the day score (80/175); per-activity earned and maximum are right (Chanting 30 / 30 under the group scheme); with an own scheme switched on the chanting maximum follows it (100) and the totals still equal the day score; no login is refused. Syntax check. The repo has no automatic tests or linter. Not run on the real server.
+- **Database**: none.
+- **Frontend**: used by the new score window (arrow beside "Today's Sadhana Score") in `sadhanagptreactweb`, same day.
+
+## 2026-10-06, 7:40 PM IST - Feature (step 3 of "My Marking Scheme": rankings, follow-up list and export follow each person's scheme)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Percentages and ranks (group and global) use the daily maximum of the scheme that applies to each person, so a student on their own scheme is ranked by their own percentage, as agreed (option D). One change in the shared ranking helper covers the student rank, weekly ranking and follow-up list; the counsellor's bulk export uses the same scheme rule for the maximum per activity. The counsellor's rank list (`/student-rank`) and follow-up list (`/student-followup`) now carry `uses_own_scheme` (true only when the person is really scored with their own scheme, not when a counsellor scheme overrides it) for the "Own scheme" tag.
+- **Files touched**: `SadhanaGPT/Controllers/SummaryData/rankingPercent.js`, `showRank.js`, `followUpStudents.js`, `SadhanaGPT/Mentors/CounslerController.js`, `CHANGELOG.md`
+- **Tested**: Replayed a student from the 11:33 UTC test-database export with a copy of the real code (31 checks, all passing, file `t008.mjs` in the scratchpad): own scheme created off, switched on and off; counsellor scheme overriding it and the own scheme applying again when the counsellor scheme is removed; saving an entry, the day score, the ranking maximum and the SQL scheme expression all agree; today recalculated while an earlier day keeps its marks; reserved name refused; own scheme hidden from scheme lists; read-only view allowed for the student's own counsellor and refused for another; the tag appears only for counsellors. Syntax check on every changed file. The repo has no automatic tests or linter. Not run on the real server.
+- **Database**: none.
+- **Frontend**: on the counsellor's rankings screen show an "Own scheme" tag when `uses_own_scheme` is true and open the read-only view (`/student-own-scheme`) from it. Students' screens do not receive the tag.
+
+## 2026-10-06, 7:35 PM IST - Feature (step 2 of "My Marking Scheme": save, switch on/off, counsellor read-only view)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: New routes so a person can manage their own scheme, all taking the owner from the login token (never from the request): `POST /my-marking-scheme` (my scheme, whether I use it, what applies to me now, my rules), `POST /my-scheme-activities` (activities I can write rules for), `POST /my-marking-rules` (rules of the default scheme or mine), `POST /my-save-scheme` (saves my rules; the scheme is created on the first save, switched OFF unless `use_for_self` is true; id, name and owner always come from the server), `POST /my-delete-rule`, `POST /my-delete-activity-rules`, `POST /use-my-marking-scheme` with `{ "use": true | false }` (own or default; today's entries are recalculated in the background, earlier days keep their marks). Counsellors: `POST /student-own-scheme` with `{ "student_id" }`, a read-only view of a student's own scheme, allowed only for that student's own counsellor. The name "... My Marking Scheme" is reserved: normal scheme create/rename is refused with it, and own schemes are hidden from scheme lists. The recalculation can now also be started for named people.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/PersonalSchemeController.js` (new), `SadhanaGPT/Controllers/Marking Rules/MarkingController.js`, `SadhanaGPT/Controllers/Marking Rules/recalculateMarks.js`, `routes/Routes.js`, `CHANGELOG.md`
+- **Tested**: Replayed a student from the 11:33 UTC test-database export with a copy of the real code (31 checks, all passing, file `t008.mjs` in the scratchpad): own scheme created off, switched on and off; counsellor scheme overriding it and the own scheme applying again when the counsellor scheme is removed; saving an entry, the day score, the ranking maximum and the SQL scheme expression all agree; today recalculated while an earlier day keeps its marks; reserved name refused; own scheme hidden from scheme lists; read-only view allowed for the student's own counsellor and refused for another; the tag appears only for counsellors. Syntax check on every changed file. The repo has no automatic tests or linter. Not run on the real server.
+- **Database**: none.
+- **Frontend**: needs a "My Marking Scheme" window for students and counsellors (switch default / own, edit rules) using the routes above, and a read-only "student's own scheme" window for counsellors opened from the rankings screen. To be described in the next step.
+
+## 2026-10-06, 7:30 PM IST - Feature (step 1 of "My Marking Scheme": the person's own scheme is used when marks are saved and scored)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: A student or counsellor can now have their own scheme, stored as an ordinary row of `marking_schemes` named "<user_id> My Marking Scheme" (owner = the person, `is_enabled` = 1 means "I use it", 0 means "I use the default"). Which scheme applies is now: counsellor's sub-group scheme, else counsellor's group scheme, else the person's own scheme (if switched on), else the default. A counsellor's scheme always overrides the own scheme without deleting it. The new rule lives in one shared file (`effectiveScheme.js`) and is used when an entry is saved (marks), when the day's score is worked out, on the "applied marking scheme" screen (new level "My Own Scheme"), in the student's export (maximum marks per activity) and by the assistant/WhatsApp entry. The counsellor-only weekly-ranking list also gets a `uses_own_scheme` tag.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/effectiveScheme.js` (new), `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: Replayed a student from the 11:33 UTC test-database export with a copy of the real code (31 checks, all passing, file `t008.mjs` in the scratchpad): own scheme created off, switched on and off; counsellor scheme overriding it and the own scheme applying again when the counsellor scheme is removed; saving an entry, the day score, the ranking maximum and the SQL scheme expression all agree; today recalculated while an earlier day keeps its marks; reserved name refused; own scheme hidden from scheme lists; read-only view allowed for the student's own counsellor and refused for another; the tag appears only for counsellors. Syntax check on every changed file. The repo has no automatic tests or linter. Not run on the real server.
+- **Database**: none. No column, table or setting is added; the unused `users.personal_marking_scheme_id` column on the test database is not read.
+- **Frontend**: nothing changes yet; "applied marking scheme" can now return `applied_level: "My Own Scheme"`, and the weekly ranking list for counsellors carries `uses_own_scheme`.
+
+## 2026-10-06, 6:07 PM IST - Revert (score retry / error answer, again)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Undone on request, because the cause of the wrong Marks circle and jumping sliders was found on the server side: the day's score retry and the "error instead of a false 0%" answer (`10c2c80`, same change as `7577735`). The score code is back to the main version. A new "revert" commit was made (history is kept, nothing rewritten).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: file compared with the main code zip (identical); syntax check run.
+- **Database**: none.
+- **Frontend**: reverted the same way in `sadhanagptreactweb` (newest-answer-wins and circle retry / re-check).
+
+## 2026-10-06, 4:52 PM IST - Fix (applied again: the day's score no longer shows a false 0% when something goes wrong)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Applied again on request (it was undone earlier today to match the main code zip, commit `7577735`): when the server cannot work out the day's score (for example a short database hiccup), it retries once, and if it still fails it answers an error instead of "0 of 0 marks" and logs the real reason (`Daily score failed, retrying once: ...`). The score answer also tells browsers and proxies never to keep an old copy. The assistant chat still gets zeros on failure and never crashes. A new commit was made (history is kept, nothing rewritten).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: file is identical to the earlier tested commit `7577735` (7 checks passed then); syntax check run now. Not run on the real server.
+- **Database**: none.
+- **Frontend**: works together with the circle retry / newest-answer-wins commits in `sadhanagptreactweb`, applied again the same day.
+
+## 2026-10-06, 3:44 PM IST - Revert (score retry / error answer)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Undone on request, to bring the test branch back in line with the main code zip: the day's score retry and the "error instead of a false 0%" answer (`7577735`). The score code is back to the main version (a hiccup gives "0 of 0 marks" again). A new "revert" commit was made (history is kept, nothing rewritten).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: file compared with the main code zip (identical); syntax check run.
+- **Database**: none.
+- **Frontend**: reverted the same way in `sadhanagptreactweb` (circle retry / newest-answer-wins fixes and the leftover test alert).
+
+## 2026-10-05, 8:43 PM IST - Fix (the day's score no longer shows a false 0% when something goes wrong)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Applied again (it was undone with the 1:10 PM revert) on top of the current code: when the server could not work out the day's score (for example a short database hiccup) it answered "0 of 0 marks" as if that were the score, so the marks circle showed 0% until the page was reloaded. Now a hiccup is retried once, and if it still fails the server answers an error instead of fake zeros and logs the real reason (`Daily score failed, retrying once: ...`). The score answer also tells browsers and proxies never to keep an old copy. The assistant chat, which only needs a number to show, still gets zeros on failure and never crashes. Only this fix is applied again, not the own-scheme feature or the after-deploy scripts.
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js`, `CHANGELOG.md`
+- **Tested**: replayed a student from the 6:08 PM database export with a copy of the real code (7 checks, all passing): normal score 80/175; one simulated database error is retried and still gives 80/175; a lasting error gives an error answer (not 0%) while the assistant helper still returns zeros; the success answer carries "Cache-Control: no-store". Not run on the real server.
+- **Database**: none.
+- **Frontend**: the screen should ignore older replies and keep the last good score (done in `sadhanagptreactweb`, same day).
+
+## 2026-10-05, 7:30 PM IST - Revert (everything made after 1:10 PM IST today)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Undone on request: all 11 commits made after 1:10 PM IST on 2026-10-05, with new "revert" commits (history is kept, nothing rewritten). That removes: the own (personal) marking scheme feature for students and counsellors (`e75c8aa`), the one-time DB-002 apply script and the after-deploy database-change system with its result email (`8cc1bff`, `8bd48c2`, `ca40e28`, `8e3cbcd`, `c0b044a`, `8796b21`), the DB-003 self-test (`d6fcbab`, `92f028e`), the score retry / error answer (`5f06b00`) and the re-scoring race guard (`935e44d`). The code is back exactly as it was at 1:02 PM IST (`5b653ea`); checked by comparing the files.
+- **Files touched**: `SadhanaGPT/Controllers/Marking Rules/` (`MarkingController.js`, `recalculateMarks.js`, `PersonalSchemeController.js` and `effectiveScheme.js` removed), `SadhanaGPT/Controllers/SummaryData/rankingPercent.js`, `SadhanaGPT/Mentors/CounslerController.js`, `SadhanaGPT/Student/Controllers/StudentController.js`, `routes/Routes.js`, `scripts/after-deploy-test.sh` and `scripts/db-changes/*` (removed), `DBnew.md` (note on DB-002), `CHANGELOG.md`
+- **Tested**: file-by-file comparison with the 1:02 PM state (identical apart from the DBnew.md note and this entry); syntax check of the changed backend files. Not run on a server.
+- **Database**: nothing run by Claude. DB-002 had already been applied on the TEST database (about 3:31 PM IST): the extra column `users.personal_marking_scheme_id`, its index and foreign key stay there, unused and harmless (two accounts hold a value that the code now ignores). Nothing needs to be dropped.
+- **Frontend**: reverted the same way in `sadhanagptreactweb` (own-scheme screens, marks circle and slider fixes, editor warning).
+
+## 2026-10-05, 1:25 PM IST - Plan (database log only)
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Wrote the proposed database change for the "my own marking scheme" feature into the database log as DB-002 (one new empty column `users.personal_marking_scheme_id`). Nothing was run and no code changed; the feature code waits until the developer has run the query on the test database.
+- **Files touched**: `DBnew.md`, `CHANGELOG.md`
+- **Tested**: not applicable (text only).
+- **Frontend**: nothing yet; a student "My marking scheme" screen and a "Use for me" switch for counsellors will follow.
+
 ## 2026-10-05, 1:05 PM IST - Change (rankings by percentage)
 
 - **Developer**: Manvatar Prabhu Ji

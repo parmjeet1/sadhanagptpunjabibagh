@@ -3,6 +3,7 @@ import db from '../../../config/database.js';
 import moment from 'moment';
 import { asyncHandler, mergeParam } from "../../../utils/utils.js";
 import { getDailyMaxByUser, rankByPercentage } from './rankingPercent.js';
+import { getUsersOnOwnScheme } from '../Marking Rules/effectiveScheme.js';
 
 /**
  * API to fetch students rank for the last week (Monday to Sunday)
@@ -88,6 +89,10 @@ export const getStudentRank = asyncHandler(async (req, res) => {
             const startIndex = (page - 1) * limit;
             rankedStudents = rankedStudents.slice(startIndex, startIndex + limit);
         }
+
+        // Counsellor-only tag: who is scored with their own "My Marking Scheme" right now
+        const onOwnScheme = await getUsersOnOwnScheme(rankedStudents.map(s => s.student_id));
+        rankedStudents = rankedStudents.map(s => ({ ...s, uses_own_scheme: onOwnScheme.has(String(s.student_id)) }));
 
         return res.json({
             status: 1,
