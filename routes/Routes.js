@@ -29,9 +29,11 @@ import {
   assistantInterpretNL,
   assistantTranscribeVoiceNote,
 } from '../SadhanaGPT/Student/Controllers/AssistantController.js';
+import studentGroupAssignmentRoutes from './studentGroupAssignmentRoutes.js';
 
 
 const router = Router();
+router.use(studentGroupAssignmentRoutes);
 
 const authzAndAuthRoutes = [
     { method: 'get', path: '/download-error-log', handler: downloadErrorLog, role: "student" },

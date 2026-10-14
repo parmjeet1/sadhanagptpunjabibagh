@@ -2070,6 +2070,7 @@ export const userProfile = asyncHandler(async (req, resp) => {
       uc.counsller_id AS mentor_id,
       usr.name,
       usr.email,
+      usr.mobile,
       usr.birthday AS dob,
       usr.auto_report_status,
       usr.report_frequency_days,
@@ -2130,12 +2131,15 @@ console.log("dependency",dependency)
         mentor_id: m.mentor_id,
         mentor_name: m.name,
         mentor_email: m.email,
+        mentor_mobile: m.mobile || "",
         mentor_dob: m.dob,
         temple: m.temple || "",
         mentor_profile_image: m.avatar,
         // Also keep old keys just in case other parts of the app use them
         name: m.name,
         email: m.email,
+        mobile: m.mobile || "",
+        phone: m.mobile || "",
         dob: m.dob,
         avatar: m.avatar
       })),
