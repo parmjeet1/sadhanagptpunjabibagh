@@ -109,6 +109,7 @@ export const queryDB = async (query, params, connection = null) => {
  * @param {string} [params.searchText=''] - The search text to filter the records by, defaults to an empty string.
  * @param {string} [params.sortColumn='id'] - The column to sort the data by, defaults to 'id'.
  * @param {string} [params.sortOrder='ASC'] - The sort order ('ASC' or 'DESC'), defaults to 'ASC'.
+ * @param {string} [params.tieBreaker=''] - Extra ORDER BY column(s) added after the sort column so pages never repeat or skip rows when many rows share the same sort value.
  * @param {number} [params.page_no=1] - The page number for pagination, defaults to 1.
  * @param {number} [params.limit=10] - The number of records to fetch per page, defaults to 10.
  * @param {string} [params.whereField='status'] - The column to filter records by status, defaults to 'status'.
@@ -131,6 +132,7 @@ export const getPaginatedData = async ({
   searchTexts = [],
   sortColumn = 'id',
   sortOrder = 'ASC',
+  tieBreaker = '', // optional extra ORDER BY column(s), e.g. 'us.user_id ASC' - makes page order stable when sortColumn has ties
   page_no = 1,
   limit = 10,
   whereField = [],
@@ -202,7 +204,7 @@ export const getPaginatedData = async ({
 //   : (joinTable && joinCondition ? ` JOIN ${joinTable} ON ${joinCondition}` : '');
 
   // Final SQL query
-  const query = `SELECT SQL_CALC_FOUND_ROWS ${columns} FROM ${tableName}${joinClause}${finalWhereCondition} ORDER BY ${sortColumn} ${sortOrder} LIMIT ${start}, ${parseInt(limit, 10)}`;
+  const query = `SELECT SQL_CALC_FOUND_ROWS ${columns} FROM ${tableName}${joinClause}${finalWhereCondition} ORDER BY ${sortColumn} ${sortOrder}${tieBreaker ? `, ${tieBreaker}` : ''} LIMIT ${start}, ${parseInt(limit, 10)}`;
   try {
     // console.log("final query",query)
     const [rows] = await db.execute(query, queryParams);

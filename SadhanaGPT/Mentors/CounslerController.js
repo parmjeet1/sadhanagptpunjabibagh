@@ -981,6 +981,9 @@ export const studentlist = asyncHandler(async (req, resp) => {
 
       sortColumn: "us.created_at",
       sortOrder: "DESC",
+      // Many students share the same created_at (bulk adds), so without this the order between
+      // pages was not fixed and some students showed twice while others never showed.
+      tieBreaker: "us.user_id DESC",
       page_no,
       limit: rowSelected || 10,
       liveSearchFields: ["name"],

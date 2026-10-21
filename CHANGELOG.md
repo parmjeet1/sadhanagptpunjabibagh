@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 🐛 [Mentees] - 2026-10-22, 05:00 AM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Fix for the Mentees list and Group Management list showing some students twice and missing others. The list (`GET /api/student-list`) is sent 30 at a time, newest first by the date the student was added. Many students share the same date and time (for example when added in bulk), and for those the database does not promise any fixed order, so the order could differ between page 1 and page 2: a student could appear on both pages and another on neither. The list now also sorts by the student's id, so the order is always the same and every student appears exactly once. `getPaginatedData` got an optional `tieBreaker` setting; every other list that uses it behaves exactly as before.
+- **Files touched**: `utils/dbUtils.js`; `SadhanaGPT/Mentors/CounslerController.js` (`studentlist` only); new `tests/paginationOrder.test.mjs`; `CHANGELOG.md`.
+- **Tested**: the whole suite passes (437 pass, 0 fail, 2 skipped). The 2 new tests check the generated query (with and without the tie-breaker) and are skipped in this workspace because the database packages are not installed; I ran them in a scratch copy with stand-in packages and both passed. NOT tested against the real database or the real list.
+- **Not proven**: if after deploying a student still shows twice, that student probably has two rows for the same counsellor in `user_counsellors` (see the check query given in chat). Students who never appear may have no `user_counsellors` row for that counsellor.
+- **Frontend**: the Mentees page also hides any repeated student on its own (website commit).
+
 ## 🐛 [Profile] - 2026-10-13, 04:20 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
