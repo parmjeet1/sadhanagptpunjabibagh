@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🐛 [Mentors] - 2026-10-24, 05:00 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Fix: adding a mentor (`POST /api/add-counsllor`) failed every time. My earlier birthday fix (13 Oct, commit e18a1a6) accidentally put its "valid date of birth" check inside the add-mentor function instead of the edit-profile function. That function has no birthday, so the check crashed and the server answered with an error. The stray check is removed from add-mentor, and placed where it was meant to be, in edit-profile (a birthday that is not a real date still gets the 422 message; nothing else about edit-profile changed).
+- **Files touched**: `SadhanaGPT/Student/Controllers/StudentController.js` (`addCounsellor`, `editProfile`); `CHANGELOG.md`.
+- **Tested**: syntax check passes; whole suite: 439 tests, 397 pass, 0 fail, 42 skipped (database-based tests are skipped here because the test database was not running). The add-mentor and edit-profile functions themselves were NOT run against a database. NOT tested on the real server. This backend must be deployed for add-mentor to work.
+- **Frontend**: the Mentor profile screen also read the server's answer wrongly (website commit).
+
 ## 🐛 [Mentees] - 2026-10-22, 05:00 AM IST
 
 - **Developer**: Manvatar Prabhu Ji

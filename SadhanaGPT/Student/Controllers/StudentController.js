@@ -1573,9 +1573,6 @@ export const addCounsellor = asyncHandler(async (req, resp) => {
   if (!isValid) {
     return resp.json({ status: 0, code: 422, message: errors });
   }
-  if (dobVal === undefined) {
-    return resp.json({ status: 0, code: 422, message: ["Please enter a valid date of birth (YYYY-MM-DD)."] });
-  }
 
   /* ---------------------------
      CHECK USER EXISTS
@@ -2171,6 +2168,9 @@ export const editProfile = asyncHandler(async (req, resp) => {
 
   if (!isValid) {
     return resp.json({ status: 0, code: 422, message: errors });
+  }
+  if (dobVal === undefined) {
+    return resp.json({ status: 0, code: 422, message: ["Please enter a valid date of birth (YYYY-MM-DD)."] });
   }
 
   /* ---------------------------
