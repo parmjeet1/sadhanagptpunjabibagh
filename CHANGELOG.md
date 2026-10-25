@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🐛 [Mentee report] - 2026-10-25, 06:00 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: Fix: in the counsellor's view of a mentee's analysis (`studentDetails`, the "Mentee Report"), the average of time activities (Wakeup, Chanting completion, ...) and the other averages were not right. The average was worked out over ALL the student's records, not the dates chosen (7 days / month / custom), and empty days counted as 00:00, which pulled time averages towards midnight. It now uses the same rules as the student's own Analytics screen: only the chosen dates; empty days are ignored for time activities; times are averaged as a clock (11 PM and 1 AM give 12 AM, not noon); time averages are sent as "5:30 AM". Other activities: total divided by the number of days in the period. Label "Avg. Hours" added for hour-based activities (as on the student screen). The student's own Analytics screen is not changed.
+- **Files touched**: new `utils/activityAverage.js`; `SadhanaGPT/Mentors/CounslerController.js` (`studentDetails` only); new `tests/activityAverage.test.mjs`; `CHANGELOG.md`.
+- **Tested**: whole suite 445 tests, 0 fail (42 skipped because the test database was not running here); the 6 new tests cover time averages, empty days, around midnight, AM/PM text, no entries, and number averages. The `studentDetails` function itself was NOT run against a database; NOT tested on the real server.
+- **Frontend**: the mentee report screen now also formats the time (website commit). It also still works with the old server answer.
+
 ## 🐛 [Mentors] - 2026-10-24, 05:00 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

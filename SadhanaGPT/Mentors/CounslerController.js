@@ -17,6 +17,7 @@ import { chatWithAI, generateStudentInsights } from "../../utils/groqService.js"
 import ExcelJS from "exceljs";
 import { Parser } from "json2csv";
 import { uploadFiles } from "../../utils/fileUpload.js";
+import { computeAverageValue } from "../../utils/activityAverage.js";
 import { effectiveSchemeSql } from "../Controllers/Marking Rules/effectiveScheme.js";
 
 
@@ -2338,15 +2339,19 @@ export const studentDetails = asyncHandler(async (req, res) => {
     if (last > prev) trend = "+";
     else if (last < prev) trend = "-";
 
+    // Average over the chosen dates only (same rules as the student's own Analytics screen).
+    const average_value = computeAverageValue(activity.activity_type, daily_data);
+
     let label = "";
     if (activity.activity_type === "time") label = "Avg. Time";
     else if (activity.unit === "min") label = "Avg. Minutes";
+    else if (activity.unit === "hours") label = "Avg. Hours";
     else label = "Avg. Count";
 
     return {
       activity_id: activity.activity_id,
       name: activity.activity_name,
-      value: activity.average_value,
+      value: average_value,
       label,
       trend,
       color: colors[index % colors.length],
