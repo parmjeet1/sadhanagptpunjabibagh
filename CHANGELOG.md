@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 📲 [Notify + WhatsApp] - 2026-10-26, 05:45 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: A counsellor's "Send Notification" message now also goes to the student on WhatsApp (Updatrr template, name from `.env`): "Hare Krishna, {counselor_name} has sent you a new message: "{text}" on SadhanaGPT." `counselor_name` is the logged-in counsellor's name; the student's 10-digit mobile gets 91 in front. One reusable function `notifyStudents` saves the in-app notification (same row as before) and sends WhatsApp, for one student or many. `POST /cusotm-notification` still takes `student_id` (one student) and now also `student_ids` (many, in one call). WhatsApp failing never fails the in-app notification; the answer says how WhatsApp went.
+- **Files touched**: new `utils/whatsappNotify.js`; new `utils/notifyStudents.js`; `SadhanaGPT/Mentors/CounslerController.js` (`CustomNotification`); `CHANGELOG.md`.
+- **New .env settings**: `WHATSAPP_NOTIFY_TEMPLATE` (template name), `WHATSAPP_SECRET_KEY` (Updatrr API key). Without them the in-app notification works as before and WhatsApp is skipped.
+- **Tested**: syntax check passes; `notifyStudents` run with a fake database and fake WhatsApp API: 1 sent, 1 no mobile, 1 failed, duplicate student sent once, request body matches the Updatrr format. NOT tested with the real API or database; the full test suite could not run here (it waits for a database).
+- **Frontend**: both notify screens now use one helper and send `student_ids` (website commit). Deploy this backend first.
+
 ## 🔒 [Repo rules] - 2026-10-26, 01:30 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

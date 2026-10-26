@@ -18,6 +18,7 @@ import ExcelJS from "exceljs";
 import { Parser } from "json2csv";
 import { uploadFiles } from "../../utils/fileUpload.js";
 import { computeAverageValue } from "../../utils/activityAverage.js";
+import { notifyStudents } from "../../utils/notifyStudents.js";
 import { effectiveSchemeSql } from "../Controllers/Marking Rules/effectiveScheme.js";
 
 
@@ -2568,60 +2569,33 @@ export const editRewardRules = asyncHandler(async (req, resp) => {
 
 export const CustomNotification = asyncHandler(async (req, res) => {
 
-  const { student_id, heading = '', description, user_id } = req.body;
-  // const created_by = req.user?.user_id 
-  console.log(req.body)
+  // student_id = one student (mentee page); student_ids = many students (Birds Eye View). Both use notifyStudents.
+  const { student_id, student_ids, heading = '', description, user_id } = req.body;
 
   const { isValid, errors } = validateFields(mergeParam(req), {
-    student_id: ["required"],
-    // heading: ["required"],
     description: ["required"],
     user_id: ["required"]
   });
+  const ids = Array.isArray(student_ids) && student_ids.length ? student_ids : (student_id ? [student_id] : []);
+  if (!ids.length) errors.push("student_id or student_ids is required.");
 
-  if (!isValid) {
+  if (!isValid || !ids.length) {
     return res.status(400).json({
       success: false,
       errors
     });
   }
-  const href = "cusotm_notification"
-  console.log(heading,
-    description,
-    "custom_notification",
-    "student",
-    "admin",
-    user_id,
-    student_id,
-    href || null);
-  const result = await insertRecord(
-    "notifications",
-    [
-      "heading",
-      "description",
-      "module_name",
-      "panel_to",
-      "panel_from",
-      "created_by",
-      "receive_id",
-      "href"
-    ],
-    [
-      heading,
-      description,
-      "custom_notification",
-      "student",
-      "admin",
-      user_id,
-      student_id,
-      href || null
-    ]
-  );
+
+  // counselor_name in WhatsApp = the logged-in counsellor
+  const senderId = req.user?.user_id || user_id;
+  const result = await notifyStudents({ senderId, studentIds: ids, text: description, heading });
 
   return res.json({
     success: true,
     message: "Notification sent successfully",
-    data: result
+    data: result,
+    // single-student callers: WhatsApp status of that one student
+    whatsapp: ids.length === 1 ? result.results[0]?.whatsapp : undefined
   });
 
 });
