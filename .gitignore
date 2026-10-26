@@ -72,3 +72,7 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# SQL / migration scripts: run manually on the database, never committed
+/migrations/
+*.sql

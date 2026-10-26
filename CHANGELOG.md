@@ -1,5 +1,13 @@
 # Changelog - SadhanaGPT Backend
 
+## 🔒 [Repo rules] - 2026-10-26, 01:30 PM IST
+
+- **Developer**: Manvatar Prabhu Ji
+- **What changed**: SQL and migration files are no longer kept in git. `.gitignore` now ignores the `/migrations/` folder and every `.sql` file, and the already-committed ones were removed from git (they stay on the developer's computer). Database changes are run by hand, so these scripts should never reach `main` or production. No code reads these files.
+- **Files removed from git**: `migrations/2026-10-05_001_rollback.sql`, `migrations/2026-10-05_001_safe_indexes_and_migration_log.sql`, `migrations/2026-10-05_002_review_first_data_fixes_and_constraints.sql`, `SadhanaGPT/reading-lecture-feature/DB-PROPOSAL.sql`, `SadhanaGPT/reading-lecture-feature/DB-SEED-DEFAULT.sql`, `tripa-app/src/migrations/001_create_tables.sql`, `tripa-app/src/migrations/002_add_location_indexes.sql`.
+- **Files touched**: `.gitignore`; `CHANGELOG.md`.
+- **Tested**: no code change; checked that no code loads these files.
+
 ## 🐛 [Mentors] - 2026-10-24, 05:00 PM IST
 
 - **Developer**: Manvatar Prabhu Ji
