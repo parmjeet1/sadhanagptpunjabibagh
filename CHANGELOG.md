@@ -1,5 +1,14 @@
 # Changelog - SadhanaGPT Backend
 
+## 📱 [Google login for the mobile app] - 2026-11-12, 12:29 PM IST
+
+- **Developer**: Harshit Agrawal
+- **What changed**: Google login can now return to the mobile app. The app opens `/auth/google?redirect_uri=sadhanagpt://oauth-success`. The route passes that link to Google in the `state` value, and the callback reads it back and sends the same login result (`?data=...`, or `?error=auth_failed`) to the app link instead of the website. Anything else still goes to the website exactly as before. Only the app's own `sadhanagpt://` link is accepted (`exp://` for Expo Go only when `ALLOW_EXPO_GO_REDIRECT=1`), so this cannot be used as an open redirect.
+- **Files touched**: `routes/auth.js`; `CHANGELOG.md`.
+- **Tested**: syntax check passes; the real `routes/auth.js` was run with a fake Google (10 checks, all pass): app flow for an existing and a new user, website flow unchanged, a different redirect link is ignored, a forged or garbage `state` falls back to the website, `exp://` ignored unless the flag is set. NOT tested with the real Google or database.
+- **No new .env settings, no database change, no new package.** Google Cloud Console is unchanged (callback stays `BACKEND_URL/auth/google/callback`).
+- **Frontend**: nothing to deploy. The mobile app already opens this route.
+
 ## 📲 [Notify + WhatsApp] - 2026-10-26, 05:45 PM IST
 
 - **Developer**: Manvatar Prabhu Ji

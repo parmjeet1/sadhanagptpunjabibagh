@@ -7,16 +7,34 @@ import db from "../config/database.js";
 import dotenv from 'dotenv';
 dotenv.config();
 
-// Google Login
-router.get(
-  "/google",
-  passport.authenticate("google", { 
-    scope: ["profile", "email"],
-    session: false
+// Mobile app support: the app passes ?redirect_uri=sadhanagpt://oauth-success and gets the
+// login result back on that deep link instead of the web page. The value travels through
+// Google's `state` parameter. Only the app's own scheme is accepted (Expo Go's exp:// scheme
+// only when ALLOW_EXPO_GO_REDIRECT=1) so this cannot be used as an open redirect.
+const isAllowedAppRedirect = (uri) => {
+  if (typeof uri !== "string" || uri.length > 500 || /\s/.test(uri)) return false;
+  if (/^sadhanagpt:\/\/[^\s]*$/.test(uri)) return true;
+  return process.env.ALLOW_EXPO_GO_REDIRECT === "1" && /^exp:\/\/[^\s]*$/.test(uri);
+};
+const encodeAppState = (uri) =>
+  isAllowedAppRedirect(uri) ? Buffer.from(`app:${uri}`).toString("base64url") : undefined;
+const decodeAppState = (state) => {
+  try {
+    const text = Buffer.from(String(state || ""), "base64url").toString("utf8");
+    const uri = text.startsWith("app:") ? text.slice(4) : null;
+    return isAllowedAppRedirect(uri) ? uri : null;
+  } catch {
+    return null;
+  }
+};
 
-   })
-  
-);
+// Google Login
+router.get("/google", (req, res, next) => {
+  const options = { scope: ["profile", "email"], session: false };
+  const state = encodeAppState(req.query.redirect_uri);
+  if (state) options.state = state;
+  passport.authenticate("google", options)(req, res, next);
+});
 
 // Callback
 router.get(
@@ -78,10 +96,17 @@ async (req, res) => {
     // ✅ Encode and send
     const encodedData = encodeURIComponent(JSON.stringify(responseData));
 
+    const appRedirect = decodeAppState(req.query.state);
+    if (appRedirect) {
+      const sep = appRedirect.includes("?") ? "&" : "?";
+      return res.redirect(`${appRedirect}${sep}data=${encodedData}`);
+    }
     res.redirect(`${frontendUrl}?data=${encodedData}`);
 
   } catch (err) {
     console.error(err);
+    const appRedirect = decodeAppState(req.query.state);
+    if (appRedirect) return res.redirect(`${appRedirect}${appRedirect.includes("?") ? "&" : "?"}error=auth_failed`);
     res.redirect("https://www.sadhanagpt.com/login?error=auth_failed");
   }
 }
